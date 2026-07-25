@@ -10,7 +10,7 @@ SnapZap is a Windows desktop app (.NET 10, C#) that finds duplicates, NSFW image
 - No cloud, no subscriptions, no paid dependencies
 - Safety-critical: nothing is hard-deleted until hash-verified; source folder untouched unless explicitly requested
 
-See [DESIGN.md](DESIGN.md) for full architecture and rationale, and [WINDOWS-VERIFY.md](WINDOWS-VERIFY.md) for the Windows validation checklist.
+See [DESIGN.md](docs/DESIGN.md) for full architecture and rationale, and [WINDOWS-VERIFY.md](docs/WINDOWS-VERIFY.md) for the Windows validation checklist.
 
 ---
 
@@ -63,6 +63,21 @@ dotnet publish src/SnapZap.App -c Release -r win-x64 --self-contained \
 
 Output: `artifacts/win-x64/SnapZap.App.exe` (~130 MB, includes .NET runtime, requires no installation)
 
+### Build for macOS (local use on the dev machine)
+
+```bash
+# RID-specific, framework-dependent (~57 MB). NOT self-contained, NOT single-file — see below.
+dotnet publish src/SnapZap.App -c Release -r osx-arm64 --self-contained false -o artifacts/mac
+```
+
+⚠️ **Do not use `--self-contained` / `PublishSingleFile` on macOS.** The resulting apphost
+Mach-O binary is SIGKILLed on launch (exit 137, no output, no crash report) by endpoint
+security on managed Macs — it is ad-hoc signed and unnotarized. Verified: self-contained and
+framework-dependent apphosts both die; `dotnet SnapZap.App.dll` runs fine. So the macOS
+`.app` bundle uses a **shell-script launcher** that invokes `dotnet <dll>`, which also lets it
+resolve the runtime by absolute path (Finder gives GUI apps a minimal `PATH` that excludes
+`/usr/local/share/dotnet`).
+
 ### Sidecar assets (optional, ship beside the binary)
 ```bash
 # Get NSFW ONNX model (~350 MB, Apache-2.0, not committed)
@@ -92,13 +107,26 @@ Graceful degradation: missing NSFW model disables NSFW scoring; missing `czkawka
 | Path | Purpose |
 |---|---|
 | `src/SnapZap.Core/` | Portable core logic: scanning, hashing, dedup, NSFW, blur/EXIF, export, delete, platform interfaces |
-| `src/SnapZap.App/` | ASP.NET Core minimal-API host + SPA (`wwwroot/`) |
+| `src/SnapZap.App/` | ASP.NET Core host + Blazor Server UI (`Components/`, `Services/`, `wwwroot/`) |
 | `tests/SnapZap.Tests/` | xUnit test suite + fixtures |
-| `DESIGN.md` | Architecture, decisions, data model, pipeline, safety invariants |
-| `WINDOWS-VERIFY.md` | Checklist for four Windows-only code paths |
+| `docs/DESIGN.md` | Architecture, decisions, data model, pipeline, safety invariants |
+| `docs/ROADMAP.md` | Current status + prioritized next steps |
+| `docs/BLAZOR-MIGRATION.md` | The SPA → Blazor Server migration (completed) |
+| `docs/WINDOWS-VERIFY.md` | Checklist for four Windows-only code paths |
 | `scripts/get-nsfw-model.sh` | One-time export of NSFW ONNX model |
-| `artifacts/win-x64/` | Publish output (built, not committed) |
+| `artifacts/` | Publish output (built, not committed) |
 | `models/` | Sidecar assets — NSFW ONNX model + config (built, not committed) |
+
+### Key subdirectories in `App/`
+
+- **Components/** — Razor components. `Pages/Home.razor` composes the whole app; `Toolbar`,
+  `Sidebar` (icon rail + flyout), `PhotoGrid`, `Card`, `Toast`, and the `ExportDialog` /
+  `UndoDialog` / `PreviewModal` / `DependencyDialog` overlays.
+- **Services/** — `AppState` (scoped per circuit: view state + operations, replaces the old
+  `app.js` state object), `ImageView` (record wrapping `ImageRecord` for display),
+  `DependencyChecker` (validates the optional sidecars, singleton).
+- **wwwroot/** — `app.css` (the "Darkroom" design system) and `interop.js` (grid geometry
+  measurement, scroll windowing, arrow-key focus movement).
 
 ### Key subdirectories in `Core/`
 
@@ -157,10 +185,47 @@ Folder pick
                   └ Thumbnail (SkiaSharp)
   → czkawka_cli subprocess for similar-image groups
   → SQLite (faceted query)
-  → SPA grid (select, filter)
+  → AppState (per-circuit view state) → Blazor grid (select, filter)
   → Export (copy/move/hardlink → hash-verify → manifest)
-  → Delete (optional, separate mode, recycle + undo panel)
+  → Delete (optional, separate mode, recycle + undo toast/panel)
 ```
+
+### UI layer (Blazor Server)
+
+Components call Core services directly — there is no HTTP/JSON boundary for app logic. Only
+three endpoints remain: `/api/health`, `/api/thumb/{hash}`, and `/api/full/{id}` (guarded to
+paths present in the catalog).
+
+Two things to know before touching the grid:
+
+1. **Shared state needs explicit subscription.** `AppState` is mutated by sibling components
+   whose parameters into each other never change, so Blazor's diffing skips re-rendering them.
+   Every component reading `AppState` subscribes to `AppState.Changed` in `OnInitialized` and
+   unsubscribes in `Dispose`. Same pattern for `DependencyChecker.Changed`.
+2. **The grid does not use `<Virtualize>`.** That component derives its viewport from an
+   IntersectionObserver on its own spacers, which never resolves inside this flex/scroll
+   layout — it reports zero capacity and renders no rows at all. `PhotoGrid` instead windows
+   rows itself using geometry measured in `interop.js` (`SetViewport` / `SetScroll`), which is
+   deterministic. Verified at 4,000 photos with ~120 cards in the DOM.
+
+### Optional sidecar validation
+
+`DependencyChecker` (singleton) resolves the two optional sidecars at launch and exposes them
+to the UI. Both are genuinely optional — the core workflow (scan, exact duplicates, export,
+delete) works with neither installed, so a missing one is always presented as reduced
+capability, never an error.
+
+| Sidecar | Unlocks | Resolution order |
+|---|---|---|
+| `czkawka_cli` | Similar-photo detection | explicit path → beside the binary → `PATH` |
+| `models/nsfw.onnx` | NSFW scoring | `PC_NSFW_MODEL` → `models/` beside the binary |
+
+Detection reuses `CzkawkaFinder.LocateBinary()` — the same lookup the feature itself performs —
+so "Ready" in the UI can never disagree with what happens at run time. When something is
+missing the app shows a dialog once at startup (dismissible, and suppressible via
+`settings.json` in app-data), flags it with a pip on the **Setup** rail icon, and annotates
+the affected toolbar buttons. **Add new sidecars in `DependencyChecker.Detect()`** — the
+dialog, the Setup panel and the pip all render from that one list.
 
 ### Dependency notes
 
@@ -172,7 +237,7 @@ All other deps are MIT or Apache-2.0. No paid, no subscription-gated.
 
 - **ONNX Runtime inference** runs in-process (no server, no cloud).
 - **Model is the Falconsai ViT** trained on ~10k labeled images (Apache-2.0).
-- **Output is a single float `[0, 1]`** (probability of NSFW). The SPA provides a threshold slider.
+- **Output is a single float `[0, 1]`** (probability of NSFW). The UI provides a threshold slider.
 - **Preprocessing** (resize, normalize) is in `NsfwPreprocess.cs`; the config is in `preprocessor_config.json` (downloaded alongside the model).
 - **Model validation** (test category `NsfwModelValidation`) requires labeled fixtures to confirm the model's scores are sensible. Tests skip unless you provide them.
 
@@ -194,7 +259,19 @@ All other deps are MIT or Apache-2.0. No paid, no subscription-gated.
 
 5. **SkiaSharp's native assets** are in the Core csproj (macOS + Win32 .nupkg packages). The publish step bundles them into the self-contained .exe.
 
-6. **App data (caches, database, temp thumbnails)** lives in `.photoclean/` (OS-appropriate location, e.g., `%APPDATA%\photo-cleaner` on Windows). Listed in `.gitignore` so never committed.
+6. **App data** (catalog DB, thumbnails, manifests, `settings.json`) lives under
+   `Environment.SpecialFolder.LocalApplicationData` + `SnapZap` — i.e.
+   `~/Library/Application Support/SnapZap` on macOS, `%LOCALAPPDATA%\SnapZap` on Windows. It is
+   deliberately outside the scanned folder so the app never writes into the user's library
+   (DESIGN safety invariant §7.5). Delete `catalog.db` to reset to a clean state.
+
+7. **macOS: never publish self-contained or single-file.** The apphost binary is SIGKILLed on
+   launch by endpoint security (see the macOS build section). Ship `dotnet <dll>` behind a
+   script launcher instead.
+
+8. **macOS `.app` launcher must resolve `dotnet` by absolute path.** Finder gives GUI apps a
+   minimal `PATH` without `/usr/local/share/dotnet`, so `command -v dotnet` alone fails when
+   launched by double-click even though it works from a terminal.
 
 ---
 
@@ -203,14 +280,14 @@ All other deps are MIT or Apache-2.0. No paid, no subscription-gated.
 - **Test naming:** Tests are organized by feature (ScannerTests, DedupTests, NsfwTests, ExportTests, DeleteTests, AnalysisTests, PlatformTests).
 - **Nullable reference types** are enabled; use `#nullable disable` only where cross-cutting OSS interop forces it.
 - **Implicit usings** are enabled; global `using` statements in each project.
-- **JSON serialization** uses camelCase (property names in SPA are camelCase, DTOs auto-serialize via `JsonCamel.Options`).
+- **No DTO/JSON layer for app logic.** Razor components call Core services directly, so there is no serialization boundary and no camelCase mapping to keep in sync. (`JsonCamel` and `ExportRequestDto` were deleted in the Blazor migration.) The only JSON left is the manifest writer's output.
 - **Platform-specific tests** use `[SkippableFact]` to skip gracefully on the wrong OS (e.g., Recycle Bin tests skip on macOS).
 
 ---
 
 ## Windows Release Checklist
 
-See [WINDOWS-VERIFY.md](WINDOWS-VERIFY.md) for the four Windows-only paths that must be validated on Windows hardware:
+See [WINDOWS-VERIFY.md](docs/WINDOWS-VERIFY.md) for the four Windows-only paths that must be validated on Windows hardware:
 1. Recycle Bin (delete → restore)
 2. Shell restore (from Recycle Bin context menu)
 3. Hardlinks (export hardlink mode)

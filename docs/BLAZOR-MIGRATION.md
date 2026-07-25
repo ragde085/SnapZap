@@ -1,5 +1,30 @@
 # Blazor Server Migration Plan
 
+> **Status: completed 2026-07-25.** All seven steps below were executed and verified in a
+> browser. Kept as the record of intent and rationale. Three things ended up differing from
+> the plan — read these before trusting the detail further down:
+>
+> 1. **`<Virtualize>` was not usable** (§5, §9). It derives its viewport from an
+>    IntersectionObserver on its own spacers, which never resolves inside this flex/scroll
+>    layout: it reported zero capacity and rendered no rows at all, with the container
+>    correctly sized at 850px and the item count correct. `PhotoGrid` now windows *rows*
+>    itself, driven by geometry measured in `wwwroot/interop.js` (`SetViewport`/`SetScroll`).
+>    Verified at 4,000 photos with ~120 cards in the DOM. As a side benefit this also avoids
+>    the spacer-divs-as-grid-cells problem, since the CSS grid lives one level down on
+>    `.grid-row`.
+> 2. **Subscribing only the top-level component to `AppState.Changed` is not enough** (§4).
+>    Blazor skips re-rendering a child whose own parameters are unchanged, so sibling-driven
+>    state changes (a Sidebar filter, a Card click) never reached the other components. Every
+>    component that reads `AppState` subscribes directly and unsubscribes in `Dispose`.
+> 3. **`Progress<T>` needs an in-flight guard** (§9). Its callback is posted rather than run
+>    inline, so on a fast operation a stale progress post can land *after* the final status is
+>    set and overwrite it. Each long operation flips a flag when it completes and the callback
+>    drops late posts.
+>
+> Beyond the plan, the UI was restyled ("Darkroom"), given keyboard triage, an inline delete
+> confirm replacing `confirm()`, an undo toast, and launch-time validation of the optional
+> sidecars.
+
 Migrate SnapZap's UI from the vanilla-JS SPA (`wwwroot/index.html` + `app.js` + `style.css`,
 served by minimal-API + SSE endpoints) to **Blazor Server** Razor components.
 
