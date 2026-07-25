@@ -82,8 +82,44 @@ public class ExactDedupTests : IDisposable
 
 public class CzkawkaParserTests
 {
-    // Guards the defensive parser against the shapes czkawka's JSON might take. Until we can
-    // validate on a machine with czkawka installed, these lock in the contract we assume.
+    // Guards the defensive parser against the shapes czkawka's JSON might take. The first test
+    // below is real captured output; the rest lock in tolerated variations.
+    [Fact]
+    public void Parses_real_czkawka_12_output()
+    {
+        // Captured verbatim from `czkawka_cli image -d <dir> --max-difference 10 -C out.json`
+        // on czkawka 12.0.0. Shape confirmed: array of groups, each an array of file objects
+        // carrying `path` plus metadata the parser ignores.
+        var json = """
+        [[{"path":"/private/tmp/czk2/compressed.jpg","size":33428,"width":900,"height":700,"modified_date":1785023032,"hashes":[],"difference":0},{"path":"/private/tmp/czk2/orig.jpg","size":158731,"width":900,"height":700,"modified_date":1785023032,"hashes":[],"difference":6}]]
+        """;
+
+        var groups = CzkawkaFinder.ParseGroups(json);
+
+        Assert.Single(groups);
+        Assert.Equal(2, groups[0].Count);
+        Assert.Contains("/private/tmp/czk2/orig.jpg", groups[0]);
+        Assert.Contains("/private/tmp/czk2/compressed.jpg", groups[0]);
+    }
+
+    [Fact]
+    public void Canonical_resolves_symlinked_ancestors()
+    {
+        // czkawka reports canonical paths while the catalog stores what the user typed. On
+        // macOS /tmp is a symlink to /private/tmp, which silently broke every group match.
+        var probe = Path.Combine(Path.GetTempPath(), $"snapzap_canon_{Guid.NewGuid():N}.txt");
+        File.WriteAllText(probe, "x");
+        try
+        {
+            var canonical = CzkawkaFinder.Canonical(probe);
+
+            Assert.Equal(Path.GetFileName(probe), Path.GetFileName(canonical));
+            // Whatever the platform, canonicalising twice must be stable.
+            Assert.Equal(canonical, CzkawkaFinder.Canonical(canonical));
+        }
+        finally { File.Delete(probe); }
+    }
+
     [Fact]
     public void Parses_array_of_groups_of_file_entries()
     {

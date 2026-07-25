@@ -12,23 +12,33 @@ public sealed record CzkawkaResult(bool Available, int GroupsFound, string? Mess
 /// (<see cref="ExactDuplicateFinder"/>). If the binary is absent, this degrades gracefully:
 /// the app is fully functional, it just won't surface near-duplicates.
 ///
-/// ⚠ VALIDATION PENDING: Czkawka's JSON schema for similar images is not publicly documented
-/// and could not be captured on the dev machine (binary not installed). The parser below is
-/// deliberately defensive — it recursively finds arrays of file-entry objects (any object
-/// carrying a string "path") and treats each as a group. Verify against real output on a
-/// machine with czkawka_cli before relying on similar-detection results.
+/// ✅ VALIDATED against czkawka 12.0.0 (2026-07-25). Real output is an array of groups, each
+/// an array of objects carrying <c>path</c> plus size/width/height/difference metadata that we
+/// ignore. <c>DedupTests.Parses_real_czkawka_12_output</c> locks that captured shape in. The
+/// parser stays deliberately tolerant — it finds any array of objects with a string "path" —
+/// so a schema change is more likely to degrade than to break outright.
 /// </summary>
 public sealed class CzkawkaFinder(Database db, string? explicitBinaryPath = null)
 {
-    /// <summary>0–40; higher = looser matching. Czkawka's default region is ~10.</summary>
+    /// <summary>
+    /// 0–40; higher = looser matching. Kept conservative on purpose: this feeds a tool that
+    /// deletes things, so a false positive costs more than a miss.
+    ///
+    /// Note czkawka 12 defaults <c>--hash-size</c> to 16, for which it recommends values up to
+    /// 20; 10 is therefore stricter than czkawka's own guidance and will under-detect. Raise
+    /// it if similar-detection feels too quiet.
+    /// </summary>
     public int MaxDifference { get; init; } = 10;
 
     public string? LocateBinary()
     {
-        // 1) explicit config, 2) beside our binary (sidecar), 3) PATH.
-        if (!string.IsNullOrWhiteSpace(explicitBinaryPath) && File.Exists(explicitBinaryPath))
-            return explicitBinaryPath;
+        // An explicit path is authoritative: if it was configured and isn't there, report
+        // unavailable rather than quietly running some other czkawka found on PATH. Silently
+        // substituting a different binary than the one asked for is worse than doing nothing.
+        if (!string.IsNullOrWhiteSpace(explicitBinaryPath))
+            return File.Exists(explicitBinaryPath) ? explicitBinaryPath : null;
 
+        // Otherwise: beside our binary (sidecar), then PATH.
         var exeName = OperatingSystem.IsWindows() ? "czkawka_cli.exe" : "czkawka_cli";
         var beside = Path.Combine(AppContext.BaseDirectory, exeName);
         if (File.Exists(beside)) return beside;
@@ -124,11 +134,54 @@ public sealed class CzkawkaFinder(Database db, string? explicitBinaryPath = null
         }
     }
 
+    /// <summary>
+    /// Resolve symlinked ancestors so a catalog path and a czkawka path for the same file
+    /// compare equal. Czkawka canonicalises what it reports, while the catalog stores the
+    /// path the user typed — on macOS a scan of <c>/tmp/x</c> comes back as
+    /// <c>/private/tmp/x</c> and every group silently fails to match.
+    /// </summary>
+    internal static string Canonical(string path)
+    {
+        try
+        {
+            var full = Path.GetFullPath(path);
+            var dir = Path.GetDirectoryName(full);
+            return dir is null ? full : Path.Combine(ResolveDir(dir), Path.GetFileName(full));
+        }
+        catch { return path; }
+
+        static string ResolveDir(string dir)
+        {
+            try
+            {
+                if (new DirectoryInfo(dir).ResolveLinkTarget(returnFinalTarget: true) is { } target)
+                    return target.FullName;
+            }
+            catch { /* unreadable or gone — fall through to the parent */ }
+
+            var parent = Path.GetDirectoryName(dir);
+            if (string.IsNullOrEmpty(parent) || parent == dir) return dir;
+
+            var resolvedParent = ResolveDir(parent);
+            return resolvedParent == parent ? dir : Path.Combine(resolvedParent, Path.GetFileName(dir));
+        }
+    }
+
     int StoreGroups(List<List<string>> groups)
     {
         var repo = new ImageRepository(db);
         var dupes = new DupeRepository(db);
-        var index = repo.PathIndex();
+        var stored = repo.PathIndex();
+
+        // Look up by the stored path first, then by its canonical form. Both are indexed so a
+        // group matches whichever spelling czkawka reports.
+        var index = new Dictionary<string, (long id, long pixels, long bytes)>(stored, StringComparer.Ordinal);
+        foreach (var (path, hit) in stored)
+        {
+            var canonical = Canonical(path);
+            if (!index.ContainsKey(canonical)) index[canonical] = hit;
+        }
+
         dupes.ClearKind(DupeKind.Similar);
 
         int count = 0;
@@ -136,13 +189,21 @@ public sealed class CzkawkaFinder(Database db, string? explicitBinaryPath = null
         foreach (var group in groups)
         {
             // Map each path to a catalog row; drop unknown paths.
-            var members = new List<(long id, long pixels)>();
+            var members = new List<(long id, long pixels, long bytes)>();
             foreach (var path in group)
-                if (index.TryGetValue(path, out var hit))
+                if (index.TryGetValue(path, out var hit) ||
+                    index.TryGetValue(Canonical(path), out hit))
                     members.Add(hit);
             if (members.Count < 2) continue;
 
-            var keeperId = members.OrderByDescending(m => m.pixels).ThenBy(m => m.id).First().id;
+            // Highest resolution wins; on a tie prefer the larger file, which for the same
+            // dimensions means the less-compressed copy. Falling back to row id — i.e. scan
+            // order — could keep a heavily compressed version over its original.
+            var keeperId = members
+                .OrderByDescending(m => m.pixels)
+                .ThenByDescending(m => m.bytes)
+                .ThenBy(m => m.id)
+                .First().id;
             dupes.AddGroup(DupeKind.Similar, similarity: $"maxdiff<={MaxDifference}",
                 members.Select(m => (m.id, m.id == keeperId)).ToList());
             count++;

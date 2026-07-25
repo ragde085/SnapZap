@@ -76,15 +76,16 @@ public sealed class ImageRepository(Database db)
         return del.ExecuteNonQuery();
     }
 
-    /// <summary>Map absolute path → row id + pixel count, for correlating external tool output.</summary>
-    public Dictionary<string, (long id, long pixels)> PathIndex()
+    /// <summary>Map absolute path → row id, pixel count and byte size, for correlating
+    /// external tool output and picking a keeper among its matches.</summary>
+    public Dictionary<string, (long id, long pixels, long bytes)> PathIndex()
     {
-        var map = new Dictionary<string, (long, long)>(StringComparer.Ordinal);
+        var map = new Dictionary<string, (long, long, long)>(StringComparer.Ordinal);
         using var cmd = _c.CreateCommand();
-        cmd.CommandText = "SELECT path, id, COALESCE(width,0)*COALESCE(height,0) FROM images";
+        cmd.CommandText = "SELECT path, id, COALESCE(width,0)*COALESCE(height,0), file_size FROM images";
         using var r = cmd.ExecuteReader();
         while (r.Read())
-            map[r.GetString(0)] = (r.GetInt64(1), r.GetInt64(2));
+            map[r.GetString(0)] = (r.GetInt64(1), r.GetInt64(2), r.GetInt64(3));
         return map;
     }
 
