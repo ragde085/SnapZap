@@ -5,6 +5,7 @@ using SnapZap.Core.Delete;
 using SnapZap.Core.Nsfw;
 using SnapZap.Core.Platform;
 using SnapZap.Core.Scanning;
+using ScanFailure = SnapZap.Core.Scanning.ScanFailure;
 
 namespace SnapZap.App.Services;
 
@@ -113,6 +114,9 @@ public sealed class AppState(CatalogService catalog, ITrashService trash)
     public IReadOnlyList<string> Folders { get; private set; } = [];
     public IReadOnlyList<int> Years { get; private set; } = [];
 
+    /// <summary>Folder hierarchy with per-step completion, rebuilt on each load.</summary>
+    public FolderNode? Tree { get; private set; }
+
     // ---- Load --------------------------------------------------------------
     public Task LoadAsync()
     {
@@ -132,10 +136,15 @@ public sealed class AppState(CatalogService catalog, ITrashService trash)
         Years = Images.Select(i => i.Year).Where(y => y is not null).Select(y => y!.Value)
             .Distinct().OrderByDescending(y => y).ToList();
 
-        // Drop selections and filter values that no longer refer to anything.
+        Tree = FolderTreeBuilder.Build(Images, DupeOf);
+
+        // Drop selections and filter values that no longer refer to anything. The folder filter
+        // is a prefix, so it stays valid as long as some folder still sits underneath it.
         var live = Images.Select(i => i.Id).ToHashSet();
         Selected.RemoveWhere(id => !live.Contains(id));
-        if (_folder.Length > 0 && !Folders.Contains(_folder)) _folder = "";
+        if (_folder.Length > 0 &&
+            !Folders.Any(f => f == _folder || f.StartsWith(_folder + "/", StringComparison.Ordinal)))
+            _folder = "";
         if (_year.Length > 0 && !Years.Any(y => y.ToString() == _year)) _year = "";
 
         _filtered = null;
@@ -152,7 +161,12 @@ public sealed class AppState(CatalogService catalog, ITrashService trash)
         // Blurrier-than filter: lower blur score = blurrier, so show scores <= threshold.
         if (_blurMax > 0 && !(img.BlurScore is { } b && b <= _blurMax)) return false;
         if (_dupesOnly && !DupeOf.ContainsKey(img.Id)) return false;
-        if (_folder.Length > 0 && img.Folder != _folder) return false;
+        // Prefix match, guarded by the separator so "/a/b" never swallows "/a/bc". Selecting a
+        // parent folder therefore includes everything beneath it; exact matching used to mean
+        // a folder holding only subfolders matched nothing at all.
+        if (_folder.Length > 0 &&
+            !(img.Folder == _folder || img.Folder.StartsWith(_folder + "/", StringComparison.Ordinal)))
+            return false;
         if (_year.Length > 0 && img.Year?.ToString() != _year) return false;
         return true;
     }
@@ -230,6 +244,15 @@ public sealed class AppState(CatalogService catalog, ITrashService trash)
 
     // ---- Operations --------------------------------------------------------
 
+    /// <summary>Files the last scan could not take, grouped so the user knows where to look.</summary>
+    public IReadOnlyList<ScanFailure> LastFailures { get; private set; } = [];
+
+    public void ClearFailures()
+    {
+        LastFailures = [];
+        Notify();
+    }
+
     public async Task ScanAsync(string folder)
     {
         if (Busy) return;
@@ -240,9 +263,17 @@ public sealed class AppState(CatalogService catalog, ITrashService trash)
             {
                 var result = await catalog.ScanAsync(folder, progress, CancellationToken.None);
                 ScannedFolder = folder;
+                LastFailures = result.Failures;
                 await LoadAsync();
-                return $"Scanned {result.Analyzed} new, {result.Cached} cached" +
-                       (result.Failed > 0 ? $", {result.Failed} failed" : "");
+
+                var msg = $"Scanned {result.Analyzed} new, {result.Cached} cached";
+                if (result.Failed > 0)
+                {
+                    var folders = result.Failures.Select(f => f.Folder).Distinct().Count();
+                    msg += $" · {result.Failed} skipped"
+                         + (folders > 1 ? $" across {folders} folders" : "");
+                }
+                return msg;
             }
             catch (DirectoryNotFoundException)
             {
