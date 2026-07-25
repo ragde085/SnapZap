@@ -2,18 +2,34 @@
 @inject AppState AppState
 @using SnapZap.Core.Scanning
 
-@if (AppState.LastFailures.Count > 0)
+@if (AppState.LastFailures.Count > 0 || AppState.LastUnsupportedTotal > 0)
 {
     <div class="issues">
         <button class="issues-head" aria-expanded="@_open" @onclick="() => _open = !_open">
             <span class="issues-dot" aria-hidden="true"></span>
-            <span>@AppState.LastFailures.Count file@(AppState.LastFailures.Count == 1 ? "" : "s") skipped</span>
+            <span>@Headline</span>
             <span class="issues-twist @(_open ? "open" : "")" aria-hidden="true">›</span>
         </button>
 
         @if (_open)
         {
             <div class="issues-body">
+                @if (AppState.LastUnsupportedTotal > 0)
+                {
+                    <div class="issues-group">
+                        <div class="issues-reason unsupported">
+                            SnapZap can't read these formats yet <span>· @AppState.LastUnsupportedTotal.ToString("N0")</span>
+                        </div>
+                        @foreach (var (format, count) in AppState.LastUnsupported.OrderByDescending(k => k.Value))
+                        {
+                            <div class="issues-file">@format — @count.ToString("N0") file@(count == 1 ? "" : "s")</div>
+                        }
+                        <div class="issues-file quiet">
+                            They were left untouched, not deleted or altered.
+                        </div>
+                    </div>
+                }
+
                 @foreach (var group in Grouped)
                 {
                     <div class="issues-group">
@@ -39,6 +55,23 @@
 
     protected override void OnInitialized() => AppState.Changed += StateHasChanged;
     public void Dispose() => AppState.Changed -= StateHasChanged;
+
+    /// <summary>Unreadable formats and genuine errors are different problems; say whichever
+    /// applies rather than lumping them under one count.</summary>
+    string Headline
+    {
+        get
+        {
+            var skipped = AppState.LastFailures.Count;
+            var unsupported = AppState.LastUnsupportedTotal;
+
+            if (skipped > 0 && unsupported > 0)
+                return $"{unsupported:N0} in unreadable formats · {skipped} skipped";
+            if (unsupported > 0)
+                return $"{unsupported:N0} photo{(unsupported == 1 ? "" : "s")} in a format SnapZap can't read yet";
+            return $"{skipped} file{(skipped == 1 ? "" : "s")} skipped";
+        }
+    }
 
     // Reason first: one bad codec across 300 files is one problem, not 300.
     IEnumerable<IGrouping<string, ScanFailure>> Grouped =>

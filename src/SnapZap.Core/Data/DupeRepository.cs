@@ -40,6 +40,32 @@ public sealed class DupeRepository(Database db)
         return groupId;
     }
 
+    /// <summary>
+    /// Make one member the keeper, clearing the flag from the rest of its group. The detector
+    /// picks a keeper by pixel count, which is a reasonable default and a poor decision for
+    /// crops, edits, or the one shot that happens to be the good one — this is the override.
+    /// </summary>
+    public void SetKeeper(long groupId, long keeperImageId)
+    {
+        using var tx = _c.BeginTransaction();
+
+        using (var clear = _c.CreateCommand())
+        {
+            clear.CommandText = "UPDATE dupe_members SET is_keeper=0 WHERE group_id=$g";
+            clear.Parameters.AddWithValue("$g", groupId);
+            clear.ExecuteNonQuery();
+        }
+        using (var set = _c.CreateCommand())
+        {
+            set.CommandText = "UPDATE dupe_members SET is_keeper=1 WHERE group_id=$g AND image_id=$i";
+            set.Parameters.AddWithValue("$g", groupId);
+            set.Parameters.AddWithValue("$i", keeperImageId);
+            set.ExecuteNonQuery();
+        }
+
+        tx.Commit();
+    }
+
     public IReadOnlyList<DupeGroup> Groups(DupeKind? kind = null)
     {
         var groups = new List<DupeGroup>();

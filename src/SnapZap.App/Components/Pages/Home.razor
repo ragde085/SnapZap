@@ -9,9 +9,31 @@
 </header>
 
 <main>
-    <Sidebar OnOpenExport="OpenExport" OnOpenUndo="OpenUndo" />
+    <Sidebar OnOpenExport="OpenExport" OnOpenUndo="OpenUndo" OnOpenDupeReview="OpenDupeReview" />
     <section class="content">
-        <div class="summary">@((MarkupString)Summary)</div>
+        <div class="summary-row">
+            <div class="summary">@((MarkupString)Summary)</div>
+            @if (AppState.Images.Count > 0)
+            {
+                <div class="sortbar">
+                    <label for="sortby">Sort</label>
+                    <select id="sortby" @bind="AppState.Sort">
+                        <option value="@SortKey.Scanned">Scan order</option>
+                        <option value="@SortKey.Captured">Date taken</option>
+                        <option value="@SortKey.Name">Name</option>
+                        <option value="@SortKey.Size">File size</option>
+                        <option value="@SortKey.Blur">Sharpness</option>
+                        <option value="@SortKey.Nsfw">NSFW score</option>
+                    </select>
+                    <button class="sort-dir"
+                            title="@(AppState.SortDescending ? "Descending" : "Ascending")"
+                            aria-label="@(AppState.SortDescending ? "Sort ascending" : "Sort descending")"
+                            @onclick="() => AppState.SortDescending = !AppState.SortDescending">
+                        @(AppState.SortDescending ? "↓" : "↑")
+                    </button>
+                </div>
+            }
+        </div>
         <ScanIssues />
         <PhotoGrid OnPreview="OpenPreview" />
         @if (AppState.Images.Count == 0 && !AppState.Busy)
@@ -36,12 +58,14 @@
 <ExportDialog Show="_showExport" OnClose="CloseExport" />
 <UndoDialog Show="_showUndo" OnClose="CloseUndo" />
 <PreviewModal Img="_previewImg" OnClose="ClosePreview" />
+<DupeReview Show="_showDupes" OnClose="() => _showDupes = false" />
 <DependencyDialog Show="_showDeps" OnClose="() => _showDeps = false" />
 
 @code {
     bool _showExport;
     bool _showUndo;
     bool _showDeps;
+    bool _showDupes;
     ImageView? _previewImg;
 
     int Shown => AppState.Filtered().Count;
@@ -87,6 +111,8 @@
 
     void OpenUndo() => _showUndo = true;
     void CloseUndo() => _showUndo = false;
+
+    void OpenDupeReview() => _showDupes = true;
 
     public void Dispose() => AppState.Changed -= StateHasChanged;
 }

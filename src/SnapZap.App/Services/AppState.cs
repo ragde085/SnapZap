@@ -12,6 +12,10 @@ namespace SnapZap.App.Services;
 /// <summary>A transient message with an optional one-click follow-up (e.g. undo a delete).</summary>
 public sealed record Toast(string Message, string? ActionLabel = null, Func<Task>? Action = null);
 
+/// <summary>What the grid is ordered by. <see cref="Scanned"/> is the catalog's own order,
+/// which is how the grid behaved before sorting existed.</summary>
+public enum SortKey { Scanned, Captured, Name, Size, Blur, Nsfw }
+
 /// <summary>
 /// Scoped (one per circuit) view-model + operations for the whole app. Replaces the `state`
 /// object and top-level functions in the old app.js. Components subscribe to <see cref="Changed"/>
@@ -25,6 +29,9 @@ public sealed class AppState(CatalogService catalog, ITrashService trash)
     // ---- Data ----------------------------------------------------------
     public IReadOnlyList<ImageView> Images { get; private set; } = [];
     public Dictionary<long, DupeInfo> DupeOf { get; private set; } = [];
+
+    /// <summary>Duplicate groups with their members, for the review flow.</summary>
+    public IReadOnlyList<DupeGroup> DupeGroups { get; private set; } = [];
     public HashSet<long> Selected { get; } = [];
     public long? LastClickedId { get; private set; }
 
@@ -38,6 +45,22 @@ public sealed class AppState(CatalogService catalog, ITrashService trash)
     public string? BusyLabel { get; private set; }
     public int BusyDone { get; private set; }
     public int BusyTotal { get; private set; }
+
+    CancellationTokenSource? _cts;
+
+    /// <summary>True while an operation is running that hasn't already been asked to stop.</summary>
+    public bool CanCancel => Busy && _cts is { IsCancellationRequested: false };
+
+    /// <summary>Ask the running operation to stop. Work already committed is kept.</summary>
+    public void Cancel()
+    {
+        if (_cts is { IsCancellationRequested: false })
+        {
+            _cts.Cancel();
+            BusyLabel = "Stopping";
+            Notify();
+        }
+    }
 
     /// <summary>Null while the total is still unknown — the bar renders indeterminate.</summary>
     public double? BusyFraction =>
@@ -96,6 +119,13 @@ public sealed class AppState(CatalogService catalog, ITrashService trash)
         Notify();
     }
 
+    // ---- Sort ---------------------------------------------------------------
+    SortKey _sort = SortKey.Scanned;
+    bool _sortDescending;
+
+    public SortKey Sort { get => _sort; set => SetFilter(ref _sort, value); }
+    public bool SortDescending { get => _sortDescending; set => SetFilter(ref _sortDescending, value); }
+
     public bool HasActiveFilter =>
         _nsfwMin > 0 || _blurMax > 0 || _dupesOnly || _folder.Length > 0 || _year.Length > 0;
 
@@ -130,6 +160,7 @@ public sealed class AppState(CatalogService catalog, ITrashService trash)
             .Select(r => new ImageView(r, dupeOf.GetValueOrDefault(r.Id)))
             .ToList();
         DupeOf = dupeOf;
+        DupeGroups = groups;
 
         Folders = Images.Select(i => i.Folder).Distinct()
             .OrderBy(f => f, StringComparer.Ordinal).ToList();
@@ -173,7 +204,39 @@ public sealed class AppState(CatalogService catalog, ITrashService trash)
 
     /// <summary>The visible set, in grid order. Memoised — this runs on every render of
     /// the grid, the summary and the selection ops, over the whole library.</summary>
-    public List<ImageView> Filtered() => _filtered ??= Images.Where(Matches).ToList();
+    public List<ImageView> Filtered() => _filtered ??= ApplySort(Images.Where(Matches)).ToList();
+
+    /// <summary>
+    /// Photos missing the value being sorted on always sort last, whichever direction is
+    /// chosen — an undated photo is not "earliest", it's unknown, and burying it under a
+    /// date sort would be misleading.
+    /// </summary>
+    IEnumerable<ImageView> ApplySort(IEnumerable<ImageView> items)
+    {
+        var desc = _sortDescending;
+
+        return _sort switch
+        {
+            SortKey.Scanned => desc ? items.OrderByDescending(i => i.Id) : items.OrderBy(i => i.Id),
+            SortKey.Name => desc
+                ? items.OrderByDescending(i => i.FileName, StringComparer.OrdinalIgnoreCase)
+                : items.OrderBy(i => i.FileName, StringComparer.OrdinalIgnoreCase),
+            SortKey.Size => desc ? items.OrderByDescending(i => i.FileSize) : items.OrderBy(i => i.FileSize),
+            SortKey.Captured => Nulls(items, i => i.ExifTaken, desc),
+            SortKey.Blur => Nulls(items, i => i.BlurScore, desc),
+            SortKey.Nsfw => Nulls(items, i => i.NsfwScore, desc),
+            _ => items,
+        };
+
+        static IOrderedEnumerable<ImageView> Nulls<T>(
+            IEnumerable<ImageView> src, Func<ImageView, T?> key, bool desc) where T : struct
+        {
+            var known = src.OrderBy(i => key(i) is null);   // false (has value) sorts first
+            return desc
+                ? known.ThenByDescending(i => key(i))
+                : known.ThenBy(i => key(i));
+        }
+    }
 
     // ---- Selection -------------------------------------------------------
     public void Toggle(long id)
@@ -216,6 +279,30 @@ public sealed class AppState(CatalogService catalog, ITrashService trash)
         Notify();
     }
 
+    /// <summary>
+    /// Resolve a group's members to the loaded view models, in a stable order.
+    ///
+    /// Deliberately not keeper-first: the review compares copies side by side, and re-sorting
+    /// on every pick would make the card you just chose jump position under the cursor.
+    /// Sorting by path keeps the layout still so only the badge moves.
+    /// </summary>
+    public IReadOnlyList<ImageView> MembersOf(DupeGroup group)
+    {
+        var byId = Images.ToDictionary(i => i.Id);
+        return group.Members
+            .Where(m => byId.ContainsKey(m.ImageId))
+            .Select(m => byId[m.ImageId])
+            .OrderBy(i => i.Path, StringComparer.Ordinal)
+            .ToList();
+    }
+
+    /// <summary>Override which member of a group survives an export.</summary>
+    public async Task SetKeeperAsync(long groupId, long imageId)
+    {
+        new DupeRepository(catalog.Db).SetKeeper(groupId, imageId);
+        await LoadAsync();
+    }
+
     /// <summary>Select every non-keeper across all duplicate groups (not just the visible set) —
     /// the one-click "delete extras, keep best".</summary>
     public void SelectDupeExtras()
@@ -247,23 +334,31 @@ public sealed class AppState(CatalogService catalog, ITrashService trash)
     /// <summary>Files the last scan could not take, grouped so the user knows where to look.</summary>
     public IReadOnlyList<ScanFailure> LastFailures { get; private set; } = [];
 
+    /// <summary>Formats the last scan recognised but cannot decode, counted by format.</summary>
+    public IReadOnlyDictionary<string, int> LastUnsupported { get; private set; }
+        = new Dictionary<string, int>();
+
+    public int LastUnsupportedTotal => LastUnsupported.Values.Sum();
+
     public void ClearFailures()
     {
         LastFailures = [];
+        LastUnsupported = new Dictionary<string, int>();
         Notify();
     }
 
     public async Task ScanAsync(string folder)
     {
         if (Busy) return;
-        await RunAsync("Scanning", async report =>
+        await RunAsync("Scanning", async (report, ct) =>
         {
             var progress = new Progress<ScanProgress>(p => report(p.Seen, 0, null));
             try
             {
-                var result = await catalog.ScanAsync(folder, progress, CancellationToken.None);
+                var result = await catalog.ScanAsync(folder, progress, ct);
                 ScannedFolder = folder;
                 LastFailures = result.Failures;
+                LastUnsupported = result.UnsupportedByFormat;
                 await LoadAsync();
 
                 var msg = $"Scanned {result.Analyzed} new, {result.Cached} cached";
@@ -273,6 +368,8 @@ public sealed class AppState(CatalogService catalog, ITrashService trash)
                     msg += $" · {result.Failed} skipped"
                          + (folders > 1 ? $" across {folders} folders" : "");
                 }
+                if (result.UnsupportedTotal > 0)
+                    msg += $" · {result.UnsupportedTotal:N0} in formats SnapZap can't read yet";
                 return msg;
             }
             catch (DirectoryNotFoundException)
@@ -285,9 +382,9 @@ public sealed class AppState(CatalogService catalog, ITrashService trash)
     public async Task DedupAsync(string folder)
     {
         if (Busy) return;
-        await RunAsync("Finding duplicates", async _ =>
+        await RunAsync("Finding duplicates", async (_, ct) =>
         {
-            var report = await new DuplicateService(catalog.Db).DetectAsync(folder);
+            var report = await new DuplicateService(catalog.Db).DetectAsync(folder, ct);
             await LoadAsync();
             return report.CzkawkaAvailable
                 ? $"{report.ExactGroups} exact, {report.SimilarGroups} similar groups"
@@ -298,11 +395,11 @@ public sealed class AppState(CatalogService catalog, ITrashService trash)
     public async Task NsfwAsync()
     {
         if (Busy) return;
-        await RunAsync("Scoring NSFW", async report =>
+        await RunAsync("Scoring NSFW", async (report, ct) =>
         {
             var progress = new Progress<NsfwProgress>(p => report(p.Done, p.Total, null));
             var result = await new NsfwScorer(catalog.Db, catalog.NsfwModelPath)
-                .ScoreAllAsync(progress);
+                .ScoreAllAsync(progress, ct: ct);
             await LoadAsync();
             return result.ModelAvailable
                 ? $"Scored {result.Scored}" + (result.Failed > 0 ? $", {result.Failed} failed" : "")
@@ -315,13 +412,14 @@ public sealed class AppState(CatalogService catalog, ITrashService trash)
     /// ignored once the body returns, so a late Progress&lt;T&gt; post cannot overwrite the
     /// final status message.
     /// </summary>
-    async Task RunAsync(string label, Func<Action<int, int, string?>, Task<string>> body)
+    async Task RunAsync(string label, Func<Action<int, int, string?>, CancellationToken, Task<string>> body)
     {
         Busy = true;
         BusyLabel = label;
         BusyDone = 0;
         BusyTotal = 0;
         Status = "";
+        _cts = new CancellationTokenSource();
         Notify();
 
         var live = true;
@@ -335,7 +433,14 @@ public sealed class AppState(CatalogService catalog, ITrashService trash)
 
         try
         {
-            Status = await body(Report);
+            Status = await body(Report, _cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            // Everything analysed before the stop is already committed, and the tier-1 cache
+            // means re-running skips it — so a cancelled scan is progress, not lost work.
+            await LoadAsync();
+            Status = $"{label} stopped — {Images.Count:N0} photos catalogued so far";
         }
         catch (Exception ex)
         {
@@ -346,6 +451,8 @@ public sealed class AppState(CatalogService catalog, ITrashService trash)
             live = false;
             Busy = false;
             BusyLabel = null;
+            _cts?.Dispose();
+            _cts = null;
             Notify();
         }
     }

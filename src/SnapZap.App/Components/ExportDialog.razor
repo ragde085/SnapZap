@@ -69,7 +69,16 @@
                 <button class="primary" disabled="@(_preflight is null || !_preflight.EnoughSpace || _running)" @onclick="RunExport">
                     @(_running ? "Exporting…" : "Export")
                 </button>
-                <button class="link" disabled="@_running" @onclick="Close">Cancel</button>
+                @if (_running)
+                {
+                    <button class="danger" disabled="@(_cts is not { IsCancellationRequested: false })" @onclick="StopExport">
+                        @(_cts is { IsCancellationRequested: false } ? "Stop" : "Stopping…")
+                    </button>
+                }
+                else
+                {
+                    <button class="link" @onclick="Close">Cancel</button>
+                }
             </div>
             @if (_resultText.Length > 0)
             {
@@ -92,6 +101,7 @@
     string _resultText = "";
     bool _wasShown;
     ElementReference _dlgRef;
+    CancellationTokenSource? _cts;
 
     int RejectCount => AppState.Images.Count - AppState.Selected.Count;
 
@@ -164,9 +174,10 @@
             InvokeAsync(StateHasChanged);
         });
 
+        _cts = new CancellationTokenSource();
         try
         {
-            var result = await engine.RunAsync(BuildRequest(), progress);
+            var result = await engine.RunAsync(BuildRequest(), progress, _cts.Token);
             inFlight = false;
             var (csv, _) = ManifestWriter.Write(Catalog.Db, result, Catalog.ManifestDir);
 
@@ -178,6 +189,15 @@
 
             await AppState.LoadAsync();
         }
+        catch (OperationCanceledException)
+        {
+            inFlight = false;
+            // Every file already written was hash-verified before the stop, and a re-run skips
+            // them via the resume table — so stopping is safe and costs nothing but time.
+            _resultText = "Export stopped. Photos already copied are verified and complete; "
+                        + "running it again resumes where this left off.";
+            await AppState.LoadAsync();
+        }
         catch (Exception ex)
         {
             inFlight = false;
@@ -186,9 +206,13 @@
         finally
         {
             _running = false;
+            _cts?.Dispose();
+            _cts = null;
             StateHasChanged();
         }
     }
+
+    void StopExport() => _cts?.Cancel();
 
     static string FmtBytes(long b) => b switch
     {
