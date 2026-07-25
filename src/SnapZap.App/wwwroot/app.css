@@ -259,6 +259,8 @@ main { display: flex; flex: 1; min-height: 0; }
   place-items: center;
   font-variant-numeric: tabular-nums;
 }
+/* Setup uses the warning hue, so a missing sidecar never reads as a selection count. */
+.rail button .pip.warn { background: var(--warn); color: var(--accent-ink); }
 
 .flyout {
   width: var(--flyout-w);
@@ -292,6 +294,63 @@ main { display: flex; flex: 1; min-height: 0; }
 .selcount { font-family: var(--serif); font-size: var(--t-md); color: var(--ink); }
 .selcount b { color: var(--accent); font-weight: 600; font-variant-numeric: tabular-nums; }
 .hint { font-size: var(--t-xs); color: var(--dim); margin: 2px 0 0; line-height: 1.45; }
+
+/* ---------- dependency status ---------- */
+
+.dep {
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+  padding: 11px 12px;
+  margin-bottom: 10px;
+  background: var(--ground);
+}
+.dep:last-of-type { margin-bottom: 14px; }
+
+.dep-head { display: flex; align-items: center; gap: 8px; }
+.dep-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; background: var(--dim); }
+.dep.ready .dep-dot { background: var(--ok); }
+.dep.missing .dep-dot { background: var(--warn); }
+
+.dep-name { font-family: var(--serif); font-size: var(--t-md); flex: 1; }
+.dep-state {
+  font-size: var(--t-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+.dep.ready .dep-state { color: var(--ok); }
+.dep.missing .dep-state { color: var(--warn); }
+
+.dep-body { margin-top: 7px; display: flex; flex-direction: column; gap: 5px; }
+.dep-note { font-size: var(--t-xs); color: var(--ink); line-height: 1.5; }
+.dep-note.quiet { color: var(--muted); }
+.dep-path {
+  font-family: var(--mono);
+  font-size: var(--t-xs);
+  color: var(--muted);
+  word-break: break-all;
+}
+
+.dep-steps { margin: 6px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; }
+/* Steps carry absolute filesystem paths, which have no spaces to break on. */
+.dep-steps li {
+  font-size: var(--t-xs);
+  color: var(--ink);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.dep-steps code {
+  font-family: var(--mono);
+  font-size: 0.95em;
+  background: var(--surface);
+  border: 1px solid var(--line-soft);
+  border-radius: 2px;
+  padding: 1px 5px;
+  word-break: break-all;
+}
+.dep-steps a { color: var(--accent); }
+
+.dep-suppress { margin-top: 14px; }
 
 .shortcuts { display: flex; flex-direction: column; gap: 7px; }
 .shortcuts div { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; font-size: var(--t-xs); color: var(--muted); }

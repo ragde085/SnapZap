@@ -27,6 +27,10 @@ public sealed class CatalogService : IDisposable
     /// <summary>The most recently scanned folder — the export SourceRoot for mirror/move.</summary>
     public string? LastScannedFolder { get; private set; }
 
+    /// <summary>Root of the app's own data (catalog, thumbnails, manifests, settings).
+    /// Never inside the user's photo library.</summary>
+    public string AppDataDir => _appData;
+
     public CatalogService()
     {
         _appData = Path.Combine(

@@ -6,6 +6,7 @@ using SnapZap.Core.Platform;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddSingleton<CatalogService>();
+builder.Services.AddSingleton<DependencyChecker>();
 builder.Services.AddScoped<AppState>();
 builder.Services.AddRazorComponents().AddInteractiveServerComponents();
 
