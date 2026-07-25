@@ -1,0 +1,32 @@
+@implements IDisposable
+@inject AppState AppState
+
+@if (AppState.CurrentToast is { } toast)
+{
+    <div class="toast" role="status" aria-live="polite">
+        <span class="msg">@toast.Message</span>
+        @if (toast is { ActionLabel: { } label, Action: { } action })
+        {
+            <button disabled="@_running" @onclick="() => Run(action)">@(_running ? "Working…" : label)</button>
+        }
+        <button class="link" aria-label="Dismiss" @onclick="() => AppState.DismissToast()">Dismiss</button>
+    </div>
+}
+
+@code {
+    bool _running;
+
+    protected override void OnInitialized() => AppState.Changed += StateHasChanged;
+    public void Dispose() => AppState.Changed -= StateHasChanged;
+
+    async Task Run(Func<Task> action)
+    {
+        _running = true;
+        try { await action(); }
+        finally
+        {
+            _running = false;
+            AppState.DismissToast();
+        }
+    }
+}

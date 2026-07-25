@@ -1,0 +1,113 @@
+@inject AppState AppState
+
+@if (Img is { } img)
+{
+    <div class="modal"
+         role="dialog"
+         aria-modal="true"
+         aria-label="Photo preview"
+         tabindex="-1"
+         @ref="_modalRef"
+         @onkeydown="HandleKeyDown"
+         @onclick="Close">
+
+        <button class="close" @onclick="Close" @onclick:stopPropagation="true">Close ✕</button>
+
+        <div class="frame" @onclick:stopPropagation="true">
+            <img src="@img.FullUrl" alt="@img.FileName" />
+        </div>
+
+        <div class="panel" @onclick:stopPropagation="true">
+            <div>
+                <div class="pk">File</div>
+                <div class="pv">@img.FileName</div>
+            </div>
+            <div>
+                <div class="pk">Folder</div>
+                <div class="pv path">@img.Folder</div>
+            </div>
+            <div>
+                <div class="pk">Dimensions</div>
+                <div class="pv">@img.Dimensions · @img.SizeLabel</div>
+            </div>
+            <div>
+                <div class="pk">Captured</div>
+                <div class="pv @(img.ExifTaken is null ? "quiet" : "")">@img.CapturedLabel</div>
+            </div>
+            <div>
+                <div class="pk">Camera</div>
+                <div class="pv @(string.IsNullOrEmpty(img.ExifCamera) ? "quiet" : "")">
+                    @(string.IsNullOrEmpty(img.ExifCamera) ? "not recorded" : img.ExifCamera)
+                </div>
+            </div>
+            <div>
+                <div class="pk">NSFW</div>
+                @if (img.NsfwScore is { } n)
+                {
+                    <div class="pv @(n >= 0.5 ? "warn" : "")">@n.ToString("F3") @(n >= 0.5 ? "— flagged" : "— below threshold")</div>
+                }
+                else
+                {
+                    <div class="pv quiet">not scored</div>
+                }
+            </div>
+            <div>
+                <div class="pk">Focus</div>
+                @if (img.BlurScore is { } b)
+                {
+                    <div class="pv @(img.IsBlurry ? "warn" : "ok")">@b.ToString("F1") — @(img.IsBlurry ? "soft" : "sharp")</div>
+                }
+                else
+                {
+                    <div class="pv quiet">not measured</div>
+                }
+            </div>
+            <div>
+                <div class="pk">Duplicates</div>
+                @if (img.Dupe is { } d)
+                {
+                    <div class="pv accent">
+                        @(d.Kind == DupeKind.Similar ? "Similar" : "Exact") group #@d.GroupId<br />
+                        @(d.IsKeeper ? "keeping this one" : "extra copy")
+                    </div>
+                }
+                else
+                {
+                    <div class="pv quiet">no duplicates found</div>
+                }
+            </div>
+
+            <button class="@(Selected ? "" : "primary")" @onclick="() => AppState.Toggle(img.Id)">
+                @(Selected ? "Deselect" : "Select this photo")
+            </button>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public ImageView? Img { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    ElementReference _modalRef;
+    ImageView? _focused;
+
+    bool Selected => Img is { } img && AppState.Selected.Contains(img.Id);
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Move focus into the dialog when it opens so Escape and tabbing work immediately.
+        if (Img is not null && !ReferenceEquals(Img, _focused))
+        {
+            _focused = Img;
+            await _modalRef.FocusAsync();
+        }
+        else if (Img is null)
+        {
+            _focused = null;
+        }
+    }
+
+    Task Close() => OnClose.InvokeAsync();
+
+    Task HandleKeyDown(KeyboardEventArgs e) => e.Key == "Escape" ? Close() : Task.CompletedTask;
+}

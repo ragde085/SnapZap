@@ -1,0 +1,81 @@
+@page "/"
+@implements IDisposable
+@inject AppState AppState
+
+<header class="topbar">
+    <div class="brand">Snap<em>Zap</em></div>
+    <Toolbar />
+</header>
+
+<main>
+    <Sidebar OnOpenExport="OpenExport" OnOpenUndo="OpenUndo" />
+    <section class="content">
+        <div class="summary">@((MarkupString)Summary)</div>
+        <PhotoGrid OnPreview="OpenPreview" />
+        @if (AppState.Images.Count == 0 && !AppState.Busy)
+        {
+            <div class="empty"><p>Point SnapZap at a folder of photos and press <kbd>Scan</kbd> to begin.</p></div>
+        }
+        else if (AppState.Images.Count > 0 && Shown == 0)
+        {
+            <div class="empty">
+                <p>
+                    None of the @AppState.Images.Count.ToString("N0") photos match these filters.
+                    <br />
+                    <button class="link" @onclick="() => AppState.ClearFilters()">Clear filters</button>
+                </p>
+            </div>
+        }
+    </section>
+</main>
+
+<Toast />
+
+<ExportDialog Show="_showExport" OnClose="CloseExport" />
+<UndoDialog Show="_showUndo" OnClose="CloseUndo" />
+<PreviewModal Img="_previewImg" OnClose="ClosePreview" />
+
+@code {
+    bool _showExport;
+    bool _showUndo;
+    ImageView? _previewImg;
+
+    int Shown => AppState.Filtered().Count;
+
+    string Summary
+    {
+        get
+        {
+            var total = AppState.Images.Count;
+            if (total == 0) return "";
+
+            var noun = total == 1 ? "photo" : "photos";
+            var bits = new List<string>
+            {
+                AppState.HasActiveFilter
+                    ? $"<b>{Shown:N0}</b> of {total:N0} {noun}"
+                    : $"<b>{total:N0}</b> {noun}",
+            };
+            if (AppState.DupeOf.Count > 0) bits.Add($"{AppState.DupeOf.Count:N0} in duplicate groups");
+            if (AppState.Selected.Count > 0) bits.Add($"<b>{AppState.Selected.Count:N0}</b> selected");
+            return string.Join(" &nbsp;·&nbsp; ", bits);
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        AppState.Changed += StateHasChanged;
+        await AppState.LoadAsync();
+    }
+
+    void OpenPreview(ImageView img) => _previewImg = img;
+    void ClosePreview() => _previewImg = null;
+
+    void OpenExport() => _showExport = true;
+    void CloseExport() => _showExport = false;
+
+    void OpenUndo() => _showUndo = true;
+    void CloseUndo() => _showUndo = false;
+
+    public void Dispose() => AppState.Changed -= StateHasChanged;
+}

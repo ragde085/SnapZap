@@ -1,0 +1,119 @@
+@implements IDisposable
+@inject AppState AppState
+
+<div class="card @(Selected ? "selected" : "")"
+     tabindex="0"
+     role="checkbox"
+     aria-checked="@Selected"
+     aria-label="@AriaLabel"
+     data-card-index="@Index"
+     @onclick="HandleClick"
+     @ondblclick="HandleDoubleClick"
+     @onkeydown="HandleKeyDown">
+
+    <img src="@Img.ThumbUrl" alt="" loading="lazy" />
+
+    <span class="fold" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M5 12l5 5 9-10" /></svg>
+    </span>
+
+    @if (HasBadges)
+    {
+        <div class="badges" aria-hidden="true">
+            @if (Img.NsfwScore is { } nsfw)
+            {
+                <span class="badge nsfw @(nsfw < 0.5 ? "low" : "")" title="NSFW score @nsfw.ToString("F2")">
+                    <svg viewBox="0 0 24 24">
+                        <path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7z" />
+                        <line x1="3" y1="21" x2="21" y2="3" />
+                    </svg>
+                </span>
+            }
+            @if (Img.IsBlurry)
+            {
+                <span class="badge blur" title="Soft focus — blur score @Img.BlurScore!.Value.ToString("F1")">
+                    <svg viewBox="0 0 24 24">
+                        <circle cx="12" cy="12" r="4" />
+                        <path d="M12 3v2M12 19v2M3 12h2M19 12h2" />
+                    </svg>
+                </span>
+            }
+            @if (Img.Dupe is { } d)
+            {
+                <span class="badge @(d.IsKeeper ? "keeper" : "dupe")" title="@DupeTitle(d)">
+                    @if (d.IsKeeper)
+                    {
+                        <svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5" /></svg>
+                    }
+                    else
+                    {
+                        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="12" height="12" rx="1" /><path d="M8 8h13v13H8z" /></svg>
+                    }
+                </span>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public ImageView Img { get; set; } = null!;
+    [Parameter] public int Index { get; set; }
+    [Parameter] public IReadOnlyList<long> VisibleOrder { get; set; } = [];
+    [Parameter] public EventCallback<ImageView> OnPreview { get; set; }
+
+    bool Selected => AppState.Selected.Contains(Img.Id);
+
+    bool HasBadges => Img.NsfwScore is not null || Img.IsBlurry || Img.Dupe is not null;
+
+    string AriaLabel
+    {
+        get
+        {
+            var bits = new List<string> { Img.FileName };
+            if (Img.NsfwScore is { } n) bits.Add($"NSFW {n:F2}");
+            if (Img.IsBlurry) bits.Add("soft focus");
+            if (Img.Dupe is { } d) bits.Add(d.IsKeeper ? "duplicate keeper" : "duplicate extra");
+            return string.Join(", ", bits);
+        }
+    }
+
+    static string DupeTitle(DupeInfo d) =>
+        $"{(d.Kind == DupeKind.Similar ? "Similar" : "Exact")} duplicate group #{d.GroupId} — {(d.IsKeeper ? "keeping this one" : "extra copy")}";
+
+    // Virtualize only re-renders an already-materialized item when its data changes; selection
+    // is external state, so this component refreshes itself on AppState.Changed rather than
+    // relying on cascading re-render from Home down through PhotoGrid/Virtualize.
+    protected override void OnInitialized() => AppState.Changed += StateHasChanged;
+
+    void HandleClick(MouseEventArgs e)
+    {
+        if (e.ShiftKey && AppState.LastClickedId is { } last)
+            AppState.SelectRange(last, Img.Id, VisibleOrder);
+        else
+            AppState.Toggle(Img.Id);
+    }
+
+    Task HandleDoubleClick() => OnPreview.InvokeAsync(Img);
+
+    // Arrow-key movement between cards is pure focus management and lives in interop.js;
+    // this handles only the keys that change state.
+    async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case "x":
+            case "X":
+            case " ":
+                if (e.ShiftKey && AppState.LastClickedId is { } last)
+                    AppState.SelectRange(last, Img.Id, VisibleOrder);
+                else
+                    AppState.Toggle(Img.Id);
+                break;
+            case "Enter":
+                await OnPreview.InvokeAsync(Img);
+                break;
+        }
+    }
+
+    public void Dispose() => AppState.Changed -= StateHasChanged;
+}
