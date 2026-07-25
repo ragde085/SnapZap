@@ -1,0 +1,68 @@
+@implements IDisposable
+@inject AppState AppState
+
+<div class="folder">
+    <input type="text"
+           placeholder="Folder to scan, e.g. /Volumes/Archive/Photos"
+           spellcheck="false"
+           aria-label="Folder to scan"
+           disabled="@AppState.Busy"
+           @bind="_folder"
+           @bind:event="oninput"
+           @onkeydown="HandleFolderKey" />
+    <button class="primary" disabled="@(AppState.Busy || _folder.Trim().Length == 0)" @onclick="Scan">Scan</button>
+    <button disabled="@(AppState.Busy || _folder.Trim().Length == 0)" @onclick="Dedup">Find duplicates</button>
+    <button disabled="@(AppState.Busy || AppState.Images.Count == 0)" @onclick="Nsfw">Score NSFW</button>
+</div>
+
+@if (AppState.Busy)
+{
+    <div class="op" role="status" aria-live="polite">
+        <div class="op-line">
+            <span>@AppState.BusyLabel…</span>
+            <b>@CountLabel</b>
+        </div>
+        <div class="op-track">
+            @if (AppState.BusyFraction is { } f)
+            {
+                <div class="op-fill" style="width:@((f * 100).ToString("F1", System.Globalization.CultureInfo.InvariantCulture))%"></div>
+            }
+            else
+            {
+                <div class="op-fill indeterminate"></div>
+            }
+        </div>
+    </div>
+}
+else if (AppState.Status.Length > 0)
+{
+    <div class="status" role="status" aria-live="polite">@AppState.Status</div>
+}
+
+@code {
+    string _folder = "";
+
+    protected override void OnInitialized() => AppState.Changed += StateHasChanged;
+    public void Dispose() => AppState.Changed -= StateHasChanged;
+
+    string CountLabel => AppState.BusyTotal > 0
+        ? $"{AppState.BusyDone:N0} / {AppState.BusyTotal:N0}"
+        : AppState.BusyDone > 0 ? $"{AppState.BusyDone:N0}" : "";
+
+    Task HandleFolderKey(KeyboardEventArgs e) =>
+        e.Key == "Enter" ? Scan() : Task.CompletedTask;
+
+    Task Scan()
+    {
+        var folder = _folder.Trim();
+        return folder.Length == 0 ? Task.CompletedTask : AppState.ScanAsync(folder);
+    }
+
+    Task Dedup()
+    {
+        var folder = _folder.Trim();
+        return folder.Length == 0 ? Task.CompletedTask : AppState.DedupAsync(folder);
+    }
+
+    Task Nsfw() => AppState.NsfwAsync();
+}

@@ -56,6 +56,14 @@ and whether it needs Windows hardware.
    folder, confirm the parser maps groups correctly, and adjust if the schema differs.
    Exact dedup is unaffected — this only gates the "similar images" feature.
 
+### UI direction — decided
+
+The UI will be **ported to Blazor Server** (from the vanilla-JS SPA) to get shared C# models,
+no serialization boundary, and built-in `<Virtualize>`. Full step-by-step plan in
+[BLAZOR-MIGRATION.md](BLAZOR-MIGRATION.md). This is a UI-layer rewrite only — Core, engines,
+and tests are untouched. Several P1 items below (full-res preview, virtualization) are folded
+into that migration.
+
 ### P1 — High-value polish
 
 3. **Full-resolution preview** · cross-platform · ~2 hours
