@@ -30,6 +30,13 @@ public sealed record ScanResult(int Total, int Analyzed, int Cached, int Failed,
     /// <summary>Images whose extension we accept but that no decoder would open — usually the
     /// real explanation for a surprising "failed" count.</summary>
     public int Undecodable { get; init; }
+
+    /// <summary>Recognised image formats SnapZap cannot decode yet, counted by format
+    /// (HEIC, CR2…). Not failures — these were never attempted.</summary>
+    public IReadOnlyDictionary<string, int> UnsupportedByFormat { get; init; }
+        = new Dictionary<string, int>();
+
+    public int UnsupportedTotal => UnsupportedByFormat.Values.Sum();
 }
 
 /// <summary>
@@ -44,6 +51,17 @@ public sealed class Scanner(Database db, SkiaImageService imaging, string thumbD
     static readonly HashSet<string> Extensions = new(StringComparer.OrdinalIgnoreCase)
     { ".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".tif", ".tiff" };
 
+    /// <summary>
+    /// Image formats we recognise but cannot decode: SkiaSharp has no HEIC/AVIF or camera-RAW
+    /// codec. These are counted and reported rather than ignored — a library shot on an iPhone
+    /// is mostly HEIC, and silently returning "0 photos" would look like the app was broken.
+    /// </summary>
+    static readonly HashSet<string> UnsupportedExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".heic", ".heif", ".avif",                                  // modern phone formats
+        ".cr2", ".cr3", ".nef", ".arw", ".dng", ".orf", ".rw2", ".raf", ".srw", ".pef", // camera RAW
+    };
+
     public int Parallelism { get; init; } = Math.Max(2, Environment.ProcessorCount - 1);
 
     public async Task<ScanResult> ScanAsync(
@@ -52,7 +70,7 @@ public sealed class Scanner(Database db, SkiaImageService imaging, string thumbD
         CancellationToken ct = default)
     {
         var start = Environment.TickCount64;
-        var files = EnumerateImages(root).ToList();
+        var (files, unsupported) = Enumerate(root);
 
         int seen = 0, analyzed = 0, cached = 0, failed = 0, undecodable = 0;
         var livePaths = new ConcurrentBag<string>();
@@ -119,6 +137,7 @@ public sealed class Scanner(Database db, SkiaImageService imaging, string thumbD
         {
             Failures = failures.OrderBy(f => f.Path, StringComparer.Ordinal).ToList(),
             Undecodable = undecodable,
+            UnsupportedByFormat = unsupported,
         };
     }
 
@@ -191,7 +210,11 @@ public sealed class Scanner(Database db, SkiaImageService imaging, string thumbD
     static void Report(IProgress<ScanProgress>? p, int seen, int a, int c, int f, string cur)
         => p?.Report(new ScanProgress(seen, a, c, f, cur));
 
-    static IEnumerable<FileInfo> EnumerateImages(string root)
+    /// <summary>
+    /// One walk, two buckets: files we can analyse, and a tally of recognised-but-undecodable
+    /// formats by extension so the caller can say what was left behind.
+    /// </summary>
+    static (List<FileInfo> Supported, Dictionary<string, int> Unsupported) Enumerate(string root)
     {
         var opts = new EnumerationOptions
         {
@@ -199,8 +222,19 @@ public sealed class Scanner(Database db, SkiaImageService imaging, string thumbD
             IgnoreInaccessible = true,
             AttributesToSkip = FileAttributes.System | FileAttributes.ReparsePoint,
         };
+
+        var supported = new List<FileInfo>();
+        var unsupported = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
         foreach (var path in Directory.EnumerateFiles(root, "*", opts))
-            if (Extensions.Contains(Path.GetExtension(path)))
-                yield return new FileInfo(path);
+        {
+            var ext = Path.GetExtension(path);
+            if (Extensions.Contains(ext))
+                supported.Add(new FileInfo(path));
+            else if (UnsupportedExtensions.Contains(ext))
+                unsupported[ext.TrimStart('.').ToUpperInvariant()] =
+                    unsupported.GetValueOrDefault(ext.TrimStart('.').ToUpperInvariant()) + 1;
+        }
+        return (supported, unsupported);
     }
 }

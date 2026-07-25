@@ -24,6 +24,9 @@
         <div class="op-line">
             <span>@AppState.BusyLabel…</span>
             <b>@CountLabel</b>
+            <button class="op-stop" disabled="@(!AppState.CanCancel)" @onclick="() => AppState.Cancel()">
+                @(AppState.CanCancel ? "Stop" : "Stopping…")
+            </button>
         </div>
         <div class="op-track">
             @if (AppState.BusyFraction is { } f)

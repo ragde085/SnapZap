@@ -180,6 +180,13 @@ kbd {
   font-variant-numeric: tabular-nums;
 }
 .op-line b { color: var(--accent); font-weight: 600; }
+.op-stop {
+  padding: 1px 8px;
+  font-size: 0.68rem;
+  line-height: 1.5;
+  border-radius: 20px;
+  flex: none;
+}
 .op-track {
   height: 3px;
   background: var(--line);
@@ -297,6 +304,60 @@ main { display: flex; flex: 1; min-height: 0; }
 .selcount b { color: var(--accent); font-weight: 600; font-variant-numeric: tabular-nums; }
 .hint { font-size: var(--t-xs); color: var(--dim); margin: 2px 0 0; line-height: 1.45; }
 
+/* ---------- duplicate review ---------- */
+
+.dlg-box.review { width: min(1000px, 100%); }
+
+.review-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.review-nav { display: flex; gap: 6px; flex: none; }
+.review-nav button { padding: 4px 12px; font-size: 1rem; line-height: 1.2; }
+
+.review-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px;
+  margin: 4px 0 18px;
+}
+
+.review-card {
+  all: unset;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--ground);
+  transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease);
+}
+.review-card:hover { border-color: var(--dim); }
+.review-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* The keeper is the one fact that must be unmistakable at a glance. */
+.review-card.keeper { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 9%, var(--ground)); }
+
+.review-shot { position: relative; display: block; aspect-ratio: 1; border-radius: 2px; overflow: hidden; background: var(--raised); }
+.review-shot img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.review-badge {
+  position: absolute;
+  bottom: 6px;
+  left: 6px;
+  padding: 2px 8px;
+  border-radius: 20px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.review-facts { display: flex; flex-direction: column; gap: 2px; font-size: var(--t-xs); color: var(--ink); min-width: 0; }
+.review-facts b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.review-facts span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.review-facts .quiet { color: var(--muted); }
+/* Marks the copy that wins outright on a measure — resolution or file size. */
+.review-facts .win { color: var(--ok); }
+
 /* ---------- scan issues ---------- */
 
 .issues {
@@ -337,6 +398,8 @@ main { display: flex; flex: 1; min-height: 0; }
 .issues-group { display: flex; flex-direction: column; gap: 2px; }
 .issues-reason { font-size: var(--t-xs); color: var(--warn); }
 .issues-reason span { color: var(--muted); }
+/* Unreadable formats are a limitation, not an error — keep them off the warning hue. */
+.issues-reason.unsupported { color: var(--muted); }
 .issues-file {
   font-size: var(--t-xs);
   color: var(--muted);
@@ -507,13 +570,25 @@ main { display: flex; flex: 1; min-height: 0; }
   overflow: hidden;
 }
 
+.summary-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 12px;
+  flex: none;
+}
 .summary {
   color: var(--muted);
   font-size: var(--t-xs);
-  margin-bottom: 12px;
-  flex: none;
+  flex: 1;
+  min-width: 0;
   font-variant-numeric: tabular-nums;
 }
+
+.sortbar { display: flex; align-items: center; gap: 7px; flex: none; }
+.sortbar label { font-size: var(--t-xs); color: var(--muted); }
+.sortbar select { padding: 4px 8px; font-size: var(--t-xs); }
+.sort-dir { padding: 3px 9px; font-size: var(--t-sm); line-height: 1.4; }
 .summary b { color: var(--ink); font-weight: 600; }
 
 /* .grid must own overflow + height directly: Virtualize measures its own scroll
