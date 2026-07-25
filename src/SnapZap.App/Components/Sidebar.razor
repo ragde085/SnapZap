@@ -1,5 +1,6 @@
 @implements IDisposable
 @inject AppState AppState
+@inject DependencyChecker Checker
 
 <nav class="rail" aria-label="Tool panels">
     <button class="@Cls(Panel.Filters)"
@@ -35,6 +36,18 @@
     </button>
 
     <div class="spacer"></div>
+
+    <button class="@Cls(Panel.Setup)"
+            title="Setup"
+            aria-label="Setup"
+            aria-pressed="@(_panel == Panel.Setup)"
+            @onclick="() => Show(Panel.Setup)">
+        <svg viewBox="0 0 24 24"><path d="M12 15a3 3 0 100-6 3 3 0 000 6z" /><path d="M19.4 15a1.7 1.7 0 00.3 1.9l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.9-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1A1.7 1.7 0 008.9 19a1.7 1.7 0 00-1.9.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.9 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1A1.7 1.7 0 004.6 8.4a1.7 1.7 0 00-.3-1.9l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.9.3H9a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.9-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.9V9a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z" /></svg>
+        @if (_missingCount > 0)
+        {
+            <span class="pip warn" title="@_missingCount optional feature(s) not installed">@_missingCount</span>
+        }
+    </button>
 
     <button class="@Cls(Panel.Help)"
             title="Keyboard shortcuts"
@@ -112,6 +125,15 @@
                 </section>
                 break;
 
+            case Panel.Setup:
+                <section>
+                    <h3>Setup</h3>
+                    <DependencyList Items="_deps" Detailed="true" />
+                    <button @onclick="Recheck">@(_checking ? "Checking…" : "Check again")</button>
+                    <p class="hint">Drop a file in and press Check again — no restart needed.</p>
+                </section>
+                break;
+
             case Panel.Help:
                 <section>
                     <h3>Keyboard</h3>
@@ -144,13 +166,31 @@
 }
 
 @code {
-    enum Panel { Filters, Select, Actions, Help }
+    enum Panel { Filters, Select, Actions, Setup, Help }
 
     [Parameter] public EventCallback OnOpenExport { get; set; }
     [Parameter] public EventCallback OnOpenUndo { get; set; }
 
     Panel? _panel = Panel.Filters;
     bool _confirmDelete;
+
+    bool _checking;
+
+    IReadOnlyList<DependencyInfo> _deps => Checker.Current;
+    int _missingCount => Checker.MissingCount;
+
+    async Task Recheck()
+    {
+        _checking = true;
+        StateHasChanged();
+        await Task.Delay(150);
+        Checker.Check();
+        _checking = false;
+    }
+
+    // The checker is a singleton shared across circuits, so a re-check may arrive off this
+    // circuit's synchronization context.
+    void OnDepsChanged() => InvokeAsync(StateHasChanged);
 
     bool CanAct => AppState.Selected.Count > 0 && !AppState.Busy;
 
@@ -160,8 +200,17 @@
 
     // See PhotoGrid's comment: subscribe directly since AppState changes (e.g. a card click)
     // may not touch this component's own parameters.
-    protected override void OnInitialized() => AppState.Changed += StateHasChanged;
-    public void Dispose() => AppState.Changed -= StateHasChanged;
+    protected override void OnInitialized()
+    {
+        AppState.Changed += StateHasChanged;
+        Checker.Changed += OnDepsChanged;
+    }
+
+    public void Dispose()
+    {
+        AppState.Changed -= StateHasChanged;
+        Checker.Changed -= OnDepsChanged;
+    }
 
     string Cls(Panel p) => _panel == p ? "active" : "";
 

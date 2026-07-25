@@ -1,5 +1,6 @@
 @implements IDisposable
 @inject AppState AppState
+@inject DependencyChecker Checker
 
 <div class="folder">
     <input type="text"
@@ -11,8 +12,10 @@
            @bind:event="oninput"
            @onkeydown="HandleFolderKey" />
     <button class="primary" disabled="@(AppState.Busy || _folder.Trim().Length == 0)" @onclick="Scan">Scan</button>
-    <button disabled="@(AppState.Busy || _folder.Trim().Length == 0)" @onclick="Dedup">Find duplicates</button>
-    <button disabled="@(AppState.Busy || AppState.Images.Count == 0)" @onclick="Nsfw">Score NSFW</button>
+    <button disabled="@(AppState.Busy || _folder.Trim().Length == 0)" title="@DedupTitle" @onclick="Dedup">
+        Find duplicates@(_similarReady ? "" : " *")
+    </button>
+    <button disabled="@(AppState.Busy || AppState.Images.Count == 0 || !_nsfwReady)" title="@NsfwTitle" @onclick="Nsfw">Score NSFW</button>
 </div>
 
 @if (AppState.Busy)
@@ -42,8 +45,32 @@ else if (AppState.Status.Length > 0)
 @code {
     string _folder = "";
 
-    protected override void OnInitialized() => AppState.Changed += StateHasChanged;
-    public void Dispose() => AppState.Changed -= StateHasChanged;
+    // Surface a missing sidecar before the user commits to a run, rather than only
+    // reporting it in the result line afterwards.
+    bool _similarReady => Checker.Current.First(d => d.Id == "czkawka").Found;
+    bool _nsfwReady => Checker.Current.First(d => d.Id == "nsfw-model").Found;
+
+    protected override void OnInitialized()
+    {
+        AppState.Changed += StateHasChanged;
+        Checker.Changed += OnDepsChanged;
+    }
+
+    public void Dispose()
+    {
+        AppState.Changed -= StateHasChanged;
+        Checker.Changed -= OnDepsChanged;
+    }
+
+    void OnDepsChanged() => InvokeAsync(StateHasChanged);
+
+    string DedupTitle => _similarReady
+        ? "Find exact and visually similar duplicates"
+        : "Finds exact duplicates. Similar-photo detection needs czkawka_cli — see Setup.";
+
+    string NsfwTitle => _nsfwReady
+        ? "Score every photo for explicit content"
+        : "Needs the NSFW model — see Setup.";
 
     string CountLabel => AppState.BusyTotal > 0
         ? $"{AppState.BusyDone:N0} / {AppState.BusyTotal:N0}"

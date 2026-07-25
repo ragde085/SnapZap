@@ -1,0 +1,51 @@
+@* Shared status rows, used both by the launch prompt and the Setup panel. *@
+
+@foreach (var d in Items)
+{
+    <div class="dep @(d.Found ? "ready" : "missing")">
+        <div class="dep-head">
+            <span class="dep-dot" aria-hidden="true"></span>
+            <span class="dep-name">@d.Name</span>
+            <span class="dep-state">@(d.Found ? "Ready" : "Not installed")</span>
+        </div>
+
+        @if (d.Found)
+        {
+            <div class="dep-body">
+                <div class="dep-note">@d.Unlocks</div>
+                <div class="dep-path" title="@d.FoundAt">Using @d.FoundAt</div>
+            </div>
+        }
+        else
+        {
+            <div class="dep-body">
+                <div class="dep-note">@d.Unlocks</div>
+                <div class="dep-note quiet">Without it: @d.WithoutIt</div>
+
+                @if (Detailed)
+                {
+                    <ol class="dep-steps">
+                        <li>
+                            <a href="@d.DownloadUrl" target="_blank" rel="noopener noreferrer">@d.DownloadLabel</a>
+                        </li>
+                        <li>
+                            Put <code>@d.FileName</code> in
+                            <code class="dep-path">@d.InstallTo</code>
+                        </li>
+                        @if (d.ExtraStep is { } step)
+                        {
+                            <li>@step</li>
+                        }
+                    </ol>
+                }
+            </div>
+        }
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<DependencyInfo> Items { get; set; } = [];
+
+    /// <summary>Show the full install steps. Off in compact contexts.</summary>
+    [Parameter] public bool Detailed { get; set; } = true;
+}

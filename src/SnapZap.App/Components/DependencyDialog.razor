@@ -1,0 +1,83 @@
+@inject DependencyChecker Checker
+
+@if (Show)
+{
+    <div class="dlg" role="dialog" aria-modal="true" aria-label="Optional features"
+         tabindex="-1" @ref="_dlgRef" @onkeydown="HandleKeyDown">
+        <div class="dlg-box">
+            <h2>@Heading</h2>
+            <p class="dlg-sub">
+                SnapZap is ready to use right now — scanning, exact duplicates, export and
+                delete all work. @(_missing.Count == 1 ? "This add-on unlocks one more filter" : "These add-ons unlock the remaining filters") whenever you want @(_missing.Count == 1 ? "it" : "them").
+            </p>
+
+            <DependencyList Items="_missing" Detailed="true" />
+
+            <div class="dlg-actions">
+                <button class="primary" @onclick="Recheck">@(_checking ? "Checking…" : "Check again")</button>
+                <button class="link" @onclick="Close">Continue without them</button>
+            </div>
+
+            <label class="f checkbox dep-suppress">
+                <input type="checkbox" @bind="_suppress" /> Don't show this at startup again
+            </label>
+            <p class="hint">You can always see this under <b>Setup</b> in the toolbar on the left.</p>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool Show { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    IReadOnlyList<DependencyInfo> _missing = [];
+
+    string Heading => _missing.Count == 1 ? "One optional extra" : $"{_missing.Count} optional extras";
+    bool _suppress;
+    bool _checking;
+    bool _wasShown;
+    bool _needsFocus;
+    ElementReference _dlgRef;
+
+    protected override void OnParametersSet()
+    {
+        if (Show && !_wasShown)
+        {
+            _missing = Checker.Current.Where(d => !d.Found).ToList();
+            _suppress = Checker.PromptSuppressed;
+            _needsFocus = true;
+        }
+        _wasShown = Show;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (Show && _needsFocus)
+        {
+            _needsFocus = false;
+            await _dlgRef.FocusAsync();
+        }
+    }
+
+    async Task Recheck()
+    {
+        _checking = true;
+        StateHasChanged();
+        // Give the spinner a frame; detection itself is a couple of file probes.
+        await Task.Delay(150);
+
+        _missing = Checker.Check().Where(d => !d.Found).ToList();
+        _checking = false;
+
+        // Everything resolved — nothing left to prompt about.
+        if (_missing.Count == 0) await Close();
+    }
+
+    async Task Close()
+    {
+        Checker.PromptSuppressed = _suppress;
+        await OnClose.InvokeAsync();
+    }
+
+    Task HandleKeyDown(KeyboardEventArgs e) => e.Key == "Escape" ? Close() : Task.CompletedTask;
+}
