@@ -283,7 +283,9 @@ main { display: flex; flex: 1; min-height: 0; }
   color: var(--muted);
 }
 .flyout section { display: flex; flex-direction: column; gap: 8px; }
-.flyout button:not(.link) { width: 100%; text-align: left; }
+/* Direct children only. A descendant selector here also caught the folder tree's chevron
+   buttons and, at higher specificity than their own rule, stretched them to full width. */
+.flyout section > button:not(.link) { width: 100%; text-align: left; }
 
 .f { display: flex; flex-direction: column; gap: 5px; font-size: var(--t-xs); color: var(--muted); }
 .f .f-label { display: flex; justify-content: space-between; gap: 8px; }
@@ -294,6 +296,144 @@ main { display: flex; flex: 1; min-height: 0; }
 .selcount { font-family: var(--serif); font-size: var(--t-md); color: var(--ink); }
 .selcount b { color: var(--accent); font-weight: 600; font-variant-numeric: tabular-nums; }
 .hint { font-size: var(--t-xs); color: var(--dim); margin: 2px 0 0; line-height: 1.45; }
+
+/* ---------- scan issues ---------- */
+
+.issues {
+  flex: none;
+  margin-bottom: 10px;
+  border: 1px solid color-mix(in srgb, var(--warn) 35%, var(--line));
+  border-radius: var(--radius);
+  background: var(--surface);
+  overflow: hidden;
+}
+.issues-head {
+  all: unset;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 11px;
+  font-size: var(--t-xs);
+  color: var(--ink);
+  box-sizing: border-box;
+}
+.issues-head:hover { background: var(--raised); }
+.issues-head:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.issues-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--warn); flex: none; }
+.issues-head > span:nth-child(2) { flex: 1; }
+.issues-twist { transition: transform var(--dur) var(--ease); color: var(--muted); }
+.issues-twist.open { transform: rotate(90deg); }
+
+.issues-body {
+  padding: 4px 11px 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 30vh;
+  overflow-y: auto;
+}
+.issues-group { display: flex; flex-direction: column; gap: 2px; }
+.issues-reason { font-size: var(--t-xs); color: var(--warn); }
+.issues-reason span { color: var(--muted); }
+.issues-file {
+  font-size: var(--t-xs);
+  color: var(--muted);
+  padding-left: 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.issues-file.quiet { color: var(--dim); font-style: italic; }
+
+/* ---------- folder tree ---------- */
+
+/* Paths get deep; the tree earns more width than the other panels. */
+.flyout.wide { width: 300px; }
+
+.tree { display: flex; flex-direction: column; gap: 1px; margin-bottom: 10px; }
+.tree-branch { display: flex; flex-direction: column; gap: 1px; }
+.tree-row-wrap { display: flex; align-items: stretch; gap: 0; }
+
+.tree-twist-btn {
+  all: unset;
+  cursor: pointer;
+  width: 16px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  border-radius: 2px;
+}
+.tree-twist-btn:hover { color: var(--ink); }
+.tree-twist-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.tree-twist-spacer { width: 16px; flex: none; }
+
+.tree-twist {
+  display: inline-block;
+  font-size: 0.9rem;
+  line-height: 1;
+  transition: transform var(--dur) var(--ease);
+}
+.tree-twist.open { transform: rotate(90deg); }
+
+.tree-row {
+  all: unset;
+  cursor: pointer;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 7px;
+  border-radius: var(--radius);
+  font-size: var(--t-xs);
+  color: var(--ink);
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.tree-row:hover { background: var(--raised); }
+.tree-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.tree-row.on { background: var(--accent-soft); color: var(--ink); }
+
+.tree-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tree-count {
+  flex: none;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.tree-row.on .tree-count { color: var(--ink); }
+
+.tree-dupes { flex: none; color: var(--dim); font-size: 0.85em; }
+
+/* Amber dot: some analysis step hasn't reached this subtree yet. */
+.tree-pending {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--warn);
+}
+
+.f-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--ground);
+  color: var(--ink);
+  font-size: var(--t-xs);
+}
+.f-chip span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.f-chip button { flex: none; padding: 0 2px; }
 
 /* ---------- dependency status ---------- */
 

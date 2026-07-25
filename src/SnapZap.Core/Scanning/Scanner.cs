@@ -7,7 +7,30 @@ namespace SnapZap.Core.Scanning;
 
 public sealed record ScanProgress(int Seen, int Analyzed, int Cached, int Failed, string? Current);
 
-public sealed record ScanResult(int Total, int Analyzed, int Cached, int Failed, int Pruned, long ElapsedMs);
+/// <summary>One file the scan could not take, and why. Attributing the reason matters more
+/// than the count: "3 failed" is not actionable, "3 unreadable HEIC files in /2021" is.</summary>
+public sealed record ScanFailure(string Path, string Reason)
+{
+    public string Folder
+    {
+        get
+        {
+            var norm = Path.Replace('\\', '/');
+            var i = norm.LastIndexOf('/');
+            return i < 0 ? "" : norm[..i];
+        }
+    }
+}
+
+public sealed record ScanResult(int Total, int Analyzed, int Cached, int Failed, int Pruned, long ElapsedMs)
+{
+    /// <summary>Non-positional so existing callers and tests are unaffected.</summary>
+    public IReadOnlyList<ScanFailure> Failures { get; init; } = [];
+
+    /// <summary>Images whose extension we accept but that no decoder would open — usually the
+    /// real explanation for a surprising "failed" count.</summary>
+    public int Undecodable { get; init; }
+}
 
 /// <summary>
 /// Walks a folder, and for each image either reuses the cached row (tier-1 probe hit) or
@@ -31,8 +54,9 @@ public sealed class Scanner(Database db, SkiaImageService imaging, string thumbD
         var start = Environment.TickCount64;
         var files = EnumerateImages(root).ToList();
 
-        int seen = 0, analyzed = 0, cached = 0, failed = 0;
+        int seen = 0, analyzed = 0, cached = 0, failed = 0, undecodable = 0;
         var livePaths = new ConcurrentBag<string>();
+        var failures = new ConcurrentBag<ScanFailure>();
 
         // The DB writer is single-threaded (SQLite): analysis fans out, writes funnel through a lock.
         var repo = new ImageRepository(db);
@@ -60,22 +84,69 @@ public sealed class Scanner(Database db, SkiaImageService imaging, string thumbD
                     }
 
                     var rec = await Task.Run(() => Analyze(file, mtime), token);
-                    if (rec is null) { Interlocked.Increment(ref failed); return; }
+                    if (rec is null)
+                    {
+                        // Probe returns null for *any* failure, so distinguish "we couldn't read
+                        // the bytes" from "the bytes aren't an image" — otherwise a permissions
+                        // problem is misreported as a corrupt file and the user looks in the
+                        // wrong place.
+                        Interlocked.Increment(ref failed);
+                        var reason = ClassifyUnreadable(file);
+                        if (reason is null) Interlocked.Increment(ref undecodable);
+                        failures.Add(new ScanFailure(file.FullName, reason ?? "not a decodable image"));
+                        return;
+                    }
 
                     lock (writeLock) repo.Upsert(rec);
                     Interlocked.Increment(ref analyzed);
                     Report(progress, seen, analyzed, cached, failed, file.Name);
                 }
                 catch (OperationCanceledException) { throw; }
-                catch { Interlocked.Increment(ref failed); }
+                catch (Exception ex)
+                {
+                    // Record why. Swallowing the exception left a bare count that told the user
+                    // nothing about which files to go and look at.
+                    Interlocked.Increment(ref failed);
+                    failures.Add(new ScanFailure(file.FullName, Describe(ex)));
+                }
             });
 
         int pruned;
         lock (writeLock) pruned = repo.DeleteMissing(livePaths.ToArray());
 
         return new ScanResult(files.Count, analyzed, cached, failed, pruned,
-                              Environment.TickCount64 - start);
+                              Environment.TickCount64 - start)
+        {
+            Failures = failures.OrderBy(f => f.Path, StringComparer.Ordinal).ToList(),
+            Undecodable = undecodable,
+        };
     }
+
+    /// <summary>Why the bytes couldn't be read, or null when the file is readable and the
+    /// problem really is the image data. Only runs on the failure path.</summary>
+    static string? ClassifyUnreadable(FileInfo file)
+    {
+        try
+        {
+            using var fs = file.OpenRead();
+            fs.ReadByte();
+            return null; // readable, so it genuinely isn't a decodable image
+        }
+        catch (UnauthorizedAccessException) { return "permission denied"; }
+        catch (FileNotFoundException) { return "file disappeared during the scan"; }
+        catch (IOException io) { return $"could not be read ({io.Message})"; }
+        catch { return null; }
+    }
+
+    /// <summary>A short, human-readable cause — the exception type alone is noise to a user.</summary>
+    static string Describe(Exception ex) => ex switch
+    {
+        UnauthorizedAccessException => "permission denied",
+        FileNotFoundException => "file disappeared during the scan",
+        DirectoryNotFoundException => "folder disappeared during the scan",
+        IOException io => $"could not be read ({io.Message})",
+        _ => ex.Message,
+    };
 
     ImageRecord? Analyze(FileInfo file, long mtime)
     {

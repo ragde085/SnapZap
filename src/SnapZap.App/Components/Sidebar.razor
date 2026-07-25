@@ -15,6 +15,18 @@
         }
     </button>
 
+    <button class="@Cls(Panel.Folders)"
+            title="Folders"
+            aria-label="Folders"
+            aria-pressed="@(_panel == Panel.Folders)"
+            @onclick="() => Show(Panel.Folders)">
+        <svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" /></svg>
+        @if (AppState.Folder.Length > 0)
+        {
+            <span class="pip" aria-hidden="true">•</span>
+        }
+    </button>
+
     <button class="@Cls(Panel.Select)"
             title="Selection"
             aria-label="Selection"
@@ -60,7 +72,7 @@
 
 @if (_panel is not null)
 {
-    <aside class="flyout" aria-label="@_panel.ToString()">
+    <aside class="flyout @(_panel == Panel.Folders ? "wide" : "")" aria-label="@_panel.ToString()">
         @switch (_panel)
         {
             case Panel.Filters:
@@ -77,16 +89,16 @@
                     <label class="f checkbox">
                         <input type="checkbox" @bind="AppState.DupesOnly" /> Duplicates only
                     </label>
-                    <label class="f">
-                        <span class="f-label">Folder</span>
-                        <select @bind="AppState.Folder">
-                            <option value="">All folders</option>
-                            @foreach (var folder in AppState.Folders)
-                            {
-                                <option value="@folder">@ImageView.ShortFolder(folder)</option>
-                            }
-                        </select>
-                    </label>
+                    @if (AppState.Folder.Length > 0)
+                    {
+                        <label class="f">
+                            <span class="f-label">Folder</span>
+                            <div class="f-chip">
+                                <span title="@AppState.Folder">@ImageView.ShortFolder(AppState.Folder)</span>
+                                <button class="link" aria-label="Clear folder filter" @onclick="() => AppState.Folder = string.Empty">✕</button>
+                            </div>
+                        </label>
+                    }
                     <label class="f">
                         <span class="f-label">Year</span>
                         <select @bind="AppState.Year">
@@ -99,6 +111,10 @@
                     </label>
                     <button class="link" disabled="@(!AppState.HasActiveFilter)" @onclick="() => AppState.ClearFilters()">Clear filters</button>
                 </section>
+                break;
+
+            case Panel.Folders:
+                <FolderTreeView />
                 break;
 
             case Panel.Select:
@@ -166,7 +182,7 @@
 }
 
 @code {
-    enum Panel { Filters, Select, Actions, Setup, Help }
+    enum Panel { Filters, Folders, Select, Actions, Setup, Help }
 
     [Parameter] public EventCallback OnOpenExport { get; set; }
     [Parameter] public EventCallback OnOpenUndo { get; set; }

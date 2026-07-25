@@ -12,6 +12,7 @@
     <Sidebar OnOpenExport="OpenExport" OnOpenUndo="OpenUndo" />
     <section class="content">
         <div class="summary">@((MarkupString)Summary)</div>
+        <ScanIssues />
         <PhotoGrid OnPreview="OpenPreview" />
         @if (AppState.Images.Count == 0 && !AppState.Busy)
         {

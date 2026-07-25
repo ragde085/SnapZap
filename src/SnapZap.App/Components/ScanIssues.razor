@@ -1,0 +1,46 @@
+@implements IDisposable
+@inject AppState AppState
+@using SnapZap.Core.Scanning
+
+@if (AppState.LastFailures.Count > 0)
+{
+    <div class="issues">
+        <button class="issues-head" aria-expanded="@_open" @onclick="() => _open = !_open">
+            <span class="issues-dot" aria-hidden="true"></span>
+            <span>@AppState.LastFailures.Count file@(AppState.LastFailures.Count == 1 ? "" : "s") skipped</span>
+            <span class="issues-twist @(_open ? "open" : "")" aria-hidden="true">›</span>
+        </button>
+
+        @if (_open)
+        {
+            <div class="issues-body">
+                @foreach (var group in Grouped)
+                {
+                    <div class="issues-group">
+                        <div class="issues-reason">@group.Key <span>· @group.Count()</span></div>
+                        @foreach (var f in group.Take(8))
+                        {
+                            <div class="issues-file" title="@f.Path">@System.IO.Path.GetFileName(f.Path)</div>
+                        }
+                        @if (group.Count() > 8)
+                        {
+                            <div class="issues-file quiet">…and @(group.Count() - 8) more</div>
+                        }
+                    </div>
+                }
+                <button class="link" @onclick="() => AppState.ClearFailures()">Dismiss</button>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    bool _open;
+
+    protected override void OnInitialized() => AppState.Changed += StateHasChanged;
+    public void Dispose() => AppState.Changed -= StateHasChanged;
+
+    // Reason first: one bad codec across 300 files is one problem, not 300.
+    IEnumerable<IGrouping<string, ScanFailure>> Grouped =>
+        AppState.LastFailures.GroupBy(f => f.Reason).OrderByDescending(g => g.Count());
+}
