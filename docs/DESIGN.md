@@ -26,15 +26,17 @@ The source folder is never modified unless you explicitly ask for it.
 
 ```
 ┌─────────────────────────────────────────────┐
-│  Photino window (WebView2 on Windows)       │
+│  Browser tab (Photino/WebView2 planned)     │
 │  ┌───────────────────────────────────────┐  │
-│  │  SPA — faceted grid, preview, select  │  │
+│  │  Razor components — grid, preview,    │  │
+│  │  select, filters                      │  │
 │  └───────────────────────────────────────┘  │
 └──────────────────┬──────────────────────────┘
-                   │ localhost HTTP + SSE
+                   │ SignalR circuit (Blazor Server)
+                   │ + HTTP for image bytes only
 ┌──────────────────┴──────────────────────────┐
-│  ASP.NET Core Minimal API (in-process)      │
-│    Scanner ─ Analyzer ─ Exporter            │
+│  ASP.NET Core host (in-process)             │
+│    AppState → Scanner ─ Analyzer ─ Exporter │
 └──┬─────────┬──────────┬──────────┬──────────┘
    │         │          │          │
  SQLite   ONNX RT   SkiaSharp   czkawka_cli
@@ -42,16 +44,22 @@ The source folder is never modified unless you explicitly ask for it.
                      thumbs)
 ```
 
-Everything runs in one process on localhost. The SPA is served by the same binary that
+Everything runs in one process on localhost. The UI is served by the same binary that
 hosts it. `czkawka_cli` is the only external executable.
+
+Components call Core services directly over the circuit — there is no JSON/DTO layer for
+application logic. Only image bytes still travel over HTTP: `/api/thumb/{hash}` and
+`/api/full/{id}`, plus `/api/health` for test readiness. Being single-user and on localhost is
+what makes Blazor Server's per-interaction round trip a non-issue.
 
 ### Why this shape
 
 - **C#/.NET over Python:** self-contained single-`.exe` deployment (no runtime install, no
   venv), faster parallel file scanning, and ONNX Runtime has first-class C# bindings so
   there is no inference-speed penalty.
-- **Web SPA over native XAML:** a dense virtualized photo grid with lazy thumbnails,
-  shift-click ranges and live filters is substantially less work in CSS grid than in XAML.
+- **Web UI over native XAML:** a dense windowed photo grid with lazy thumbnails, shift-click
+  ranges and live filters is substantially less work in CSS grid than in XAML. (Originally a
+  vanilla-JS SPA; migrated to Blazor Server — see [BLAZOR-MIGRATION.md](BLAZOR-MIGRATION.md).)
 - **Czkawka over a hand-rolled deduper:** it is mature, Rust-fast, and already does both
   exact and perceptual matching. Reinventing it has no upside.
 
@@ -121,7 +129,7 @@ Folder pick
    └─► czkawka_cli subprocess ──► exact + similar groups
                    │
                    ▼
-              SQLite  ──►  SPA faceted grid  ──►  Export
+              SQLite  ──►  Blazor faceted grid  ──►  Export
 ```
 
 ### Caching strategy
@@ -137,7 +145,7 @@ optimization to defer — without it the app feels broken on re-open.
 
 ### Four independent signals
 
-Every image gets `{dupe_group, nsfw_score, blur_score, exif_date}`. The SPA is then a
+Every image gets `{dupe_group, nsfw_score, blur_score, exif_date}`. The UI is then a
 faceted query over those columns, which is why the features compose: *"blurry duplicates
 from 2019 scoring above 0.8 NSFW"* is a `WHERE` clause, not a feature.
 
@@ -284,8 +292,8 @@ and undermines the date-based structure.
 
 ### Manifest
 
-Each run writes CSV + JSON of every item: source, destination, status, skip reason. Written
-to app-data or a hidden `.photoclean/` subfolder — **never** the destination root, which
+Each run writes CSV + JSON of every item: source, destination, status, skip reason. Written to
+app-data (`<LocalApplicationData>/SnapZap/manifests/`) — **never** the destination root, which
 Plex is indexing.
 
 ---
@@ -349,7 +357,7 @@ is genuinely cross-platform and testable locally.
 | Window host | `IAppHost` | Photino + WebView2 | Photino + WKWebView |
 
 Everything else — scanning, hashing, ONNX inference, Czkawka orchestration, the export
-engine, the entire SPA — is portable and developed against directly.
+engine, the entire UI — is portable and developed against directly.
 
 Ship with:
 
@@ -390,7 +398,7 @@ Each step is independently verifiable against a real folder.
 | 2 | Czkawka subprocess + group parsing | Duplicate groups visible end-to-end |
 | 3 | NSFW ONNX + **labeled-fixture validation** | Test suite passes on known images |
 | 4 | Blur + EXIF extraction | All four signals populated |
-| 5 | SPA grid — preview, selection | Can browse and select a real library |
+| 5 | Photo grid — preview, selection | Can browse and select a real library |
 | 6 | Filters + auto-select heuristics | Faceted queries drive the grid |
 | 7 | Export engine | Copy/move/hardlink, verified, resumable |
 | 8 | Export UI + pre-flight + manifest | Full export round-trip |

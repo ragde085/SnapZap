@@ -5,7 +5,7 @@ near-duplicates, flag NSFW and blurry images, browse by date, then **export the 
 a destination folder** (which Plex, or anything else, can watch). Nothing is ever hard-deleted
 and the source folder is never touched unless you ask.
 
-No cloud, no subscriptions, no paid dependencies. See [DESIGN.md](DESIGN.md) for the full
+No cloud, no subscriptions, no paid dependencies. See [DESIGN.md](docs/DESIGN.md) for the full
 architecture and rationale.
 
 ## What it does
@@ -15,16 +15,23 @@ architecture and rationale.
 - **NSFW** — a single 0–1 score per image (Falconsai ViT via ONNX), with a threshold slider.
 - **Blur** — variance-of-Laplacian sharpness score.
 - **Dates** — capture date + camera from EXIF; browse and export by year/month.
-- **Review** — fast thumbnail grid, faceted filters, single / range / smart selection.
+- **Review** — windowed thumbnail grid (smooth at tens of thousands of photos), faceted
+  filters, single / range / smart selection, and full keyboard triage.
 - **Export** — copy · move · hardlink, into `date` / `mirror` / `flat` structure, with
   pre-flight, hash-verification, collision-safe naming, resume, and a written manifest.
 - **Delete** — a separate mode; recycles to the OS bin with a one-click **undo** panel.
 
 ## Requirements
 
-- [.NET 10 SDK](https://dotnet.microsoft.com/download) to build.
+- [.NET 10 SDK](https://dotnet.microsoft.com/download) to build. The Windows `.exe` is
+  self-contained and needs nothing installed; the macOS build needs the .NET 10 runtime.
 - (Optional) `czkawka_cli` for similar-image detection — placed beside the binary or on PATH.
 - (Optional) the NSFW ONNX model for NSFW scoring — see below.
+
+Both optional pieces are validated at launch: if either is missing the app says so once,
+explains what it unlocks and exactly where to put the file, and keeps a live status list under
+**Setup** in the sidebar with a *Check again* button (no restart needed). Everything else —
+scanning, exact duplicates, blur, dates, export, delete — works without them.
 
 ## Run (development)
 
@@ -65,7 +72,28 @@ dotnet publish src/SnapZap.App -c Release -r win-x64 --self-contained \
 ```
 
 Produces a single self-contained `SnapZap.App.exe` (~130 MB, no .NET install needed).
-Double-clicking it starts the local server and opens the SPA.
+Double-clicking it starts the local server and opens the app in your browser.
+
+## Build for macOS
+
+macOS is the development platform, but the app runs there too. Publish framework-dependent and
+RID-specific:
+
+```bash
+dotnet publish src/SnapZap.App -c Release -r osx-arm64 --self-contained false -o artifacts/mac
+dotnet artifacts/mac/SnapZap.App.dll
+```
+
+To get a double-clickable `SnapZap.app`, wrap that output in a bundle whose
+`Contents/MacOS/<name>` is a shell script that `cd`s to the payload and runs
+`dotnet SnapZap.App.dll`. Two things make this necessary:
+
+- **Don't use `--self-contained` or `PublishSingleFile` on macOS.** The published apphost is
+  ad-hoc signed and unnotarized, and endpoint security on managed Macs SIGKILLs it at launch
+  (exit 137, no output, no crash report). Running the DLL through `dotnet` avoids this.
+- **Resolve `dotnet` by absolute path in the launcher.** Finder hands GUI apps a minimal
+  `PATH` that excludes `/usr/local/share/dotnet`, so a bare `dotnet` works from a terminal but
+  not from a double-click.
 
 ### Sidecar layout on Windows
 
@@ -95,16 +123,17 @@ score validation (`PC_NSFW_MODEL` + `PC_NSFW_FIXTURES`).
 | Path | What |
 |---|---|
 | `src/SnapZap.Core` | Portable logic: scan, hash, dedup, NSFW, blur/EXIF, export, delete, platform interfaces |
-| `src/SnapZap.App`  | ASP.NET Core host + the SPA (`wwwroot`) |
+| `src/SnapZap.App`  | ASP.NET Core host + Blazor Server UI (`Components`, `Services`, `wwwroot`) |
 | `tests/SnapZap.Tests` | xUnit suite |
 | `scripts/get-nsfw-model.sh` | One-time ONNX model export |
-| `DESIGN.md` | Architecture, decisions, safety invariants |
+| `docs/DESIGN.md` | Architecture, decisions, safety invariants |
 | `docs/ROADMAP.md` | Current status + prioritized next steps |
-| `WINDOWS-VERIFY.md` | Checklist for the four Windows-only code paths |
+| `docs/BLAZOR-MIGRATION.md` | The SPA → Blazor Server migration (completed) |
+| `docs/WINDOWS-VERIFY.md` | Checklist for the four Windows-only code paths |
 
 ## Development note
 
 Developed on macOS, shipped for Windows. ~90% of the code is portable and tested locally; the
 four Windows-only paths (Recycle Bin, hardlinks, DirectML GPU, native window host) are behind
 interfaces with macOS dev implementations and **must be verified on Windows hardware** — see
-[WINDOWS-VERIFY.md](WINDOWS-VERIFY.md).
+[WINDOWS-VERIFY.md](docs/WINDOWS-VERIFY.md).
