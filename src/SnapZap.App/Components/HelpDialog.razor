@@ -1,0 +1,435 @@
+@*
+    In-app help: how the app works, and the questions people actually arrive with.
+
+    A dialog rather than a route, for the same reason Setup and History are dialogs — help is
+    read *against* the library you are looking at ("which of these is the keeper?"), and
+    navigating away to a /help page would take the grid, the filters and the selection off
+    screen to answer a question about them.
+
+    This replaced the keyboard-shortcuts dialog rather than sitting beside it. Two help buttons
+    in one top bar is a guess about which one holds the answer; the shortcut list is now a
+    section here, so there is one place to look and the "?" always leads to it.
+*@
+@if (Show)
+{
+    <div class="dlg" role="dialog" aria-modal="true" aria-label="Help"
+         tabindex="-1" @ref="_ref" @onkeydown="HandleKeyDown">
+        <div class="dlg-box help">
+
+            <div class="help-head">
+                <div>
+                    <h2>Help</h2>
+                    <p class="dlg-sub">
+                        SnapZap finds duplicates, blurry photos and explicit content in a folder,
+                        then writes the set you keep somewhere clean.
+                    </p>
+                </div>
+                <button class="link" @onclick="Close">Close</button>
+            </div>
+
+            @* Plain buttons in a nav, deliberately not role="tablist". Real tabs promise one tab
+               stop and arrow-key movement between the panels; implementing that here means
+               roving tabindex and JS focus calls, and announcing a pattern the component does
+               not implement is worse than announcing none. Nine tab stops is a fair price. *@
+            <div class="help-shell">
+                <nav class="help-nav" aria-label="Help sections">
+                    @foreach (var s in Sections)
+                    {
+                        <button class="@(_section == s.Id ? "on" : "")"
+                                aria-current="@(_section == s.Id ? "true" : null)"
+                                @onclick="() => _section = s.Id">@s.Title</button>
+                    }
+                </nav>
+
+                <div class="help-body">
+                    @Body
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool Show { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    /// <summary>Which section to open on. Lets the caller answer a specific question — a
+    /// "what does this mean?" link can land on the paragraph that explains it.</summary>
+    [Parameter] public string? OpenAt { get; set; }
+
+    enum Section { Start, Scan, Dupes, Nsfw, Select, Export, Delete, Keys, Faq }
+
+    Section _section = Section.Start;
+
+    ElementReference _ref;
+    bool _wasShown;
+    bool _needsFocus;
+
+    static readonly (Section Id, string Title)[] Sections =
+    [
+        (Section.Start,  "Start here"),
+        (Section.Scan,   "Scanning"),
+        (Section.Dupes,  "Duplicates"),
+        (Section.Nsfw,   "Explicit content"),
+        (Section.Select, "Selecting"),
+        (Section.Export, "Exporting"),
+        (Section.Delete, "Deleting & undo"),
+        (Section.Keys,   "Keyboard"),
+        (Section.Faq,    "FAQ"),
+    ];
+
+    // Windows shows Ctrl, macOS shows the command glyph. The rest of the app resolves this the
+    // same way; a shortcut list that names the wrong modifier is worse than no list.
+    static string ModKey => OperatingSystem.IsMacOS() ? "⌘" : "Ctrl";
+
+    protected override void OnParametersSet()
+    {
+        if (Show && !_wasShown)
+        {
+            _needsFocus = true;
+            // Reopening returns to the top of the help, not to wherever the last visit ended —
+            // a dialog that reopens two-thirds of the way into "Exporting" reads as broken.
+            _section = OpenAt is { } at && Enum.TryParse<Section>(at, true, out var s)
+                ? s
+                : Section.Start;
+        }
+        _wasShown = Show;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (Show && _needsFocus)
+        {
+            _needsFocus = false;
+            await _ref.FocusAsync();
+        }
+    }
+
+    Task HandleKeyDown(KeyboardEventArgs e) => e.Key == "Escape" ? Close() : Task.CompletedTask;
+
+    Task Close() => OnClose.InvokeAsync();
+
+    // ---- sections -----------------------------------------------------------
+    //
+    // Held as fragments rather than separate components: each is prose with no state and no
+    // behaviour, and nine one-file components would be nine files to open to check one wording.
+    //
+    // Picked in C# rather than by a @switch in the markup. Inside a Razor code block, `@Frag;`
+    // has to guess where the markup transition ends, and the stray `;` renders as text.
+
+    RenderFragment Body => _section switch
+    {
+        Section.Scan => Scanning,
+        Section.Dupes => Duplicates,
+        Section.Nsfw => Explicit,
+        Section.Select => Selecting,
+        Section.Export => Exporting,
+        Section.Delete => Deleting,
+        Section.Keys => Keyboard,
+        Section.Faq => Faq,
+        _ => StartHere,
+    };
+
+    RenderFragment StartHere => @<div class="help-sec">
+        <h3>The short version</h3>
+        <ol class="help-steps">
+            <li><b>Scan a folder.</b> Type or paste its path at the top and press <b>Scan</b>. SnapZap reads every photo under it and remembers what it found.</li>
+            <li><b>Press <b>Find duplicates</b>.</b> It groups identical files, the same shot at another size, and bursts. Optionally press <b>Score NSFW</b> to flag explicit photos.</li>
+            <li><b>Pick the photos you want to keep.</b> Click them, or use the <b>Select</b> commands in the bar.</li>
+            <li><b>Press <b>Export…</b></b> to write them somewhere clean — or <b>Delete…</b> to recycle what you don't want.</li>
+        </ol>
+
+        <div class="help-note ok">
+            <b>Two things that are always true</b>
+            <p>Your original folder is never touched unless you explicitly ask — an export in <i>Move</i> mode, or the opt-in "also recycle what I didn't pick" box.</p>
+            <p>Nothing is ever hard-deleted. Deleting goes to the Recycle Bin, and every batch is reversible from <b>History</b>.</p>
+        </div>
+
+        <h3>Where things are</h3>
+        <dl class="help-dl">
+            <dt>Top bar</dt><dd>The folder box and the three actions: <b>Scan</b>, <b>Find duplicates</b>, <b>Score NSFW</b>.</dd>
+            <dt>Filter bar</dt><dd><b>Filters</b>, the <b>Select</b> commands, <b>Review duplicates</b> and <b>History</b>.</dd>
+            <dt>Left pane</dt><dd>The folder tree of whatever you scanned. Click a folder to show only its photos.</dd>
+            <dt>Bottom bar</dt><dd><b>Export…</b> and <b>Delete…</b> — it appears once you have selected at least one photo.</dd>
+            <dt>Gear icon</dt><dd><b>Setup</b>: the optional add-on, what duplicate detection checks, and the catalogue.</dd>
+        </dl>
+    </div>;
+
+    RenderFragment Scanning => @<div class="help-sec">
+        <h3>Scanning a folder</h3>
+        <p>Type or paste a folder path into the box at the top and press <b>Scan</b>, or just press <kbd>Enter</kbd>. A leading <code>~</code> expands to your home folder.</p>
+        <p>SnapZap walks that folder and everything beneath it, recording a checksum, the dimensions, the capture date and camera from EXIF, a sharpness score, a visual fingerprint and a thumbnail for each photo.</p>
+        <p><b>Stop</b> is always available, and it is safe — everything analysed so far is kept.</p>
+
+        <h3>Which files it reads</h3>
+        <p class="help-formats">.jpg &nbsp; .jpeg &nbsp; .png &nbsp; .webp &nbsp; .gif &nbsp; .bmp &nbsp; .tif &nbsp; .tiff</p>
+
+        <h3>Which it can't read yet</h3>
+        <p class="help-formats quiet">.heic &nbsp; .heif &nbsp; .avif &nbsp; and camera RAW (.cr2, .cr3, .nef, .arw, .dng, .orf, .rw2, .raf, .srw, .pef)</p>
+        <p>These are counted and reported above the grid, never touched. If your library came off an iPhone it is probably mostly HEIC — which is why SnapZap says so rather than reporting an empty folder.</p>
+
+        <h3>Re-scanning is fast</h3>
+        <p>A file whose path, size and modification time have not changed is reused from the catalogue rather than read again, so scanning the same library a second time is close to instant.</p>
+        <p>Files that have left the folder are dropped from the catalogue, and the status line says how many — along with their scores and keeper decisions, which is why it is said out loud rather than shown as a quietly shorter grid.</p>
+    </div>;
+
+    RenderFragment Duplicates => @<div class="help-sec">
+        <h3>Three kinds, and the difference matters</h3>
+        <table class="help-table">
+            <thead><tr><th>Kind</th><th>What it means</th><th>Bulk-select?</th></tr></thead>
+            <tbody>
+                <tr><td><b>Identical</b></td><td>Byte-for-byte the same file, in two places. Found by checksum.</td><td class="ok">Yes</td></tr>
+                <tr><td><b>Same shot</b></td><td>One photograph, resized, re-saved, converted or rotated.</td><td class="ok">Yes</td></tr>
+                <tr><td><b>Burst</b></td><td>Different photographs of the same scene, seconds apart.</td><td class="warn">No</td></tr>
+            </tbody>
+        </table>
+
+        <div class="help-note warn">
+            <b>Why bursts are treated differently</b>
+            <p>A burst of five frames is five <i>different photographs</i>, not five copies of one. SnapZap groups them so you can look at them, but deliberately leaves them out of <b>Extras</b> — sweeping them into a delete would throw real photos away. For a burst, you pick the keeper yourself.</p>
+        </div>
+
+        <h3>On the photos</h3>
+        <p>Cards pick up a badge: <b>✓</b> for the copy being kept from its group, <b>▣</b> for an extra copy. Hover either for the group number and kind.</p>
+
+        <h3>Reviewing them</h3>
+        <p>Press <b>Review duplicates</b> for the good way to work through them — one group at a time, copies side by side. Facts that are identical across the group are greyed out because they cannot help you choose; whatever differs stays bright, and a clear winner on resolution or file size is highlighted.</p>
+        <p>Click a copy to make it the keeper. <b>Compare full size</b> opens them at full resolution with the panes panning together. <b>Nothing is deleted in that dialog</b> — it only decides which copy survives an export or delete you run afterwards.</p>
+
+        <h3>Tuning it</h3>
+        <p>In <b>Setup → What "Find duplicates" checks</b>:</p>
+        <ul>
+            <li><b>Identical files</b> — always on. A duplicate finder that cannot find identical files is not one.</li>
+            <li><b>The same shot at another size</b> — on by default, with a strictness slider (default 20 of 272) and an option to match rotated copies.</li>
+            <li><b>Bursts</b> — always on. Only the window is tunable, default 3 seconds.</li>
+        </ul>
+        <p class="hint">Changes save immediately. Run <b>Find duplicates</b> again to apply them.</p>
+    </div>;
+
+    RenderFragment Explicit => @<div class="help-sec">
+        <h3>Scoring explicit content</h3>
+        <p>Press <b>Score NSFW</b>. This is the one feature that needs an optional download — see <b>Setup</b> if the button is greyed out. Everything else in SnapZap works without it.</p>
+        <p>Every photo gets one score from 0.00 to 1.00 and lands in a band:</p>
+
+        <table class="help-table">
+            <thead><tr><th>Band</th><th>Score</th><th>Meaning</th></tr></thead>
+            <tbody>
+                <tr><td class="warn"><b>Likely explicit</b></td><td>0.85 and up</td><td>The model is fairly confident</td></tr>
+                <tr><td class="warn"><b>Not sure</b></td><td>0.20 – 0.85</td><td>The pile actually worth looking at</td></tr>
+                <tr><td class="ok"><b>Looks clean</b></td><td>below 0.20</td><td></td></tr>
+                <tr><td class="quiet"><b>Not checked yet</b></td><td>—</td><td>Never scored</td></tr>
+            </tbody>
+        </table>
+
+        <div class="help-note">
+            <b>It is a guess, not a verdict</b>
+            <p>The model is right often enough to be useful and wrong often enough that you should look before you act. That is exactly what the "Not sure" band is for — it is deliberately small, so it stays a review queue rather than a category.</p>
+        </div>
+
+        <p>Flagged photos get a shield badge in the grid; hover it for the score and the threshold it was measured against.</p>
+    </div>;
+
+    RenderFragment Selecting => @<div class="help-sec">
+        <h3>Nothing happens until you select something</h3>
+        <p>The <b>Export…</b> and <b>Delete…</b> buttons only appear once at least one photo is picked.</p>
+
+        <h3>By hand</h3>
+        <dl class="help-dl">
+            <dt>Click</dt><dd>Select or deselect one photo.</dd>
+            <dt>Shift-click</dt><dd>Select the whole range from the last photo you clicked to this one.</dd>
+            <dt>Double-click</dt><dd>Open the preview.</dd>
+        </dl>
+
+        <h3>By command</h3>
+        <p>The <b>Select</b> commands sit in the filter bar. Each shows how many photos it would pick, and hovering explains it.</p>
+        <table class="help-table">
+            <tbody>
+                <tr><td><b>All shown</b></td><td>Everything the current filters show (<kbd>@ModKey</kbd><kbd>A</kbd>)</td></tr>
+                <tr><td><b>Flagged</b></td><td>Photos the model called likely explicit</td></tr>
+                <tr><td><b>Extras</b></td><td>Every extra copy — identical and same-shot only, <b>never burst frames</b></td></tr>
+                <tr><td><b>Invert</b></td><td>Everything shown that is not selected now</td></tr>
+                <tr><td><b>Clear</b></td><td>Deselect everything (<kbd>@ModKey</kbd><kbd>D</kbd>)</td></tr>
+                <tr><td><b>More → Not sure</b></td><td>Photos the model was unsure about</td></tr>
+                <tr><td><b>More → Keepers</b></td><td>The one copy being kept from each duplicate group</td></tr>
+            </tbody>
+        </table>
+        <p class="hint">A command that cannot do anything stays visible but greyed, and its tooltip says which step is actually missing.</p>
+
+        <div class="help-note warn">
+            <b>The selection is shared by every SnapZap window</b>
+            <p>A command like <b>Extras</b> <i>replaces</i> the selection rather than adding to it, so a press in one window changes what the other is about to export or delete.</p>
+        </div>
+    </div>;
+
+    RenderFragment Exporting => @<div class="help-sec">
+        <h3>Exporting</h3>
+        <p>Select the photos you want, then press <b>Export…</b>. Give it a <b>full path</b> starting from the root of the drive — a relative one is rejected, because it would quietly resolve somewhere inside the folder you are cleaning.</p>
+
+        <h3>Transfer mode</h3>
+        <dl class="help-dl">
+            <dt>Copy</dt><dd>The default, and the safest. Originals stay exactly where they are.</dd>
+            <dt>Move</dt><dd>The file is written, hash-verified against the original, and <i>only then</i> is the source removed.</dd>
+            <dt>Hardlink</dt><dd>A second name for the same data — instant and free, but destination and source must be on the same drive.</dd>
+        </dl>
+
+        <h3>Structure</h3>
+        <dl class="help-dl">
+            <dt>By date</dt><dd><code>YYYY/YYYY-MM/</code> from the capture date. The default.</dd>
+            <dt>Mirror source tree</dt><dd>Keeps your existing folder layout. Needs a folder scanned this session.</dd>
+            <dt>Flat</dt><dd>Everything in one folder, with collision-safe renaming.</dd>
+        </dl>
+
+        <h3>Check destination</h3>
+        <p>Press it before exporting. You get the count and total size to be written, the free space at the destination and whether that is enough, whether hardlinks are available, and an example of the folders that will be created.</p>
+        <p><b>Export stays disabled until this check passes</b>, and changing the destination, mode or structure invalidates it — so the button can never be armed for a plan nobody verified.</p>
+
+        <h3>Also recycle what you didn't pick</h3>
+        <div class="help-note warn">
+            <p>This opt-in box sends every photo you did <i>not</i> select to the Recycle Bin, but only <b>after</b> the export has been written and verified.</p>
+            <p><b>Filters do not limit it</b> — it covers the whole catalogue, not just what is on screen. It is reversible from <b>History</b>.</p>
+        </div>
+
+        <h3>While it runs, and after</h3>
+        <p><b>Stop</b> is always safe: everything already copied has been verified, and running the export again resumes where it left off rather than starting over.</p>
+        <p>When it finishes you get a summary and the path to a <b>manifest</b> — a CSV recording exactly what went where.</p>
+    </div>;
+
+    RenderFragment Deleting => @<div class="help-sec">
+        <h3>Deleting</h3>
+        <p>Select photos and press <b>Delete…</b>. A confirmation names the exact count and total size before anything happens.</p>
+        <p>Confirming moves them to the <b>Recycle Bin</b> — never a hard delete. A message appears with an <b>Undo</b> button that puts them straight back.</p>
+
+        <h3>History</h3>
+        <p>If that message has gone, everything is still there. <b>History</b> in the filter bar lists every batch SnapZap has recycled or moved, newest first, each with a <b>Restore</b> button that puts the files back where they came from.</p>
+        <table class="help-table">
+            <thead><tr><th>Entry</th><th>What it was</th></tr></thead>
+            <tbody>
+                <tr><td><b>Deleted</b></td><td>A normal delete</td></tr>
+                <tr><td><b>Recycled during export</b></td><td>The "also recycle what I didn't pick" option</td></tr>
+                <tr><td><b>Moved out by export</b></td><td>An export in Move mode. These were <i>relocated</i>, not binned — so the Recycle Bin is the wrong place to look for them.</td></tr>
+            </tbody>
+        </table>
+        <p class="hint">You can also restore from the Recycle Bin's own right-click menu.</p>
+    </div>;
+
+    RenderFragment Keyboard => @<div class="help-sec">
+        <h3>In the grid</h3>
+        <div class="shortcuts">
+            <div><span>Move between photos</span> <kbd>↑</kbd> <kbd>↓</kbd> <kbd>←</kbd> <kbd>→</kbd></div>
+            <div><span>Select / deselect</span> <kbd>X</kbd> <kbd>Space</kbd></div>
+            <div><span>Extend selection to here</span> <kbd>Shift</kbd> <kbd>X</kbd></div>
+            <div><span>Open preview</span> <kbd>Enter</kbd></div>
+            <div><span>First / last photo</span> <kbd>Home</kbd> <kbd>End</kbd></div>
+            <div><span>Select everything shown</span> <kbd>@ModKey</kbd> <kbd>A</kbd></div>
+            <div><span>Clear selection</span> <kbd>@ModKey</kbd> <kbd>D</kbd></div>
+        </div>
+
+        <h3>In the preview</h3>
+        <div class="shortcuts">
+            <div><span>Previous / next photo</span> <kbd>←</kbd> <kbd>→</kbd></div>
+            <div><span>Select / deselect</span> <kbd>X</kbd></div>
+            <div><span>Photo details</span> <kbd>I</kbd></div>
+            <div><span>Close</span> <kbd>Esc</kbd></div>
+        </div>
+
+        <h3>In Review duplicates</h3>
+        <div class="shortcuts">
+            <div><span>Previous / next group</span> <kbd>←</kbd> <kbd>→</kbd></div>
+            <div><span>Pick that copy as the keeper</span> <kbd>1</kbd>–<kbd>9</kbd></div>
+            <div><span>Close</span> <kbd>Esc</kbd></div>
+        </div>
+
+        <h3>In the folder tree</h3>
+        <div class="shortcuts">
+            <div><span>Move between folders</span> <kbd>↑</kbd> <kbd>↓</kbd></div>
+            <div><span>Expand / collapse</span> <kbd>→</kbd> <kbd>←</kbd></div>
+            <div><span>First / last folder</span> <kbd>Home</kbd> <kbd>End</kbd></div>
+        </div>
+
+        <h3>Everywhere</h3>
+        <div class="shortcuts">
+            <div><span>Scan, from the folder box</span> <kbd>Enter</kbd></div>
+            <div><span>Close the open dialog or menu</span> <kbd>Esc</kbd></div>
+        </div>
+
+        <p class="hint">Press <kbd>Tab</kbd> from the toolbar to reach the grid — it is a single tab stop, and the arrows move within it.</p>
+        <p class="hint">
+            <kbd>@ModKey</kbd><kbd>A</kbd> and <kbd>@ModKey</kbd><kbd>D</kbd> are ignored while a
+            dialog is open, so a stray keypress cannot re-aim a delete confirmation already on screen.
+        </p>
+    </div>;
+
+    RenderFragment Faq => @<div class="help-sec faq">
+        <h3>Frequently asked</h3>
+
+        <details>
+            <summary>Is anything uploaded, or does this need an internet connection?</summary>
+            <p>No, to both. SnapZap runs entirely on your own machine. It opens in your browser because that is its window, not because anything is going online. Duplicate detection, blur, dates and export are all in-process; the only download is the optional explicit-content model, and that is a one-time install.</p>
+        </details>
+
+        <details>
+            <summary>Will SnapZap delete my photos?</summary>
+            <p>Not without you asking, and never permanently. Scanning and finding duplicates are read-only. Deleting moves files to the Recycle Bin and every batch is restorable from <b>History</b>. The only ways your source folder is touched are an export in <i>Move</i> mode and the opt-in "also recycle what I didn't pick" box — both clearly labelled, both undoable.</p>
+        </details>
+
+        <details>
+            <summary>My iPhone photos don't show up.</summary>
+            <p>They are almost certainly HEIC, which SnapZap cannot decode yet — nor AVIF, nor camera RAW. They are counted and reported in the note above the grid, and left completely untouched. Converting them to JPEG makes them visible.</p>
+        </details>
+
+        <details>
+            <summary>"Score NSFW" is greyed out.</summary>
+            <p>The optional model is not installed. Open <b>Setup</b> (the gear, top right) — it shows the exact command to install it, and a <b>Check again</b> button that picks it up without a restart. Everything else in SnapZap works without it.</p>
+        </details>
+
+        <details>
+            <summary>"Find duplicates" is greyed out.</summary>
+            <p>Scan a folder first. Duplicate detection itself needs no download and no setup — all three kinds are built in.</p>
+        </details>
+
+        <details>
+            <summary>Why won't the Export button turn on?</summary>
+            <p>Press <b>Check destination</b> first. If you changed the destination, mode or structure after checking, check again — the button deliberately disarms so it can never run a plan that nothing verified. If the check says there is not enough room, the export stays blocked.</p>
+        </details>
+
+        <details>
+            <summary>It says "Enter a full path, starting from the root of the drive."</summary>
+            <p>Relative destination paths are rejected, because one would resolve somewhere unexpected — possibly inside the very folder you are cleaning. Use a full path.</p>
+        </details>
+
+        <details>
+            <summary>Mirror structure won't let me export.</summary>
+            <p>Mirror recreates your existing folder layout, so it needs a source folder scanned in this session to make paths relative to. Scan the source again, or choose <b>By date</b> or <b>Flat</b>.</p>
+        </details>
+
+        <details>
+            <summary>A burst of shots got grouped as duplicates. Will they be deleted?</summary>
+            <p>No. Bursts are grouped so you can review them, but they are deliberately excluded from <b>Extras</b>, so a bulk selection will not pick them up. Use <b>Review duplicates</b> to choose which frames you want. If one burst is being split across several groups, widen the burst window in <b>Setup</b>.</p>
+        </details>
+
+        <details>
+            <summary>Why didn't it find my cropped copies?</summary>
+            <p>It can't. A crop changes the image enough that the visual fingerprint no longer matches — that is a known limit of how the matching works, not something a setting will fix.</p>
+        </details>
+
+        <details>
+            <summary>The filters are showing nothing.</summary>
+            <p>The message in the empty grid names the reason. The usual one: an explicit-content filter over a library that has not been scored matches nothing, because every photo is still "Not checked". Either run <b>Score NSFW</b> or clear the filter.</p>
+        </details>
+
+        <details>
+            <summary>Scanning was slow. Will it be that slow every time?</summary>
+            <p>No. The first scan analyses every photo. After that, any file whose path, size and modification time are unchanged is reused from the catalogue, so re-scanning the same library is close to instant. <b>Stop</b> is safe at any point — the work done so far is kept.</p>
+        </details>
+
+        <details>
+            <summary>Where does SnapZap keep its own data?</summary>
+            <p>In your local app-data folder, deliberately <i>outside</i> the folder you scan, so it never writes into your photo library: the catalogue database, thumbnails, export manifests and preferences. <b>Setup → Forget everything</b> clears all of it — no photo is deleted or moved, and a scan rebuilds it.</p>
+        </details>
+
+        <details>
+            <summary>Can I run two windows on the same library?</summary>
+            <p>Yes, but they share one selection. A command like <b>Extras</b> replaces the selection rather than adding to it, so a press in one window changes what the other is about to act on.</p>
+        </details>
+    </div>;
+}
