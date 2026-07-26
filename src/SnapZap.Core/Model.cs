@@ -20,6 +20,17 @@ public sealed record ImageRecord
 
     public string? ThumbPath { get; init; }
     public long? AnalyzedAt { get; init; }
+
+    /// <summary>
+    /// Unix UTC of the last duplicate-detection run that covered this row; null when it has never
+    /// been checked, or when the file changed since it was.
+    /// </summary>
+    /// <remarks>
+    /// Membership in a group is not the same fact. A photo with no duplicates and a photo nobody
+    /// has run detection over both have zero groups, and without this the folder tree cannot tell
+    /// the user which of the two it is looking at.
+    /// </remarks>
+    public long? DupeCheckedAt { get; init; }
 }
 
 public enum DupeKind { Exact, Similar }

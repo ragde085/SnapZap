@@ -20,6 +20,13 @@ public sealed class ImageRepository(Database db)
     }
 
     /// <summary>Insert or replace a fully analyzed image row. Returns the row id.</summary>
+    /// <remarks>
+    /// <c>dupe_checked_at</c> is reset to null on conflict rather than carried over. The scanner
+    /// only reaches this for a cache miss — the file's size or mtime moved, so its bytes may have
+    /// too — and a duplicate verdict computed against the previous content is no longer a verdict
+    /// about this file. Leaving the old timestamp would report the folder as checked while its
+    /// changed photos silently were not.
+    /// </remarks>
     public long Upsert(ImageRecord img)
     {
         using var cmd = _c.CreateCommand();
@@ -35,7 +42,7 @@ public sealed class ImageRepository(Database db)
               format=excluded.format, nsfw_score=excluded.nsfw_score,
               blur_score=excluded.blur_score, exif_taken=excluded.exif_taken,
               exif_camera=excluded.exif_camera, thumb_path=excluded.thumb_path,
-              analyzed_at=excluded.analyzed_at
+              analyzed_at=excluded.analyzed_at, dupe_checked_at=NULL
             RETURNING id;
             """;
         cmd.Parameters.AddWithValue("$path", img.Path);
@@ -82,21 +89,18 @@ public sealed class ImageRepository(Database db)
             tx.Commit();
         }
 
-        // Prefix-compare with substr rather than LIKE: a folder called "50%_off" or "a_b" is a
-        // legal directory name and would be read as wildcards.
-        var prefix = root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
-                   + Path.DirectorySeparatorChar;
-
         // Inside the root: the enumeration is authoritative, so anything absent from it is gone.
+        // Scoping goes through PathScope so this cannot drift from what the rest of the app calls
+        // "inside the folder" — and so it gets the same index-usable range predicate.
         int removed;
         using (var del = _c.CreateCommand())
         {
-            del.CommandText = """
+            del.CommandText = $"""
                 DELETE FROM images
-                 WHERE substr(path, 1, length($prefix)) = $prefix
+                 WHERE {PathScope.Sql}
                    AND path NOT IN (SELECT path FROM _live)
                 """;
-            del.Parameters.AddWithValue("$prefix", prefix);
+            PathScope.Bind(del, root);
             removed = del.ExecuteNonQuery();
         }
 
@@ -104,8 +108,8 @@ public sealed class ImageRepository(Database db)
         var strays = new List<string>();
         using (var q = _c.CreateCommand())
         {
-            q.CommandText = "SELECT path FROM images WHERE substr(path, 1, length($prefix)) <> $prefix";
-            q.Parameters.AddWithValue("$prefix", prefix);
+            q.CommandText = $"SELECT path FROM images WHERE NOT {PathScope.Sql}";
+            PathScope.Bind(q, root);
             using var r = q.ExecuteReader();
             while (r.Read())
             {
@@ -136,6 +140,24 @@ public sealed class ImageRepository(Database db)
         while (r.Read())
             map[r.GetString(0)] = (r.GetInt64(1), r.GetInt64(2), r.GetInt64(3));
         return map;
+    }
+
+    /// <summary>
+    /// Stamp every row under <paramref name="root"/> as covered by a completed duplicate-detection
+    /// run. Returns the number of rows stamped.
+    /// </summary>
+    /// <remarks>
+    /// Called only after detection finishes, never before it starts: a run that was cancelled or
+    /// threw has told us nothing about these photos, and marking them checked would hide exactly
+    /// the folders the user needs to go back to.
+    /// </remarks>
+    public int MarkDupeChecked(string? root, long? whenUtc = null)
+    {
+        using var cmd = _c.CreateCommand();
+        cmd.CommandText = $"UPDATE images SET dupe_checked_at=$at WHERE {PathScope.Where(root)}";
+        cmd.Parameters.AddWithValue("$at", whenUtc ?? DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+        PathScope.Bind(cmd, root);
+        return cmd.ExecuteNonQuery();
     }
 
     /// <summary>
@@ -240,7 +262,8 @@ public sealed class ImageRepository(Database db)
         using var cmd = _c.CreateCommand();
         cmd.CommandText = $"""
             SELECT id, path, content_hash, file_size, mtime, width, height, format,
-                   nsfw_score, blur_score, exif_taken, exif_camera, thumb_path, analyzed_at
+                   nsfw_score, blur_score, exif_taken, exif_camera, thumb_path, analyzed_at,
+                   dupe_checked_at
             FROM images
             WHERE {PathScope.Where(root)}
             ORDER BY id
@@ -266,6 +289,7 @@ public sealed class ImageRepository(Database db)
                 ExifCamera = r.IsDBNull(11) ? null : r.GetString(11),
                 ThumbPath = r.IsDBNull(12) ? null : r.GetString(12),
                 AnalyzedAt = r.IsDBNull(13) ? null : r.GetInt64(13),
+                DupeCheckedAt = r.IsDBNull(14) ? null : r.GetInt64(14),
             };
         }
     }

@@ -74,6 +74,87 @@ public class ExactDedupTests : IDisposable
         Assert.Contains("not found", report.Note);
     }
 
+    /// <summary>
+    /// The folder tree's whole ability to say "checked, and clean" rests on this stamp existing
+    /// after a run and being absent before one. Without it a folder with no duplicates and a
+    /// folder nobody has looked at are indistinguishable.
+    /// </summary>
+    [Fact]
+    public async Task Completed_detection_marks_the_scanned_rows_as_checked()
+    {
+        WritePng(Path.Combine(_photos, "a.png"), 100, 100, SKColors.Red);
+        WritePng(Path.Combine(_photos, "b.png"), 120, 120, SKColors.Blue);
+
+        using var db = new Database(_dbPath);
+        await new Scanner(db, new SkiaImageService(), _thumbs).ScanAsync(_photos);
+
+        var repo = new ImageRepository(db);
+        Assert.All(repo.Under(_photos), i => Assert.Null(i.DupeCheckedAt));
+
+        await new DuplicateService(db, czkawkaPath: "/nonexistent/czkawka_cli").DetectAsync(_photos);
+
+        // Marked even with czkawka absent: the run did everything this install can do, and
+        // withholding the stamp would leave a pending dot the user has no way to clear.
+        Assert.All(repo.Under(_photos), i => Assert.NotNull(i.DupeCheckedAt));
+    }
+
+    /// <summary>
+    /// Re-analysing a file whose bytes moved invalidates the verdict computed against the old
+    /// ones. Carrying the stamp across an Upsert would report the folder as checked while the
+    /// photos that actually changed silently were not.
+    /// </summary>
+    [Fact]
+    public async Task Rescanning_a_changed_file_clears_its_checked_stamp()
+    {
+        var target = Path.Combine(_photos, "a.png");
+        WritePng(target, 100, 100, SKColors.Red);
+
+        using var db = new Database(_dbPath);
+        var scanner = new Scanner(db, new SkiaImageService(), _thumbs);
+        await scanner.ScanAsync(_photos);
+        await new DuplicateService(db, czkawkaPath: "/nonexistent/czkawka_cli").DetectAsync(_photos);
+
+        var repo = new ImageRepository(db);
+        Assert.NotNull(repo.Under(_photos).Single().DupeCheckedAt);
+
+        // Different content and a different size, so the tier-1 probe misses and the row is
+        // re-analysed rather than reused from cache.
+        WritePng(target, 640, 480, SKColors.Green);
+        File.SetLastWriteTimeUtc(target, DateTime.UtcNow.AddMinutes(1));
+        await scanner.ScanAsync(_photos);
+
+        Assert.Null(repo.Under(_photos).Single().DupeCheckedAt);
+    }
+
+    /// <summary>
+    /// PathScope moved from a substr() equality to a half-open range so the predicate could use
+    /// the index on images.path. The rewrite has to select exactly the same rows — including for
+    /// a sibling folder whose name extends the scoped one ("pics" vs "pics_old"), which is where
+    /// a careless prefix comparison leaks.
+    /// </summary>
+    [Fact]
+    public async Task Scoped_queries_exclude_sibling_folders_with_the_scope_as_a_name_prefix()
+    {
+        var inside = Path.Combine(_photos, "pics");
+        var sibling = Path.Combine(_photos, "pics_old");
+        WritePng(Path.Combine(inside, "a.png"), 100, 100, SKColors.Red);
+        WritePng(Path.Combine(sibling, "b.png"), 100, 100, SKColors.Blue);
+
+        using var db = new Database(_dbPath);
+        await new Scanner(db, new SkiaImageService(), _thumbs).ScanAsync(_photos);
+
+        var repo = new ImageRepository(db);
+        Assert.Equal(2, repo.Under(_photos).Count());
+
+        var scoped = repo.Under(inside).ToList();
+        Assert.Single(scoped);
+        Assert.EndsWith("a.png", scoped[0].Path);
+
+        // And the write path scopes identically to the read path.
+        Assert.Equal(1, repo.MarkDupeChecked(inside));
+        Assert.All(repo.Under(sibling), i => Assert.Null(i.DupeCheckedAt));
+    }
+
     public void Dispose()
     {
         try { if (Directory.Exists(_work)) Directory.Delete(_work, true); } catch { }

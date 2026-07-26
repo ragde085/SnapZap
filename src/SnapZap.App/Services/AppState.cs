@@ -98,6 +98,16 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
     public int BusyDone { get; private set; }
     public int BusyTotal { get; private set; }
 
+    /// <summary>
+    /// What the current step is doing right now, when it can say — the file being hashed, the line
+    /// czkawka just printed. Null when the operation has nothing more specific than its label.
+    /// </summary>
+    /// <remarks>
+    /// Separate from <see cref="BusyLabel"/>, which names the whole operation and must stay stable
+    /// while this changes underneath it.
+    /// </remarks>
+    public string? BusyDetail { get; private set; }
+
     CancellationTokenSource? _cts;
 
     /// <summary>True while an operation is running that hasn't already been asked to stop.</summary>
@@ -598,9 +608,10 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
     public async Task DedupAsync()
     {
         if (Busy || ScannedFolder is not { } folder) return;
-        await RunAsync("Finding duplicates", async (_, ct) =>
+        await RunAsync("Finding duplicates", async (reportProgress, ct) =>
         {
-            var report = await new DuplicateService(catalog.Db).DetectAsync(folder, ct);
+            var progress = new Progress<DedupProgress>(p => reportProgress(p.Done, p.Total, p.Detail));
+            var report = await new DuplicateService(catalog.Db).DetectAsync(folder, progress, ct);
             await LoadAsync();
 
             // Counted from the loaded, scoped groups rather than the detector's own tallies,
@@ -639,6 +650,7 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
         BusyLabel = label;
         BusyDone = 0;
         BusyTotal = 0;
+        BusyDetail = null;
         Status = "";
         _cts = new CancellationTokenSource();
         Notify();
@@ -650,11 +662,12 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
         await Task.Yield();
 
         var live = true;
-        void Report(int done, int total, string? _)
+        void Report(int done, int total, string? detail)
         {
             if (!live) return;
             BusyDone = done;
             BusyTotal = total;
+            BusyDetail = detail;
             Notify();
         }
 
@@ -678,6 +691,7 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
             live = false;
             Busy = false;
             BusyLabel = null;
+            BusyDetail = null;
             _cts?.Dispose();
             _cts = null;
             Notify();

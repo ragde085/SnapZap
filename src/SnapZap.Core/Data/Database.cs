@@ -61,7 +61,27 @@ public sealed class Database : IDisposable
         cmd.ExecuteNonQuery();
     }
 
-    void Migrate() => Exec(Schema);
+    void Migrate()
+    {
+        Exec(Schema);
+
+        // Columns added after the first release. CREATE TABLE IF NOT EXISTS is a no-op against an
+        // existing catalogue, so adding a column to Schema below reaches new databases only —
+        // every already-created one needs a guarded ALTER here too.
+        AddColumnIfMissing("images", "dupe_checked_at", "INTEGER");
+    }
+
+    /// <summary>Idempotent ALTER: SQLite has no ADD COLUMN IF NOT EXISTS.</summary>
+    void AddColumnIfMissing(string table, string column, string declaration)
+    {
+        using (var q = Connection.CreateCommand())
+        {
+            q.CommandText = $"SELECT COUNT(*) FROM pragma_table_info('{table}') WHERE name = $n";
+            q.Parameters.AddWithValue("$n", column);
+            if (Convert.ToInt64(q.ExecuteScalar()) > 0) return;
+        }
+        Exec($"ALTER TABLE {table} ADD COLUMN {column} {declaration};");
+    }
 
     // Kept idempotent (IF NOT EXISTS) so re-opening an existing catalog is a no-op.
     const string Schema = """
@@ -79,7 +99,11 @@ public sealed class Database : IDisposable
           exif_taken    INTEGER,
           exif_camera   TEXT,
           thumb_path    TEXT,
-          analyzed_at   INTEGER
+          analyzed_at   INTEGER,
+          -- When duplicate detection last covered this row. Null means "never checked", which is
+          -- what lets the folder tree tell a folder with no duplicates apart from one nobody has
+          -- looked at yet. Cleared by Upsert, so re-analysing a changed file makes it stale again.
+          dupe_checked_at INTEGER
         );
         CREATE INDEX IF NOT EXISTS ix_images_hash  ON images(content_hash);
         CREATE INDEX IF NOT EXISTS ix_images_nsfw  ON images(nsfw_score);

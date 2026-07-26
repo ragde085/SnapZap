@@ -653,6 +653,10 @@ main { display: flex; flex: 1; min-height: 0; }
 
 .tree-dupes { flex: none; color: var(--dim); font-size: 0.85em; }
 
+/* Same glyph, receded: "checked, nothing found". It has to read as a distinct state from no
+   glyph at all ("never checked") without competing with a real duplicate count. */
+.tree-dupes.clean { opacity: 0.32; }
+
 /* Amber dot: some analysis step hasn't reached this subtree yet. */
 .tree-pending {
   flex: none;

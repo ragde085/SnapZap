@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text;
 using System.Text.Json;
 using SnapZap.Core.Data;
 
@@ -52,7 +53,13 @@ public sealed class CzkawkaFinder(Database db, string? explicitBinaryPath = null
         return null;
     }
 
-    public async Task<CzkawkaResult> FindSimilarAsync(string root, CancellationToken ct = default)
+    /// <param name="progress">
+    /// Receives czkawka's own stdout lines as they arrive. This is not decoration: the pipes have
+    /// to be drained concurrently regardless (see below), so surfacing what comes out of them
+    /// costs nothing and is the only progress signal a subprocess this opaque can give.
+    /// </param>
+    public async Task<CzkawkaResult> FindSimilarAsync(
+        string root, IProgress<string>? progress = null, CancellationToken ct = default)
     {
         var bin = LocateBinary();
         if (bin is null)
@@ -73,12 +80,35 @@ public sealed class CzkawkaFinder(Database db, string? explicitBinaryPath = null
             psi.ArgumentList.Add("-C"); psi.ArgumentList.Add(jsonPath); // compact JSON
 
             using var p = Process.Start(psi)!;
-            await p.WaitForExitAsync(ct);
-            if (!File.Exists(jsonPath))
+
+            // Both pipes must be drained *while* the child runs, not after it exits. Redirecting a
+            // stream and then only awaiting WaitForExitAsync deadlocks the moment czkawka writes
+            // more than the OS pipe buffer (~4 KB): the child blocks on write, never exits, and we
+            // block on an exit that can never come. On a large library czkawka's progress output
+            // crosses that threshold easily, which is what made "find duplicates" look merely slow
+            // rather than hung.
+            var stdoutTask = DrainAsync(p.StandardOutput, progress, ct);
+            var stderrTask = DrainAsync(p.StandardError, null, ct);
+
+            try
             {
-                var err = await p.StandardError.ReadToEndAsync(ct);
-                return new CzkawkaResult(true, 0, $"czkawka produced no output (exit {p.ExitCode}). {Trim(err)}");
+                await p.WaitForExitAsync(ct);
             }
+            catch (OperationCanceledException)
+            {
+                // Cancelling the await abandons the process, it does not stop it. Without this the
+                // "Stop" button leaves a detached czkawka pegging every core until it finishes the
+                // library the user just walked away from.
+                try { if (!p.HasExited) p.Kill(entireProcessTree: true); } catch { /* already gone */ }
+                throw;
+            }
+
+            var stdout = await stdoutTask;
+            var stderr = await stderrTask;
+
+            if (!File.Exists(jsonPath))
+                return new CzkawkaResult(true, 0,
+                    $"czkawka produced no output (exit {p.ExitCode}). {Trim(stderr.Length > 0 ? stderr : stdout)}");
 
             var groups = ParseGroups(await File.ReadAllTextAsync(jsonPath, ct));
             var stored = StoreGroups(groups, root);
@@ -94,6 +124,29 @@ public sealed class CzkawkaFinder(Database db, string? explicitBinaryPath = null
             if (File.Exists(jsonPath)) try { File.Delete(jsonPath); } catch { }
         }
     }
+
+    /// <summary>
+    /// Read one redirected stream to completion, relaying each line, and keep a bounded tail for
+    /// the error message. Bounded because a run that fails after emitting megabytes of progress
+    /// should not park all of it in memory to quote 200 characters of it.
+    /// </summary>
+    static Task<string> DrainAsync(StreamReader reader, IProgress<string>? progress, CancellationToken ct) =>
+        Task.Run(async () =>
+        {
+            var tail = new Queue<string>();
+            try
+            {
+                while (await reader.ReadLineAsync(ct) is { } line)
+                {
+                    if (tail.Count == 20) tail.Dequeue();
+                    tail.Enqueue(line);
+                    if (line.Trim() is { Length: > 0 } t) progress?.Report(t);
+                }
+            }
+            catch (OperationCanceledException) { /* the process is being killed; the tail is enough */ }
+            catch (IOException) { /* pipe closed under us — same */ }
+            return string.Join(Environment.NewLine, tail);
+        }, CancellationToken.None);
 
     /// <summary>Recursively extract groups: any JSON array whose elements are objects with a
     /// string "path" is treated as one similarity group. Schema-tolerant by design.</summary>
