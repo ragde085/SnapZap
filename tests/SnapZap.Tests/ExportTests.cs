@@ -95,6 +95,36 @@ public class ExportTests : IDisposable
     }
 
     [Fact]
+    public async Task Move_export_is_logged_and_reversible()
+    {
+        // DESIGN §7.4: every destructive operation is logged and every batch is reversible.
+        // Move releases the original, so it must appear in the undo log and restore from the
+        // destination — it previously deleted the source silently with no trail.
+        var source = Path.Combine(_photos, "m.png");
+        WritePng(source, 100, 100, SKColors.Blue);
+        using var db = Scan();
+
+        var req = new ExportRequest
+        {
+            Destination = _dest, SourceRoot = _photos,
+            Mode = TransferMode.Move, Structure = ExportStructure.Flat,
+            KeeperIds = Ids(db, "m.png"),
+        };
+        await Engine(db).RunAsync(req);
+        Assert.False(File.Exists(source));
+
+        var deletes = new SnapZap.Core.Delete.DeleteService(db, new MacOsTrashService());
+        var batch = Assert.Single(deletes.Batches(), b => b.BatchId.StartsWith("move-"));
+        Assert.Equal(1, batch.Total);
+
+        var restore = await deletes.RestoreAsync(batch.BatchId);
+
+        Assert.Equal(1, restore.Restored);
+        Assert.True(File.Exists(source));                              // back where it came from
+        Assert.True(File.Exists(Path.Combine(_dest, "m.png")));        // undo is not itself destructive
+    }
+
+    [Fact]
     public async Task Different_content_same_name_gets_suffixed_never_overwritten()
     {
         // Two DIFFERENT images that will collide on filename in a flat export.
