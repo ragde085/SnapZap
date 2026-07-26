@@ -225,6 +225,11 @@ Two things to know before touching the grid:
    layout — it reports zero capacity and renders no rows at all. `PhotoGrid` instead windows
    rows itself using geometry measured in `interop.js` (`SetViewport` / `SetScroll`), which is
    deterministic. Verified at 4,000 photos with ~120 cards in the DOM.
+3. **`.grid` must keep `overflow-anchor: none`.** Scroll anchoring — the browser adjusting
+   `scrollTop` to keep content visually still when things above it resize — feeds back into
+   the windowing, which resizes spacers on every scroll. The loop runs the grid to one end or
+   the other on a single wheel gesture. It only reproduces with real wheel/trackpad input;
+   programmatic scrolls suppress anchoring, so setting `scrollTop` from the console looks fine.
 
 ### Optional sidecar validation
 

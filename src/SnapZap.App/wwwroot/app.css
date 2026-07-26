@@ -701,6 +701,19 @@ main { display: flex; flex: 1; min-height: 0; }
 .grid {
   flex: 1;
   overflow-y: auto;
+
+  /* Do not remove: without this the grid cannot be scrolled at all.
+     Scroll anchoring is the browser keeping whatever you were looking at visually still by
+     silently adjusting scrollTop when content above it changes size. That is the exact thing
+     PhotoGrid does on every scroll — it resizes the two spacers and swaps the rendered rows —
+     so the two form a feedback loop: wheel down → we re-window → the browser "corrects"
+     scrollTop → that fires another scroll → we re-window again → …, and the grid runs to
+     whichever end you nudged it toward. Measured on 3,930 photos: ten wheel notches from
+     20,000px, which should land at 21,200px, ended at 119,091px — the very bottom.
+     Only the scroll container needs it; excluding the children as well changes nothing.
+     Programmatic scrolls suppress anchoring, so this reproduces only with real wheel or
+     trackpad input — setting scrollTop from the console will not show it. */
+  overflow-anchor: none;
 }
 
 .grid-row {
