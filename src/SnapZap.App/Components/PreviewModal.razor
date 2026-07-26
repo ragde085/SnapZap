@@ -13,8 +13,21 @@
 
         <button class="close" @onclick="Close" @onclick:stopPropagation="true">Close ✕</button>
 
+        @* Stepping between photos is the whole point of opening one full size — comparing this
+           shot against the next. Without it the only way through a folder is close, find, reopen. *@
+        <button class="nav prev" disabled="@(Position <= 0)" aria-label="Previous photo"
+                title="Previous photo (←)"
+                @onclick="() => Step(-1)" @onclick:stopPropagation="true">‹</button>
+        <button class="nav next" disabled="@(Position < 0 || Position >= Order.Count - 1)"
+                aria-label="Next photo" title="Next photo (→)"
+                @onclick="() => Step(1)" @onclick:stopPropagation="true">›</button>
+
         <div class="frame" @onclick:stopPropagation="true">
             <img src="@img.FullUrl" alt="@img.FileName" />
+            @if (Position >= 0)
+            {
+                <span class="frame-pos">@(Position + 1) of @Order.Count</span>
+            }
         </div>
 
         <div class="panel" @onclick:stopPropagation="true">
@@ -55,7 +68,7 @@
                 <div class="pk">Focus</div>
                 @if (img.BlurScore is { } b)
                 {
-                    <div class="pv @(img.IsBlurry ? "warn" : "ok")">@b.ToString("F1") — @(img.IsBlurry ? "soft" : "sharp")</div>
+                    <div class="pv @(AppState.IsSoft(img) ? "warn" : "ok")">@b.ToString("F1") — @(AppState.IsSoft(img) ? "soft" : "sharp")</div>
                 }
                 else
                 {
@@ -88,10 +101,30 @@
     [Parameter] public ImageView? Img { get; set; }
     [Parameter] public EventCallback OnClose { get; set; }
 
+    /// <summary>Asks the host to show a different photo, so the preview stays a pure view.</summary>
+    [Parameter] public EventCallback<ImageView> OnNavigate { get; set; }
+
     ElementReference _modalRef;
     ImageView? _focused;
 
     bool Selected => Img is { } img && AppState.Selected.Contains(img.Id);
+
+    // Step through what the user is actually looking at — the filtered, sorted grid — rather
+    // than the whole catalogue, so ← / → agree with the photo order on screen.
+    IReadOnlyList<ImageView> Order => AppState.Filtered();
+
+    int Position => Img is { } img
+        ? Order.ToList().FindIndex(i => i.Id == img.Id)
+        : -1;
+
+    Task Step(int delta)
+    {
+        var at = Position;
+        if (at < 0) return Task.CompletedTask;
+        var next = at + delta;
+        if (next < 0 || next >= Order.Count) return Task.CompletedTask;   // stop at the ends
+        return OnNavigate.InvokeAsync(Order[next]);
+    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -109,5 +142,18 @@
 
     Task Close() => OnClose.InvokeAsync();
 
-    Task HandleKeyDown(KeyboardEventArgs e) => e.Key == "Escape" ? Close() : Task.CompletedTask;
+    Task HandleKeyDown(KeyboardEventArgs e) => e.Key switch
+    {
+        "Escape" => Close(),
+        "ArrowLeft" => Step(-1),
+        "ArrowRight" => Step(1),
+        "x" or "X" => ToggleSelection(),
+        _ => Task.CompletedTask,
+    };
+
+    Task ToggleSelection()
+    {
+        if (Img is { } img) AppState.Toggle(img.Id);
+        return Task.CompletedTask;
+    }
 }

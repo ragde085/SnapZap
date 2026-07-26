@@ -31,9 +31,14 @@ public sealed class CatalogService : IDisposable
     /// Never inside the user's photo library.</summary>
     public string AppDataDir => _appData;
 
-    public CatalogService()
+    /// <param name="appDataDir">
+    /// Overrides where the catalog, thumbnails and manifests live. Production always passes
+    /// null and gets the real location (DESIGN §7.5); tests pass a temp directory so they
+    /// don't write into the user's actual library.
+    /// </param>
+    public CatalogService(string? appDataDir = null)
     {
-        _appData = Path.Combine(
+        _appData = appDataDir ?? Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "SnapZap");
         ThumbDir = Path.Combine(_appData, "thumbs");
