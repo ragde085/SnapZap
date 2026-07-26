@@ -1,14 +1,14 @@
 @echo off
-rem Install SnapZap's two optional sidecars - Windows.
+rem Install SnapZap's optional sidecar - Windows.
 rem
-rem   scripts\install-deps.bat                 install both into the repo (dev)
+rem   scripts\install-deps.bat                 install into the repo (dev)
 rem   scripts\install-deps.bat --dest DIR      install beside a published SnapZap.App.exe
-rem   scripts\install-deps.bat --model-only    NSFW model only
-rem   scripts\install-deps.bat --czkawka-only  similar-photo detection only
+rem   scripts\install-deps.bat --model-only    same thing; kept so older notes still work
 rem   scripts\install-deps.bat --force         re-download even if already present
 rem
-rem Both are optional: SnapZap scans, finds exact duplicates, exports and deletes without
-rem either one. The model unlocks NSFW scoring; czkawka_cli unlocks similar-photo detection.
+rem It is optional: SnapZap scans, finds duplicates, exports and deletes without it. The model
+rem unlocks NSFW scoring, and nothing else. (czkawka_cli used to be installed here too;
+rem similar-photo detection moved in-process - see docs/DEDUP-V2.md.)
 rem
 rem Every download is pinned to an exact revision and SHA-256 verified before it is put in
 rem place. Nothing is installed from a checksum that does not match.
@@ -27,14 +27,8 @@ set "MODEL_BASE=https://huggingface.co/onnx-community/nsfw_image_detection-ONNX/
 set "MODEL_SHA=a4316a4fb750169ac4fcabaabee1fcbd982b0ee8c0cc63fe3e944954bb9a7d9c"
 set "CONFIG_SHA=ae9bb157b9629887cc74913a4e7c12c9308f374f0930e8072320e8f2e1583c5e"
 
-rem czkawka: pinned to 12.0.0, the release CzkawkaFinder's JSON parser is tested against.
-set "CZKAWKA_VER=12.0.0"
-set "CZKAWKA_URL=https://github.com/qarmin/czkawka/releases/download/%CZKAWKA_VER%/windows_czkawka_cli.exe"
-set "CZKAWKA_SHA=fbdc5ced0fefd6f3222cf4920ede2c2c9f6286433a6a96b9c1e8e525c788597e"
 
 set "DEST="
-set "WANT_MODEL=1"
-set "WANT_CZKAWKA=1"
 set "FORCE=0"
 
 :parse
@@ -49,14 +43,15 @@ echo unknown option: %~1
 goto usage
 
 :opt_model_only
-set "WANT_CZKAWKA=0"
+rem Accepted and ignored: there is only one sidecar left, and failing on a flag that used to
+rem work would break every note, script and shell history that still passes it.
 shift
 goto parse
 
 :opt_czkawka_only
-set "WANT_MODEL=0"
-shift
-goto parse
+echo   ! --czkawka-only no longer does anything: similar-photo detection is built in.
+echo     See docs/DEDUP-V2.md.
+exit /b 0
 
 :opt_force
 set "FORCE=1"
@@ -84,17 +79,14 @@ rem Where the app looks. With no --dest we install into the repo and let the bui
 rem into the output directory (see SnapZap.App.csproj), so `dotnet run` picks them up with no
 rem environment variables and no manual copying.
 set "MODEL_DIR=%REPO_ROOT%\models"
-set "CZKAWKA_DIR=%REPO_ROOT%\tools"
 if not defined DEST goto dirs_ready
 if not exist "%DEST%" mkdir "%DEST%"
 set "MODEL_DIR=%DEST%\models"
-set "CZKAWKA_DIR=%DEST%"
 
 :dirs_ready
-echo SnapZap optional sidecars
+echo SnapZap optional sidecar
 echo.
 
-if "%WANT_MODEL%"=="0" goto skip_model
 echo NSFW scoring model to %MODEL_DIR%
 call :fetch "%MODEL_BASE%/onnx/model.onnx" "%MODEL_DIR%\nsfw.onnx" "%MODEL_SHA%" "nsfw.onnx (328 MB)"
 if errorlevel 1 exit /b 1
@@ -102,21 +94,13 @@ call :fetch "%MODEL_BASE%/preprocessor_config.json" "%MODEL_DIR%\preprocessor_co
 if errorlevel 1 exit /b 1
 echo.
 
-:skip_model
-if "%WANT_CZKAWKA%"=="0" goto skip_czkawka
-echo Similar-photo detection to %CZKAWKA_DIR%
-call :fetch "%CZKAWKA_URL%" "%CZKAWKA_DIR%\czkawka_cli.exe" "%CZKAWKA_SHA%" "czkawka_cli %CZKAWKA_VER%"
-if errorlevel 1 exit /b 1
-echo.
-
-:skip_czkawka
 echo Done.
 if defined DEST goto done_dest
-echo The build copies both into the app's output directory, so:
+echo The build copies it into the app's output directory, so:
 echo.
 echo     dotnet run --project src\SnapZap.App
 echo.
-echo will find them. Confirm under Setup in the app's left rail.
+echo will find it. Confirm under Setup in the app's left rail.
 exit /b 0
 
 :done_dest
@@ -177,11 +161,10 @@ set "HASH=%HASH: =%"
 endlocal & set "%~2=%HASH%" & exit /b 0
 
 :usage
-echo Install SnapZap's two optional sidecars.
+echo Install SnapZap's optional sidecar.
 echo.
-echo   scripts\install-deps.bat                 install both into the repo (dev)
+echo   scripts\install-deps.bat                 install into the repo (dev)
 echo   scripts\install-deps.bat --dest DIR      install beside a published SnapZap.App.exe
-echo   scripts\install-deps.bat --model-only    NSFW model only
-echo   scripts\install-deps.bat --czkawka-only  similar-photo detection only
+echo   scripts\install-deps.bat --model-only    same thing; kept so older notes still work
 echo   scripts\install-deps.bat --force         re-download even if already present
 exit /b 1

@@ -1,3 +1,5 @@
+using SnapZap.Core;
+
 namespace SnapZap.App.Services;
 
 /// <summary>
@@ -36,8 +38,22 @@ public sealed class FolderNode
     public StepStat Dated { get; set; }
     public StepStat Nsfw { get; set; }
 
+    /// <summary>
+    /// Photos here and beneath that a completed duplicate-detection run has covered.
+    /// </summary>
+    /// <remarks>
+    /// The one thing <see cref="InDupeGroup"/> cannot express. A folder with no duplicates and a
+    /// folder nobody has run detection over both report zero groups, so the tree drew them
+    /// identically and the only way to tell which was which was to re-run dedup and watch whether
+    /// the number moved.
+    /// </remarks>
+    public StepStat Deduped { get; set; }
+
     /// <summary>Photos in this subtree that belong to a duplicate group.</summary>
     public int InDupeGroup { get; set; }
+
+    /// <summary>True once detection has covered every photo in this subtree.</summary>
+    public bool DupeCheckComplete => Deduped.Complete;
 
     public int Depth { get; init; }
     public bool HasChildren => Children.Count > 0;
@@ -46,6 +62,7 @@ public sealed class FolderNode
     public IEnumerable<string> PendingSteps()
     {
         if (!Analyzed.Complete) yield return $"{Analyzed.Pending} not analysed";
+        if (!Deduped.Complete) yield return $"{Deduped.Pending} not checked for duplicates";
         if (!Nsfw.Complete) yield return $"{Nsfw.Pending} not NSFW-scored";
         if (!Blur.Complete) yield return $"{Blur.Pending} without a blur score";
         if (!Dated.Complete) yield return $"{Dated.Pending} without an EXIF date";
@@ -61,7 +78,15 @@ public sealed class FolderNode
 /// </summary>
 public static class FolderTreeBuilder
 {
-    public static FolderNode? Build(IReadOnlyList<ImageView> images, IReadOnlyDictionary<long, DupeInfo> dupeOf)
+    /// <param name="enabledKinds">
+    /// The detectors currently switched on. A row counts as checked only when the run that stamped
+    /// it covered all of them — otherwise turning a detector on tomorrow would leave every folder
+    /// still claiming to have been checked, and the pending dot would be decorative.
+    /// </param>
+    public static FolderNode? Build(
+        IReadOnlyList<ImageView> images,
+        IReadOnlyDictionary<long, DupeInfo> dupeOf,
+        DupeKinds enabledKinds = DupeKinds.Exact)
     {
         if (images.Count == 0) return null;
 
@@ -95,12 +120,16 @@ public static class FolderTreeBuilder
             var blur = items.Count(i => i.BlurScore is not null);
             var dated = items.Count(i => i.ExifTaken is not null);
             var nsfw = items.Count(i => i.NsfwScore is not null);
+            var checkedForDupes = items.Count(i =>
+                i.Record.DupeCheckedAt is not null &&
+                (i.Record.DupeCheckedKinds & enabledKinds) == enabledKinds);
             var dupes = items.Count(i => dupeOf.ContainsKey(i.Id));
 
             node.Analyzed = new StepStat(analyzed, items.Count);
             node.Blur = new StepStat(blur, items.Count);
             node.Dated = new StepStat(dated, items.Count);
             node.Nsfw = new StepStat(nsfw, items.Count);
+            node.Deduped = new StepStat(checkedForDupes, items.Count);
             node.InDupeGroup = dupes;
         }
 
@@ -164,6 +193,7 @@ public static class FolderTreeBuilder
         var blur = node.Blur;
         var dated = node.Dated;
         var nsfw = node.Nsfw;
+        var deduped = node.Deduped;
         var dupes = node.InDupeGroup;
 
         node.Children.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase));
@@ -175,6 +205,7 @@ public static class FolderTreeBuilder
             blur = new StepStat(blur.Done + child.Blur.Done, blur.Total + child.Blur.Total);
             dated = new StepStat(dated.Done + child.Dated.Done, dated.Total + child.Dated.Total);
             nsfw = new StepStat(nsfw.Done + child.Nsfw.Done, nsfw.Total + child.Nsfw.Total);
+            deduped = new StepStat(deduped.Done + child.Deduped.Done, deduped.Total + child.Deduped.Total);
             dupes += child.InDupeGroup;
         }
 
@@ -183,6 +214,7 @@ public static class FolderTreeBuilder
         node.Blur = blur;
         node.Dated = dated;
         node.Nsfw = nsfw;
+        node.Deduped = deduped;
         node.InDupeGroup = dupes;
     }
 
@@ -212,6 +244,7 @@ public static class FolderTreeBuilder
                     Blur = only.Blur,
                     Dated = only.Dated,
                     Nsfw = only.Nsfw,
+                    Deduped = only.Deduped,
                     InDupeGroup = only.InDupeGroup,
                 };
                 merged.Children.AddRange(only.Children);

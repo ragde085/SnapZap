@@ -138,9 +138,15 @@
                         title="@StatusTitle(node)"
                         @onclick="() => Select(node.Path)">
                     <span class="tree-name">@node.Name</span>
+                    @* Three states, not two. An absent marker used to mean both "clean" and
+                       "nobody has looked", which is the distinction the check tracks. *@
                     @if (node.InDupeGroup > 0)
                     {
                         <span class="tree-dupes" title="@node.InDupeGroup in duplicate groups">⧉</span>
+                    }
+                    else if (node.TotalCount > 0 && node.DupeCheckComplete)
+                    {
+                        <span class="tree-dupes clean" title="Checked for duplicates — none found">⧉</span>
                     }
                     @if (pending)
                     {

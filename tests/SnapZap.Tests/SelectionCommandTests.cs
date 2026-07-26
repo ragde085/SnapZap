@@ -48,8 +48,10 @@ public class SelectionCommandTests : IDisposable
         });
     }
 
-    void Group(params (long Id, bool Keeper)[] members) =>
-        new DupeRepository(_catalog.Db).AddGroup(DupeKind.Exact, null, members.ToList());
+    void Group(params (long Id, bool Keeper)[] members) => Group(DupeKind.Exact, members);
+
+    void Group(DupeKind kind, params (long Id, bool Keeper)[] members) =>
+        new DupeRepository(_catalog.Db).AddGroup(kind, null, members.ToList());
 
     /// <summary>Unix seconds inside the given year, for the year facet.</summary>
     static long In(int year) => new DateTimeOffset(year, 6, 1, 0, 0, 0, TimeSpan.Zero).ToUnixTimeSeconds();
@@ -133,6 +135,165 @@ public class SelectionCommandTests : IDisposable
 
         Assert.Equal([extraA], _state.Selected.Order());
         Assert.DoesNotContain(hiddenExtra, _state.Selected);
+    }
+
+    // ---- The folder box ------------------------------------------------------
+
+    /// <summary>
+    /// The folder box is a text field, so people type shell paths into it. Nothing downstream
+    /// understands <c>~</c>, so <c>~/Photos</c> reported "Folder not found" for a folder that
+    /// plainly exists — which reads as the app being broken, not as a spelling problem.
+    /// </summary>
+    [Theory]
+    [InlineData("~")]
+    [InlineData("~/Pictures")]
+    [InlineData("~/Pictures/2024 holiday")]
+    public void Tilde_paths_resolve_under_the_home_directory(string typed)
+    {
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var expanded = AppState.ExpandHome(typed);
+
+        Assert.StartsWith(home, expanded);
+        Assert.DoesNotContain('~', expanded);
+    }
+
+    /// <summary>
+    /// Only a leading <c>~/</c> is a home reference. Folders really are called things like
+    /// <c>~snapshots</c>, and an absolute path must survive untouched.
+    /// </summary>
+    [Theory]
+    [InlineData("/Volumes/Archive/Photos")]
+    [InlineData("~snapshots")]
+    [InlineData("/tmp/a~b")]
+    [InlineData("relative/path")]
+    public void Non_home_paths_are_left_alone(string typed) =>
+        Assert.Equal(typed, AppState.ExpandHome(typed));
+
+    [Fact]
+    public void Surrounding_whitespace_is_trimmed_off_a_pasted_path() =>
+        Assert.Equal("/Volumes/Archive", AppState.ExpandHome("  /Volumes/Archive  "));
+
+    // ---- The bulk-selectable rule --------------------------------------------
+
+    /// <summary>
+    /// The invariant that lets duplicate detection widen at all. A Burst group is five *different
+    /// photographs* of one moment, so sweeping its non-keepers into a selection that Delete is
+    /// aimed at would make this a shredder rather than a triage tool. Exact and Variant groups are
+    /// copies of one photograph and stay bulk-selectable.
+    /// </summary>
+    [Fact]
+    public async Task Extras_never_selects_a_burst_frame_in_bulk()
+    {
+        var keepExact = Add("keep-exact.jpg");
+        var extraExact = Add("extra-exact.jpg");
+        var keepVariant = Add("keep-variant.jpg");
+        var extraVariant = Add("extra-variant.jpg");
+        var keepBurst = Add("keep-burst.jpg");
+        var burstFrame = Add("burst-frame.jpg");
+        Group(DupeKind.Exact, (keepExact, true), (extraExact, false));
+        Group(DupeKind.Variant, (keepVariant, true), (extraVariant, false));
+        Group(DupeKind.Burst, (keepBurst, true), (burstFrame, false));
+
+        await _state.LoadAsync();
+
+        _state.SelectBy(Scope.DuplicateExtras);
+
+        Assert.Equal([extraExact, extraVariant], _state.Selected.Order());
+        Assert.DoesNotContain(burstFrame, _state.Selected);
+    }
+
+    /// <summary>
+    /// The count and the bytes beside it read the same predicate as the command, so the rule
+    /// cannot hold for what the button does while the label still advertises the burst frames.
+    /// That disagreement is the one this selection layer exists to remove.
+    /// </summary>
+    [Fact]
+    public async Task Burst_frames_are_absent_from_the_extras_count_and_bytes_too()
+    {
+        var keepExact = Add("keep-exact.jpg", size: 100);
+        var extraExact = Add("extra-exact.jpg", size: 2000);
+        var keepBurst = Add("keep-burst.jpg", size: 100);
+        var burstFrame = Add("burst-frame.jpg", size: 5000);
+        Group(DupeKind.Exact, (keepExact, true), (extraExact, false));
+        Group(DupeKind.Burst, (keepBurst, true), (burstFrame, false));
+
+        await _state.LoadAsync();
+
+        Assert.Equal(1, _state.SelectableCount(Scope.DuplicateExtras));
+        Assert.Equal(AppState.FormatBytes(2000), _state.FormattedSelectableBytes(Scope.DuplicateExtras));
+
+        // The library-wide figure the Extras button is *not* allowed to borrow excludes them on
+        // the same rule, so neither number sends the user hunting for the missing gigabytes.
+        Assert.Equal(2000, _state.ReclaimableBytes);
+    }
+
+    /// <summary>
+    /// Burst members stay individually selectable — the rule withholds them from bulk actions,
+    /// it does not put them out of the user's reach. Their keeper is a survivor like any other,
+    /// so selecting keepers to export deliberately does not filter by kind.
+    /// </summary>
+    [Fact]
+    public async Task Burst_members_remain_reachable_by_hand_and_as_keepers()
+    {
+        var keepBurst = Add("keep-burst.jpg");
+        var burstFrame = Add("burst-frame.jpg");
+        Group(DupeKind.Burst, (keepBurst, true), (burstFrame, false));
+
+        await _state.LoadAsync();
+
+        _state.Toggle(burstFrame);
+        Assert.Equal([burstFrame], _state.Selected.Order());
+
+        _state.SelectBy(Scope.DuplicateKeepers);
+        Assert.Equal([keepBurst], _state.Selected.Order());
+    }
+
+    /// <summary>
+    /// Distinguishes "no duplicates here" from "duplicates here, none of them copies" — the two
+    /// states a zero on the Extras button can mean once bursts exist, and the second one is the
+    /// state whose obvious message is false.
+    /// </summary>
+    [Fact]
+    public async Task Burst_only_extras_are_distinguishable_from_having_no_extras_at_all()
+    {
+        // Two folders so a filter can take the burst off screen without touching the exact pair.
+        var keepBurst = Add("keep-burst.jpg", folder: "burst");
+        var burstFrame = Add("burst-frame.jpg", folder: "burst");
+        var keepExact = Add("keep-exact.jpg", folder: "copies");
+        var extraExact = Add("extra-exact.jpg", folder: "copies");
+        Group(DupeKind.Burst, (keepBurst, true), (burstFrame, false));
+        Group(DupeKind.Exact, (keepExact, true), (extraExact, false));
+
+        await _state.LoadAsync();
+
+        // The burst frame is on screen and is a non-keeper the Extras command will not take.
+        Assert.True(_state.HasBurstOnlyExtras);
+        Assert.Equal(1, _state.SelectableCount(Scope.DuplicateExtras));
+
+        // Filtered to the copies: every visible non-keeper is now selectable, so the UI must fall
+        // back to its ordinary wording rather than blaming bursts that are no longer shown.
+        _state.Folder = Path.Combine(_work, "copies");
+        Assert.False(_state.HasBurstOnlyExtras);
+        Assert.Equal(1, _state.SelectableCount(Scope.DuplicateExtras));
+
+        // Filtered to the burst: a zero on the button that is emphatically not "no duplicates".
+        _state.Folder = Path.Combine(_work, "burst");
+        Assert.True(_state.HasBurstOnlyExtras);
+        Assert.Equal(0, _state.SelectableCount(Scope.DuplicateExtras));
+        Assert.NotEmpty(_state.DupeGroups);
+    }
+
+    [Fact]
+    public async Task A_library_of_only_bulk_selectable_extras_reports_no_burst_leftovers()
+    {
+        var keepExact = Add("keep-exact.jpg");
+        var extraExact = Add("extra-exact.jpg");
+        Group(DupeKind.Exact, (keepExact, true), (extraExact, false));
+
+        await _state.LoadAsync();
+
+        Assert.False(_state.HasBurstOnlyExtras);
+        Assert.Equal(1, _state.SelectableCount(Scope.DuplicateExtras));
     }
 
     [Theory]

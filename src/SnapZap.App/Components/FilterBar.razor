@@ -371,8 +371,14 @@
                 Scope.NotSure => $"Select the {n:N0} photos the model was unsure about",
                 // Bytes belong in the sentence: "select 412 extras" is a different decision from
                 // "select 412 extras and get 3.1 GB back".
+                //
+                // "copy" rather than "duplicate", and counted, because this deliberately leaves
+                // burst frames out — they are separate photographs, not copies. Promising "every
+                // extra" here would misdescribe a button pointed at Delete.
                 Scope.DuplicateExtras =>
-                    $"Select every extra copy — {AppState.FormattedSelectableBytes(scope)} reclaimable",
+                    $"Select {n:N0} extra {(n == 1 ? "copy" : "copies")} — "
+                        + $"{AppState.FormattedSelectableBytes(scope)} reclaimable"
+                        + (AppState.HasBurstOnlyExtras ? ". Burst frames are reviewed by hand." : ""),
                 _ => $"Select the one copy being kept from each of {n:N0} duplicate groups",
             };
 
@@ -385,7 +391,12 @@
                 : "No photos in this band.",
             Scope.DuplicateExtras or Scope.DuplicateKeepers => AppState.DupeGroups.Count == 0
                 ? "Press Find duplicates to look for copies."
-                : "No duplicates match the current filters.",
+                // Burst-only is a real state with a misleading obvious message: duplicates were
+                // found, so "no duplicates match" would send the user to clear filters that are
+                // not the reason. Nothing is selectable because nothing here is a copy.
+                : scope == Scope.DuplicateExtras && AppState.HasBurstOnlyExtras
+                    ? "Only burst frames left — those are separate shots, so review them by hand."
+                    : "No duplicates match the current filters.",
             _ => NothingShownHint,
         };
     }

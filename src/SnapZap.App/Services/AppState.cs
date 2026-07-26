@@ -39,6 +39,21 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
         Changed?.Invoke();
     }
 
+    /// <summary>
+    /// Rebuild the folder tree after the detector settings changed.
+    /// </summary>
+    /// <remarks>
+    /// The tree counts a row as checked only when the run that stamped it covered every currently
+    /// enabled detector, so switching one on has to re-derive it. Without this the checkbox in
+    /// Setup and the pending dots in the tree disagree until the next scan — and the dots are the
+    /// only thing telling the user there is now work outstanding.
+    /// </remarks>
+    public void NotifyDedupSettingsChanged()
+    {
+        Tree = FolderTreeBuilder.Build(Images, DupeOf, DedupSettings.Load(catalog.Db).CoveredKinds);
+        Changed?.Invoke();
+    }
+
     /// <summary>Adopt a selection change made by another window and re-render.</summary>
     public void RefreshSelection()
     {
@@ -97,6 +112,16 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
     public string? BusyLabel { get; private set; }
     public int BusyDone { get; private set; }
     public int BusyTotal { get; private set; }
+
+    /// <summary>
+    /// What the current step is doing right now, when it can say — the file being hashed, the line
+    /// czkawka just printed. Null when the operation has nothing more specific than its label.
+    /// </summary>
+    /// <remarks>
+    /// Separate from <see cref="BusyLabel"/>, which names the whole operation and must stay stable
+    /// while this changes underneath it.
+    /// </remarks>
+    public string? BusyDetail { get; private set; }
 
     CancellationTokenSource? _cts;
 
@@ -386,12 +411,18 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
         Years = Images.Select(i => i.Year).Where(y => y is not null).Select(y => y!.Value)
             .Distinct().OrderByDescending(y => y).ToList();
 
-        // Only non-keepers are reclaimable: every group keeps one copy.
-        var extras = Images.Where(i => dupeOf.TryGetValue(i.Id, out var d) && !d.IsKeeper).ToList();
+        // Only non-keepers are reclaimable, and only in kinds a bulk action would actually take.
+        // Counting burst frames here would advertise space that "Select duplicate extras" is
+        // deliberately never going to free, and send the user hunting for the missing gigabytes.
+        var extras = Images
+            .Where(i => dupeOf.TryGetValue(i.Id, out var d) && !d.IsKeeper && d.Kind.IsBulkSelectable())
+            .ToList();
         DupeExtraCount = extras.Count;
         ReclaimableBytes = extras.Sum(i => i.FileSize);
 
-        Tree = FolderTreeBuilder.Build(Images, DupeOf);
+        // Built against the detectors that are on right now, not against whatever was on when the
+        // rows were stamped — that difference is exactly what re-flags folders as pending.
+        Tree = FolderTreeBuilder.Build(Images, DupeOf, DedupSettings.Load(catalog.Db).CoveredKinds);
 
         var live = Images.Select(i => i.Id).ToHashSet();
 
@@ -518,12 +549,29 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
     /// <see cref="ImageView.Dupe"/> rather than re-deriving either, so a selection command can
     /// never disagree with the badge on the card it selects.
     /// </summary>
+    /// <remarks>
+    /// <b>Safety-critical, in <see cref="SelectionScope.DuplicateExtras"/>.</b> The filter to
+    /// <see cref="DupeKindExtensions.IsBulkSelectable"/> is what makes it possible to widen
+    /// duplicate detection at all. Exact and Variant groups are copies of one photograph, so
+    /// selecting the extras is exactly what the user asked for. A Burst group is five *different
+    /// photographs* of one moment, and only one of them is the shot where the kid was smiling —
+    /// sweeping those into a delete would make this a shredder rather than a triage tool. Burst
+    /// members stay individually selectable; they are simply never selected wholesale.
+    ///
+    /// The rule lives on <see cref="DupeKindExtensions"/>, not inline here, so a fourth kind added
+    /// later cannot become bulk-selectable by default just because nobody thought about it. It sits
+    /// on the predicate rather than on the command so that the count on the button, the bytes
+    /// beside it and what pressing it selects cannot drift apart — they all read this one method.
+    ///
+    /// <see cref="SelectionScope.DuplicateKeepers"/> is deliberately unfiltered: selecting keepers
+    /// is how you export the survivors, and a burst's keeper is as much a survivor as any other.
+    /// </remarks>
     bool InScope(SelectionScope scope, ImageView img) => scope switch
     {
         SelectionScope.AllShown => true,
         SelectionScope.LikelyExplicit => BandOf(img) == NsfwBand.Likely,
         SelectionScope.NotSure => BandOf(img) == NsfwBand.Unsure,
-        SelectionScope.DuplicateExtras => img.Dupe is { IsKeeper: false },
+        SelectionScope.DuplicateExtras => img.Dupe is { IsKeeper: false } d && d.Kind.IsBulkSelectable(),
         SelectionScope.DuplicateKeepers => img.Dupe is { IsKeeper: true },
         _ => false,
     };
@@ -567,6 +615,18 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
     /// the same count-and-action disagreement this whole selection layer exists to remove.
     /// </remarks>
     public string FormattedSelectableBytes(SelectionScope scope) => FormatBytes(Tally()[scope].Bytes);
+
+    /// <summary>
+    /// Whether the visible non-keepers include burst frames the Extras command will not take.
+    /// </summary>
+    /// <remarks>
+    /// Purely for wording. The bulk-selectable rule is enforced in <see cref="InScope"/>; this only
+    /// lets the UI say <em>why</em> a non-keeper on screen is not in the Extras count. Without it
+    /// the honest zero-state is "no duplicates match the current filters", which is false — the
+    /// duplicates are right there — and sends the user clearing filters that are not the cause.
+    /// </remarks>
+    public bool HasBurstOnlyExtras =>
+        Filtered().Any(i => i.Dupe is { IsKeeper: false } d && !d.Kind.IsBulkSelectable());
 
     Dictionary<SelectionScope, (int Count, long Bytes)>? _selectableCounts;
 
@@ -679,9 +739,31 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
         });
     }
 
+    /// <summary>
+    /// Expand a leading <c>~</c> to the user's home directory.
+    /// </summary>
+    /// <remarks>
+    /// The folder box is a text field, so people type what they would type in a shell. Nothing
+    /// downstream understands <c>~</c> — <see cref="Directory"/> treats it as a relative path —
+    /// so <c>~/Photos</c> came back "Folder not found" for a folder that plainly exists, which
+    /// reads as the app being broken rather than as the path needing a different spelling.
+    ///
+    /// Only a leading <c>~/</c> (or a bare <c>~</c>) is touched. A directory genuinely called
+    /// <c>~snapshots</c> is a real thing on some backup tools and must keep working.
+    /// </remarks>
+    internal static string ExpandHome(string folder)
+    {
+        var f = folder.Trim();
+        if (f == "~") return Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        if (!f.StartsWith("~/") && !f.StartsWith(@"~\")) return f;
+        return Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), f[2..]);
+    }
+
     public async Task ScanAsync(string folder)
     {
         if (Busy) return;
+        folder = ExpandHome(folder);
         await RunAsync("Scanning", async (report, ct) =>
         {
             var progress = new Progress<ScanProgress>(p => report(p.Seen, 0, null));
@@ -722,18 +804,27 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
     public async Task DedupAsync()
     {
         if (Busy || ScannedFolder is not { } folder) return;
-        await RunAsync("Finding duplicates", async (_, ct) =>
+        await RunAsync("Finding duplicates", async (reportProgress, ct) =>
         {
-            var report = await new DuplicateService(catalog.Db).DetectAsync(folder, ct);
+            var progress = new Progress<DedupProgress>(p => reportProgress(p.Done, p.Total, p.Detail));
+            var report = await new DuplicateService(catalog.Db).DetectAsync(folder, progress, ct);
             await LoadAsync();
 
-            // Counted from the loaded, scoped groups rather than the detector's own tallies,
+            // Counted from the loaded, scoped groups rather than the detectors' own tallies,
             // so the sentence agrees with the grid behind it.
-            var exact = DupeGroups.Count(g => g.Kind == DupeKind.Exact);
-            var similar = DupeGroups.Count(g => g.Kind == DupeKind.Similar);
-            return report.CzkawkaAvailable
-                ? $"{exact} exact, {similar} similar groups"
-                : $"{exact} exact groups (similar-image tool not installed)";
+            var counts = new List<string>();
+            foreach (var kind in (ReadOnlySpan<DupeKind>)[DupeKind.Exact, DupeKind.Variant, DupeKind.Burst])
+            {
+                var n = DupeGroups.Count(g => g.Kind == kind);
+                if (n > 0) counts.Add($"{n:N0} {kind.Label().ToLowerInvariant()}");
+            }
+
+            var headline = counts.Count == 0 ? "No duplicates found" : string.Join(", ", counts) + " groups";
+            // The note carries the partial-result warnings — unhashed photos, a truncated
+            // comparison, detectors switched off. Appending it rather than replacing the count is
+            // the point: "0 groups" and "0 groups, but half the library has no signature" have to
+            // look different.
+            return report.Note is null ? headline : $"{headline} · {report.Note}";
         });
     }
 
@@ -763,6 +854,7 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
         BusyLabel = label;
         BusyDone = 0;
         BusyTotal = 0;
+        BusyDetail = null;
         Status = "";
         _cts = new CancellationTokenSource();
         Notify();
@@ -774,11 +866,12 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
         await Task.Yield();
 
         var live = true;
-        void Report(int done, int total, string? _)
+        void Report(int done, int total, string? detail)
         {
             if (!live) return;
             BusyDone = done;
             BusyTotal = total;
+            BusyDetail = detail;
             Notify();
         }
 
@@ -802,6 +895,7 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
             live = false;
             Busy = false;
             BusyLabel = null;
+            BusyDetail = null;
             _cts?.Dispose();
             _cts = null;
             Notify();
