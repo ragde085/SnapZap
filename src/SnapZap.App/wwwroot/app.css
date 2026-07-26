@@ -594,6 +594,47 @@ main { display: flex; flex: 1; min-height: 0; }
   word-break: break-all;
 }
 
+/* The one-command install: the primary path, so it gets the weight and the copy button. */
+.dep-cmd-label { font-size: var(--t-xs); color: var(--muted); margin-top: 4px; }
+.dep-cmd {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 5px;
+  padding: 7px 8px;
+  background: var(--surface);
+  border: 1px solid var(--line-soft);
+  border-radius: 3px;
+}
+.dep-cmd code {
+  flex: 1;
+  font-family: var(--mono);
+  font-size: var(--t-xs);
+  line-height: 1.5;
+  color: var(--ink);
+  /* Commands carry absolute paths, which have no spaces to break on. */
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+.dep-copy {
+  flex: none;
+  font-size: var(--t-xs);
+  color: var(--accent);
+  background: none;
+  border: none;
+  padding: 0 2px;
+  cursor: pointer;
+}
+.dep-copy:hover { text-decoration: underline; }
+
+.dep-manual { margin-top: 8px; }
+.dep-manual summary {
+  font-size: var(--t-xs);
+  color: var(--muted);
+  cursor: pointer;
+}
+.dep-manual summary:hover { color: var(--ink); }
+
 .dep-steps { margin: 6px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; }
 /* Steps carry absolute filesystem paths, which have no spaces to break on. */
 .dep-steps li {
@@ -612,6 +653,7 @@ main { display: flex; flex: 1; min-height: 0; }
   word-break: break-all;
 }
 .dep-steps a { color: var(--accent); }
+.dep-steps .quiet { color: var(--muted); }
 
 .dep-suppress { margin-top: 14px; }
 

@@ -8,7 +8,7 @@
     0.5,
     0.5
   ],
-  "image_processor_type": "ViTImageProcessor",
+  "image_processor_type": "ViTFeatureExtractor",
   "image_std": [
     0.5,
     0.5,

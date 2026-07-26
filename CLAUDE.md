@@ -80,8 +80,19 @@ resolve the runtime by absolute path (Finder gives GUI apps a minimal `PATH` tha
 
 ### Sidecar assets (optional, ship beside the binary)
 ```bash
-# Get NSFW ONNX model (~350 MB, Apache-2.0, not committed)
-scripts/get-nsfw-model.sh          # writes models/nsfw.onnx + preprocessor_config.json
+# Install both optional sidecars: NSFW ONNX model (328 MB) + czkawka_cli (45 MB).
+# Pinned URLs, SHA-256 verified, idempotent. Writes <repo>/models and <repo>/tools, which
+# SnapZap.App.csproj copies into the build output (but NOT into publish output).
+scripts/install-deps.sh            # macOS / Linux
+scripts\install-deps.bat           # Windows
+
+scripts/install-deps.sh --model-only
+scripts/install-deps.sh --czkawka-only
+scripts/install-deps.sh --force
+scripts/install-deps.sh --dest artifacts/win-x64   # for a published binary
+
+# Build the .onnx from PyTorch weights instead of downloading a conversion (needs Python)
+scripts/export-nsfw-model.sh
 
 # Validate model's scores against labeled fixtures
 PC_NSFW_MODEL="$PWD/models/nsfw.onnx" \
@@ -100,6 +111,8 @@ czkawka_cli.exe             (optional — enables similar-image detection)
 
 Graceful degradation: missing NSFW model disables NSFW scoring; missing `czkawka_cli.exe` disables near-duplicate detection. Only exact duplicates (from our SHA-256 content hash) always work.
 
+The sidecars are excluded from publish output (`CopyToPublishDirectory="Never"`), so the published `.exe` stays ~130 MB whether or not they are installed locally. Populate a publish folder with `scripts/install-deps.sh --dest artifacts/win-x64`.
+
 ---
 
 ## Project Structure
@@ -113,9 +126,11 @@ Graceful degradation: missing NSFW model disables NSFW scoring; missing `czkawka
 | `docs/ROADMAP.md` | Current status + prioritized next steps |
 | `docs/BLAZOR-MIGRATION.md` | The SPA → Blazor Server migration (completed) |
 | `docs/WINDOWS-VERIFY.md` | Checklist for four Windows-only code paths |
-| `scripts/get-nsfw-model.sh` | One-time export of NSFW ONNX model |
+| `scripts/install-deps.{sh,bat}` | One-command install of both optional sidecars (pinned + checksummed) |
+| `scripts/export-nsfw-model.sh` | Build the ONNX model from PyTorch weights instead of downloading it |
 | `artifacts/` | Publish output (built, not committed) |
-| `models/` | Sidecar assets — NSFW ONNX model + config (built, not committed) |
+| `models/` | NSFW ONNX model + preprocessor config (installed, not committed) |
+| `tools/` | `czkawka_cli` binary (installed, not committed) |
 
 ### Key subdirectories in `App/`
 

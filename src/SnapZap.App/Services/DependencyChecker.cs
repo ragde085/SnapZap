@@ -1,7 +1,17 @@
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using SnapZap.Core.Dedup;
 
 namespace SnapZap.App.Services;
+
+/// <summary>
+/// One file to fetch when installing by hand. Deliberately points at the file itself rather
+/// than a project page: both upstreams publish dozens of assets and picking the wrong one
+/// produces a sidecar that loads but misbehaves.
+/// </summary>
+/// <param name="SaveAs">Name the file must have once it is in place, which is never the name
+/// it downloads under.</param>
+public sealed record DownloadLink(string Url, string Label, string SaveAs, string? Size = null);
 
 /// <summary>
 /// One optional sidecar the app can use. Everything here is optional by design: SnapZap's
@@ -29,13 +39,22 @@ public sealed record DependencyInfo
     /// <summary>Exact file name the app looks for.</summary>
     public required string FileName { get; init; }
 
-    /// <summary>Directory to drop the file into for the app to pick it up.</summary>
+    /// <summary>Directory to drop the file(s) into for the app to pick it up.</summary>
     public required string InstallTo { get; init; }
 
-    public required string DownloadUrl { get; init; }
-    public required string DownloadLabel { get; init; }
+    /// <summary>Everything the manual route has to fetch — more than one when the sidecar is
+    /// useless without a companion file.</summary>
+    public required IReadOnlyList<DownloadLink> Downloads { get; init; }
 
-    /// <summary>Optional extra step (e.g. a script to run, or chmod on macOS).</summary>
+    /// <summary>One command that installs this and puts it where the app looks. Shown first,
+    /// because the manual route below it is the fallback, not the happy path.</summary>
+    public string? Command { get; init; }
+
+    /// <summary>What has to happen after the command before the app will see the file.
+    /// Null when it takes effect as soon as <em>Check again</em> is pressed.</summary>
+    public string? CommandNote { get; init; }
+
+    /// <summary>Optional extra step after a manual download (e.g. chmod on macOS).</summary>
     public string? ExtraStep { get; init; }
 }
 
@@ -93,16 +112,55 @@ public sealed class DependencyChecker
         return _current;
     }
 
+    // Kept in step with scripts/install-deps.{sh,bat} — the dialog quotes those scripts, so a
+    // version bump there has to land here too or the app will advertise a stale command.
+    const string CzkawkaVersion = "12.0.0";
+    const string ModelRevision = "1ceb3c7fe1e9f3f2507e6df577437f23a9149fd5";
+    const string ModelBase =
+        "https://huggingface.co/onnx-community/nsfw_image_detection-ONNX/resolve/" + ModelRevision;
+
     IReadOnlyList<DependencyInfo> Detect()
     {
         var sidecarDir = AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar);
+        var win = OperatingSystem.IsWindows();
+
+        var installer = win ? @"scripts\install-deps.bat" : "scripts/install-deps.sh";
+        var repoRoot = FindRepoRoot(sidecarDir, installer);
+
+        // Two shapes, because the right one depends on how the app was started. From a repo
+        // build the plain command installs into <repo>/models and <repo>/tools, which the next
+        // build copies into this directory — shorter, and it survives deleting bin/. From a
+        // published folder there is no repo above us, so target this directory explicitly.
+        bool FromRepo(string? destDir) =>
+            repoRoot is not null && destDir is not null && destDir.StartsWith(repoRoot, StringComparison.Ordinal);
+
+        string Install(string flag, string? destDir) => FromRepo(destDir)
+            ? $"{installer} {flag}"
+            : $"{installer} {flag} --dest \"{destDir ?? sidecarDir}\"";
+
+        // The repo-level install lands in <repo>/models; the build is what copies it here, so
+        // "Check again" alone would still report it missing.
+        string? Note(string? destDir) => FromRepo(destDir)
+            ? "Then restart the app — the build copies it into place."
+            : null;
 
         // Same resolution the dedup run uses: explicit config → beside the binary → PATH.
         var czkawkaPath = new CzkawkaFinder(_catalog.Db).LocateBinary();
-        var czkawkaName = OperatingSystem.IsWindows() ? "czkawka_cli.exe" : "czkawka_cli";
+        var czkawkaName = win ? "czkawka_cli.exe" : "czkawka_cli";
+        var czkawkaAsset = win ? "windows_czkawka_cli.exe"
+            : OperatingSystem.IsMacOS() ? "mac_czkawka_cli_arm64"
+            : RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? "linux_czkawka_cli_arm64"
+            : "linux_czkawka_cli_x86_64";
 
         var modelPath = _catalog.NsfwModelPath;
         var modelFound = File.Exists(modelPath);
+        var modelDir = Path.GetDirectoryName(modelPath) ?? sidecarDir;
+
+        // The installer writes to <dest>/models, so it can only be pointed at a model directory
+        // whose last segment is "models". PC_NSFW_MODEL can name any path at all; when it names
+        // something else, offering a command that would install elsewhere is worse than
+        // offering none, and the manual steps below still spell out the exact folder.
+        var modelDest = Path.GetFileName(modelDir) == "models" ? Path.GetDirectoryName(modelDir) : null;
 
         return
         [
@@ -116,11 +174,19 @@ public sealed class DependencyChecker
                 FoundAt = czkawkaPath,
                 FileName = czkawkaName,
                 InstallTo = sidecarDir,
-                DownloadUrl = "https://github.com/qarmin/czkawka/releases",
-                DownloadLabel = "Download czkawka_cli",
-                ExtraStep = OperatingSystem.IsWindows()
+                Command = Install("--czkawka-only", sidecarDir),
+                CommandNote = Note(sidecarDir),
+                Downloads =
+                [
+                    // Straight at the binary for this platform, not the releases page — that
+                    // page lists ~50 assets for five different tools and picking wrong is easy.
+                    new DownloadLink(
+                        $"https://github.com/qarmin/czkawka/releases/download/{CzkawkaVersion}/{czkawkaAsset}",
+                        czkawkaAsset, czkawkaName, "~45 MB"),
+                ],
+                ExtraStep = win
                     ? null
-                    : $"Then make it runnable:  chmod +x \"{Path.Combine(sidecarDir, czkawkaName)}\"",
+                    : $"Make it runnable:  chmod +x \"{Path.Combine(sidecarDir, czkawkaName)}\"",
             },
             new DependencyInfo
             {
@@ -131,12 +197,38 @@ public sealed class DependencyChecker
                 Found = modelFound,
                 FoundAt = modelFound ? modelPath : null,
                 FileName = "nsfw.onnx",
-                InstallTo = Path.GetDirectoryName(modelPath) ?? sidecarDir,
-                DownloadUrl = "https://huggingface.co/Falconsai/nsfw_image_detection",
-                DownloadLabel = "About the model",
-                ExtraStep = "Produced by scripts/get-nsfw-model.sh in the SnapZap repo — it exports the model to ONNX. Or set PC_NSFW_MODEL to a copy you already have.",
+                InstallTo = modelDir,
+                Command = modelDest is null ? null : Install("--model-only", modelDest),
+                CommandNote = modelDest is null ? null : Note(modelDest),
+                Downloads =
+                [
+                    new DownloadLink($"{ModelBase}/onnx/model.onnx", "model.onnx", "nsfw.onnx", "328 MB"),
+                    // Listed as a download of its own rather than a footnote: the app reads the
+                    // real mean/std/size from it, and a plausible-but-wrong score is worse here
+                    // than no score at all.
+                    new DownloadLink($"{ModelBase}/preprocessor_config.json",
+                        "preprocessor_config.json", "preprocessor_config.json", "1 KB"),
+                ],
             },
         ];
+    }
+
+    /// <summary>
+    /// The SnapZap checkout this binary was built from, or null when there isn't one — the
+    /// normal case for a published app. Identified by the installer script itself rather than
+    /// by <c>.git</c>, because the script is what the command we print actually needs.
+    /// </summary>
+    static string? FindRepoRoot(string startDir, string installerRelativePath)
+    {
+        var dir = new DirectoryInfo(startDir);
+        // bin/<config>/<tfm> is three levels below the project, four below the repo. A couple
+        // of extra levels cost nothing and cover deeper output layouts (e.g. a RID subfolder).
+        for (int i = 0; i < 6 && dir is not null; i++, dir = dir.Parent)
+        {
+            if (File.Exists(Path.Combine(dir.FullName, installerRelativePath)))
+                return dir.FullName;
+        }
+        return null;
     }
 
     static StoredSettings Load(string path)

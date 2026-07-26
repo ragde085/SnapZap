@@ -340,12 +340,34 @@ line and sees counts update live.
 > This is cheap to do and expensive to skip.
 >
 > **✅ VALIDATED (2026-07-24).** The real Falconsai model was exported to ONNX
-> (`scripts/get-nsfw-model.sh`) and the C# path was scored against HuggingFace's reference
-> `transformers` pipeline on the same images: scores matched within **0.002** (max diff
-> 0.0021). Confirmed: mean/std 0.5, size 224, bilinear resample (read from the model's
-> `preprocessor_config.json`), RGB channel order, and nsfw = logit index 1 (id2label
-> `{0: normal, 1: nsfw}`). The preprocessing is correct. Re-run this comparison if the model
-> or its config ever changes.
+> (`scripts/export-nsfw-model.sh`, then named `get-nsfw-model.sh`) and the C# path was scored
+> against HuggingFace's reference `transformers` pipeline on the same images: scores matched
+> within **0.002** (max diff 0.0021). Confirmed: mean/std 0.5, size 224, bilinear resample
+> (read from the model's `preprocessor_config.json`), RGB channel order, and nsfw = logit
+> index 1 (id2label `{0: normal, 1: nsfw}`). The preprocessing is correct. Re-run this
+> comparison if the model or its config ever changes.
+>
+> **✅ RE-VALIDATED (2026-07-25)** after `scripts/install-deps.sh` switched the default from a
+> local torch export to onnx-community's prebuilt conversion (pinned to revision
+> `1ceb3c7f`). Two checks, because the first one alone would only have exercised the SFW end
+> of the range:
+>
+> 1. **Graph equivalence.** Byte-identical `pixel_values` tensors through the prebuilt `.onnx`
+>    and the original PyTorch weights: **max logit difference 6.2e-06**, max P(nsfw)
+>    difference 4.2e-07 over 64 tensors. That is float32 rounding — the conversion computes
+>    the same function, so agreement is not limited to the inputs sampled.
+> 2. **End-to-end.** 80 varied real photos through the C# path vs. the reference
+>    `transformers` pipeline: **max difference 0.0046**, mean 0.00016, no classification flips.
+>    The residual is the decode/resize step (SkiaSharp vs. PIL), not the model.
+>
+> The prebuilt `preprocessor_config.json` carries the same constants as the exported one
+> (mean/std 0.5, size 224, resample 2) and the same `id2label`, so the label index and
+> normalization above still hold.
+>
+> Still outstanding, unchanged by the above: **no NSFW-labeled fixtures exist**, so nothing
+> here confirms the model's judgement on explicit content — only that SnapZap reproduces
+> whatever the upstream model says. The `NsfwModelValidation` test category remains the place
+> to check that, and remains skipped until someone supplies `PC_NSFW_FIXTURES`.
 
 **Blur detection** uses variance-of-Laplacian. The threshold is resolution-dependent and
 empirical, so it is exposed as a slider rather than hardcoded.
