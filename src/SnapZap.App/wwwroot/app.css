@@ -1010,3 +1010,138 @@ main { display: flex; flex: 1; min-height: 0; }
 }
 #blazor-error-ui .reload { color: #2a0e08; text-decoration: underline; cursor: pointer; }
 #blazor-error-ui .dismiss { cursor: pointer; float: right; padding-left: 16px; }
+
+/* ---------------------------------------------------------------------------
+   Reconnection overlay
+
+   Blazor drives this purely by adding classes to #components-reconnect-modal;
+   it never shows or hides the element itself. So the default here is hidden,
+   and each state opts in. States (see Components/App.razor):
+
+     .components-reconnect-show           connection dropped, first attempt
+     .components-reconnect-retrying       added on top of -show from attempt 2
+     .components-reconnect-paused         circuit paused
+     .components-reconnect-hide           reconnected — back to the app
+     .components-reconnect-failed         retries exhausted; Blazor.reconnect() may still work
+     .components-reconnect-resume-failed  resume failed; Blazor.resumeCircuit()
+     .components-reconnect-rejected       server rejected the circuit; only a reload will do
+--------------------------------------------------------------------------- */
+#components-reconnect-modal { display: none; }
+
+#components-reconnect-modal.components-reconnect-show,
+#components-reconnect-modal.components-reconnect-retrying,
+#components-reconnect-modal.components-reconnect-paused,
+#components-reconnect-modal.components-reconnect-failed,
+#components-reconnect-modal.components-reconnect-resume-failed,
+#components-reconnect-modal.components-reconnect-rejected {
+  display: grid;
+  place-items: center;
+  position: fixed;
+  inset: 0;
+  z-index: 90;                      /* above every dialog, including the preview */
+  background: rgba(9, 6, 4, 0.88);
+  backdrop-filter: blur(2px);
+  animation: fade-in 160ms var(--ease);
+}
+
+.reconnect-box {
+  width: min(440px, calc(100vw - 48px));
+  padding: 28px 26px 22px;
+  text-align: center;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.55);
+}
+
+.reconnect-title {
+  margin: 0 0 10px;
+  font-family: var(--serif);
+  font-size: var(--t-lg);
+  font-weight: 400;
+  color: var(--ink);
+}
+
+.reconnect-line { margin: 0 0 12px; font-size: var(--t-sm); color: var(--muted); }
+.reconnect-line b { color: var(--ink); font-variant-numeric: tabular-nums; font-weight: 400; }
+
+.reconnect-safe {
+  margin: 0;
+  padding: 12px 14px;
+  font-size: var(--t-xs);
+  line-height: 1.5;
+  color: var(--dim);
+  text-align: left;
+  background: var(--ground);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+}
+
+/* Only the line that matches the current state is shown. */
+.reconnect-line.when-retrying,
+.reconnect-line.when-failed,
+.reconnect-line.when-rejected { display: none; }
+
+.components-reconnect-show .reconnect-line.when-retrying,
+.components-reconnect-retrying .reconnect-line.when-retrying,
+.components-reconnect-paused .reconnect-line.when-retrying { display: block; }
+
+.components-reconnect-failed .reconnect-line.when-failed,
+.components-reconnect-resume-failed .reconnect-line.when-failed { display: block; }
+
+.components-reconnect-rejected .reconnect-line.when-rejected { display: block; }
+
+/* While retrying there is nothing useful to press; the buttons appear when
+   waiting stops being the answer. */
+.reconnect-actions { display: none; gap: 8px; justify-content: center; margin-top: 16px; }
+
+.components-reconnect-failed .reconnect-actions,
+.components-reconnect-resume-failed .reconnect-actions,
+.components-reconnect-rejected .reconnect-actions { display: flex; }
+
+/* A rejected circuit cannot be re-established, so retrying is not offered. */
+.components-reconnect-rejected .reconnect-retry { display: none; }
+
+.reconnect-actions .reconnect-reload,
+.components-reconnect-rejected .reconnect-reload {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+
+/* Two ripples that keep moving while the retry is in flight, and stop once it
+   has failed — the animation is a status, not decoration. */
+.reconnect-pulse { position: relative; height: 46px; margin-bottom: 14px; }
+.reconnect-pulse span {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 42px;
+  height: 42px;
+  margin: -21px 0 0 -21px;
+  border: 1px solid var(--accent);
+  border-radius: 50%;
+  opacity: 0;
+  animation: reconnect-ripple 1.8s var(--ease) infinite;
+}
+.reconnect-pulse span:nth-child(2) { animation-delay: 0.9s; }
+
+.components-reconnect-failed .reconnect-pulse span,
+.components-reconnect-resume-failed .reconnect-pulse span,
+.components-reconnect-rejected .reconnect-pulse span {
+  animation: none;
+  opacity: 0.45;
+  border-color: var(--danger);
+}
+
+@keyframes reconnect-ripple {
+  0%   { transform: scale(0.4); opacity: 0; }
+  30%  { opacity: 0.9; }
+  100% { transform: scale(1.35); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #components-reconnect-modal.components-reconnect-show,
+  #components-reconnect-modal.components-reconnect-retrying { animation: none; }
+  .reconnect-pulse span { animation-duration: 3.6s; }
+}
