@@ -44,13 +44,13 @@
             {
                 <div class="sortbar">
                     <label for="sortby">Sort</label>
-                    <select id="sortby" @bind="AppState.Sort">
+                    <select id="sortby" value="@AppState.Sort" @onchange="SortChanged">
                         <option value="@SortKey.Scanned">Scan order</option>
                         <option value="@SortKey.Captured">Date taken</option>
                         <option value="@SortKey.Name">Name</option>
                         <option value="@SortKey.Size">File size</option>
                         <option value="@SortKey.Blur">Sharpness</option>
-                        <option value="@SortKey.Nsfw">NSFW score</option>
+                        <option value="@SortKey.Nsfw">Explicit content</option>
                     </select>
                     @* One description, not two that disagree: the tooltip used to report the
                        current state while the accessible name announced the opposite action. *@
@@ -101,6 +101,16 @@
             <div class="empty">
                 <p>
                     None of the @AppState.Images.Count.ToString("N0") photos match these filters.
+                    @* An explicit-content filter over an unscored library matches nothing and
+                       looks like a bug. Name the actual reason. *@
+                    @if (AppState.Nsfw != NsfwFilter.Any && Unchecked > 0)
+                    {
+                        <text>
+                            <br />
+                            @Unchecked.ToString("N0") of them have not been checked for explicit
+                            content, so this filter hides them.
+                        </text>
+                    }
                     <br />
                     <button class="link" @onclick="() => AppState.ClearFilters()">Clear filters</button>
                 </p>
@@ -131,6 +141,22 @@
 
     int Shown => AppState.Filtered().Count;
 
+    /// <summary>
+    /// Picking a sort also picks the only direction anyone wants from it. Choosing "Explicit
+    /// content" ascending put the tamest photos first — the opposite of why the option was
+    /// clicked. The arrow still flips it afterwards.
+    /// </summary>
+    void SortChanged(ChangeEventArgs e)
+    {
+        if (!Enum.TryParse<SortKey>(e.Value?.ToString(), out var key)) return;
+        AppState.Sort = key;
+        AppState.SortDescending = key is SortKey.Nsfw or SortKey.Size or SortKey.Captured;
+    }
+
+    /// <summary>Photos nobody has scored yet. Surfaced because an unscored library looks
+    /// exactly like a clean one, and only one of those is worth acting on.</summary>
+    int Unchecked => AppState.CountInBand(AppState.NsfwBand.Unchecked);
+
     /// <summary>States where the sort is now and what pressing this does — both audiences get
     /// the same sentence, so the tooltip and the screen reader can't contradict each other.</summary>
     string SortDirLabel => AppState.SortDescending
@@ -155,6 +181,10 @@
                 bits.Add($"{AppState.DupeExtraCount:N0} duplicate extra{(AppState.DupeExtraCount == 1 ? "" : "s")} · <b>{AppState.FormattedReclaimable}</b> reclaimable");
             else if (AppState.DupeOf.Count > 0)
                 bits.Add($"{AppState.DupeOf.Count:N0} in duplicate groups");
+            if (Unchecked > 0)
+                bits.Add(Unchecked == total
+                    ? "none checked for explicit content"
+                    : $"{Unchecked:N0} not checked for explicit content");
             if (AppState.Selected.Count > 0) bits.Add($"<b>{AppState.Selected.Count:N0}</b> selected");
             return string.Join(" &nbsp;·&nbsp; ", bits);
         }

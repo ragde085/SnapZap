@@ -76,14 +76,22 @@
                 </div>
             </div>
             <div>
-                <div class="pk">NSFW</div>
+                @* "NSFW" is jargon and every other key here is plain English. The band leads and
+                   the number supports it: three decimals implied a precision the model does not
+                   have (DESIGN §8 records ±0.005 reproduction error and no labelled fixtures at
+                   all), and "below threshold" named a threshold shown nowhere. *@
+                <div class="pk">Explicit content</div>
+                @{ var band = AppState.BandOf(img); }
+                <div class="pv @BandTone(band)">@AppState.BandLabel(band)</div>
                 @if (img.NsfwScore is { } n)
                 {
-                    <div class="pv @(n >= 0.5 ? "warn" : "")">@n.ToString("F3") @(n >= 0.5 ? "— flagged" : "— below threshold")</div>
+                    <div class="pv-sub">
+                        @n.ToString("F2") of 1.00 · flagged at @AppState.NsfwThreshold.ToString("F2")
+                    </div>
                 }
                 else
                 {
-                    <div class="pv quiet">not scored</div>
+                    <div class="pv-sub">Run Score NSFW to check this photo.</div>
                 }
             </div>
             <div>
@@ -166,6 +174,16 @@
         "x" or "X" => ToggleSelection(),
         "i" or "I" => ToggleDetails(),
         _ => Task.CompletedTask,
+    };
+
+    static string BandTone(AppState.NsfwBand band) => band switch
+    {
+        AppState.NsfwBand.Likely => "warn",
+        // Quieter than Likely: the card badge already distinguishes the two, and a maybe
+        // shouting as loudly as a verdict is how people learn to ignore both.
+        AppState.NsfwBand.Unsure => "warn dim",
+        AppState.NsfwBand.Clean => "ok",
+        _ => "quiet",
     };
 
     Task ToggleDetails()

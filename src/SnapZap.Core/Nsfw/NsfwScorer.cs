@@ -13,7 +13,13 @@ public sealed record NsfwRunResult(bool ModelAvailable, int Scored, int Failed, 
 /// </summary>
 public sealed class NsfwScorer(Database db, string modelPath)
 {
+    /// <param name="root">
+    /// Score only photos beneath this folder; null scores the whole catalogue. The catalogue
+    /// spans every folder ever scanned, so an unscoped run on a four-photo folder went off and
+    /// scored thousands of photos the user could not see and had not asked about.
+    /// </param>
     public async Task<NsfwRunResult> ScoreAllAsync(
+        string? root = null,
         IProgress<NsfwProgress>? progress = null,
         bool rescoreExisting = false,
         CancellationToken ct = default)
@@ -28,8 +34,9 @@ public sealed class NsfwScorer(Database db, string modelPath)
         using (var cmd = db.Connection.CreateCommand())
         {
             cmd.CommandText = rescoreExisting
-                ? "SELECT id, path FROM images"
-                : "SELECT id, path FROM images WHERE nsfw_score IS NULL";
+                ? $"SELECT id, path FROM images WHERE {PathScope.Where(root)}"
+                : $"SELECT id, path FROM images WHERE nsfw_score IS NULL AND {PathScope.Where(root)}";
+            PathScope.Bind(cmd, root);
             using var r = cmd.ExecuteReader();
             while (r.Read()) targets.Add((r.GetInt64(0), r.GetString(1)));
         }
@@ -38,7 +45,9 @@ public sealed class NsfwScorer(Database db, string modelPath)
             return new NsfwRunResult(true, 0, 0, "All images already scored.");
 
         int done = 0, failed = 0;
-        using var clf = new OnnxNsfwClassifier(modelPath);
+        // Off-thread: constructing the session reads and prepares ~328 MB, and on the caller's
+        // context that is a multi-second freeze with no progress bar moving.
+        using var clf = await Task.Run(() => new OnnxNsfwClassifier(modelPath), ct);
 
         using var update = db.Connection.CreateCommand();
         update.CommandText = "UPDATE images SET nsfw_score=$s WHERE id=$id";

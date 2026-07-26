@@ -172,14 +172,81 @@ public sealed class ImageRepository(Database db)
         return outp;
     }
 
-    public IEnumerable<ImageRecord> All()
+    /// <summary>How many photos the catalogue holds in total, across every folder.</summary>
+    public int TotalCount()
     {
         using var cmd = _c.CreateCommand();
-        cmd.CommandText = """
+        cmd.CommandText = "SELECT COUNT(*) FROM images";
+        return Convert.ToInt32(cmd.ExecuteScalar());
+    }
+
+    /// <summary>
+    /// Empty the catalogue: every image, and the duplicate groups and export items that
+    /// reference them by foreign key.
+    /// </summary>
+    /// <remarks>
+    /// <c>undo_log</c> is deliberately left alone. It records recycled files by path, not by
+    /// image id, so it survives this — and it has to: anything currently sitting in the
+    /// Recycle Bin would otherwise become unrestorable from inside the app, which would make
+    /// "forget the analysis" quietly destroy a recovery path (DESIGN §7 safety invariants).
+    /// </remarks>
+    public void DeleteAll()
+    {
+        using var tx = _c.BeginTransaction();
+        using (var cmd = _c.CreateCommand())
+        {
+            // dupe_members and export_items cascade from these two.
+            cmd.CommandText = "DELETE FROM images; DELETE FROM dupe_groups; DELETE FROM export_runs;";
+            cmd.ExecuteNonQuery();
+        }
+        tx.Commit();
+
+        // Deleting rows does not shrink the file, and the dialog that offers this itemises the
+        // database's size as something being reclaimed. Outside the transaction, because VACUUM
+        // cannot run inside one — and best-effort, because failing to shrink a file is not a
+        // failure to forget. Throwing here would abandon the caller midway, leaving the rows
+        // gone but the scan scope and the thumbnails still in place.
+        try
+        {
+            using var vacuum = _c.CreateCommand();
+            // VACUUM first, checkpoint second. In WAL mode the rebuilt database lands in the
+            // write-ahead log, so checkpointing beforehand truncates the old content and leaves
+            // the new content in the WAL — the page count drops to nothing while the file on
+            // disk stays exactly as large as it was, which is the one thing this is here to fix.
+            vacuum.CommandText = "VACUUM; PRAGMA wal_checkpoint(TRUNCATE);";
+            vacuum.ExecuteNonQuery();
+        }
+        catch (SqliteException) { /* no free space, or another connection is mid-read */ }
+    }
+
+    /// <summary>
+    /// Every image in the catalogue, across every folder ever scanned. Callers that show or
+    /// act on photos want <see cref="Under"/> instead — the catalogue is a cache spanning
+    /// folders, and a view built from all of it aims "select everything shown" at libraries
+    /// the user scanned weeks ago and cannot see.
+    /// </summary>
+    public IEnumerable<ImageRecord> All() => Query(null);
+
+    /// <summary>
+    /// Images inside <paramref name="root"/>, or all of them when it is null or empty.
+    /// </summary>
+    /// <remarks>Uses <see cref="PathScope"/>, the same predicate the scoped work queries use,
+    /// so what is shown and what is acted on cannot drift apart.</remarks>
+    public IEnumerable<ImageRecord> Under(string? root) =>
+        Query(string.IsNullOrEmpty(root) ? null : root);
+
+    IEnumerable<ImageRecord> Query(string? root)
+    {
+        using var cmd = _c.CreateCommand();
+        cmd.CommandText = $"""
             SELECT id, path, content_hash, file_size, mtime, width, height, format,
                    nsfw_score, blur_score, exif_taken, exif_camera, thumb_path, analyzed_at
-            FROM images ORDER BY id
+            FROM images
+            WHERE {PathScope.Where(root)}
+            ORDER BY id
             """;
+        PathScope.Bind(cmd, root);
+
         using var r = cmd.ExecuteReader();
         while (r.Read())
         {

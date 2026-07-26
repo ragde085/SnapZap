@@ -8,12 +8,36 @@ public sealed class DupeRepository(Database db)
     readonly SqliteConnection _c = db.Connection;
 
     /// <summary>Remove all groups of a given kind (a fresh detection run replaces them).</summary>
-    public void ClearKind(DupeKind kind)
+    /// <param name="root">
+    /// Only drop groups lying entirely under this folder; null clears the kind outright.
+    /// </param>
+    /// <remarks>
+    /// Re-detecting inside one folder used to clear every group in the catalogue, so running
+    /// dedup on folder B threw away folder A's reviewed results with no message.
+    ///
+    /// "Entirely under", not "any member under": a group straddling two libraries would
+    /// otherwise be deleted whole — members cascade — taking the out-of-scope copy's duplicate
+    /// status with it. A scoped rebuild cannot put that back, because it filters both sides of
+    /// its own hash match to the same root, so the cross-folder pairing was unrecoverable
+    /// without an unscoped rescan the UI no longer offers. A straddling group left alone is
+    /// harmless: LoadAsync drops any group with fewer than two members still in view.
+    /// </remarks>
+    public void ClearKind(DupeKind kind, string? root = null)
     {
         using var cmd = _c.CreateCommand();
         // dupe_members cascades on group delete.
-        cmd.CommandText = "DELETE FROM dupe_groups WHERE kind=$k";
+        cmd.CommandText = root is null
+            ? "DELETE FROM dupe_groups WHERE kind=$k"
+            : $"""
+               DELETE FROM dupe_groups
+                WHERE kind=$k
+                  AND NOT EXISTS (SELECT 1 FROM dupe_members m
+                                    JOIN images i ON i.id = m.image_id
+                                   WHERE m.group_id = dupe_groups.id
+                                     AND NOT {PathScope.Sql})
+               """;
         cmd.Parameters.AddWithValue("$k", kind.ToString().ToLowerInvariant());
+        PathScope.Bind(cmd, root);
         cmd.ExecuteNonQuery();
     }
 

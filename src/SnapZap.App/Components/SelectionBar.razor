@@ -1,5 +1,6 @@
 @implements IDisposable
 @inject AppState AppState
+@inject IJSRuntime JS
 
 @*
     What you can do with the photos you have picked, shown only once you have picked some.
@@ -22,6 +23,8 @@
                 @onclick="() => OnOpenExport.InvokeAsync()">Export…</button>
         <button class="danger" disabled="@(!CanAct)" title="@ActHint" @ref="_deleteBtn"
                 @onclick="AskDelete">Delete…</button>
+        <button class="link" title="Select everything shown that is not selected now"
+                @onclick="Invert">Invert</button>
         <button class="link" @onclick="() => AppState.ClearSelection()">Clear</button>
 
         @if (_confirmDelete)
@@ -97,6 +100,22 @@
         {
             _returnFocusToDelete = false;
             await _deleteBtn.FocusAsync();
+        }
+    }
+
+    /// <summary>
+    /// Inverting a full selection empties it, which takes this whole bar off screen — so the
+    /// button that was just pressed stops existing and focus falls to the document. Hand it to
+    /// the grid instead, which is what the user is looking at anyway.
+    /// </summary>
+    async Task Invert()
+    {
+        AppState.InvertVisibleSelection();
+        if (AppState.Selected.Count == 0)
+        {
+            try { await JS.InvokeVoidAsync("snapzap.focusFirstCard"); }
+            catch (JSException) { /* interop absent; focus is a nicety, not correctness */ }
+            catch (JSDisconnectedException) { /* circuit gone */ }
         }
     }
 

@@ -20,12 +20,16 @@
     @if (HasBadges)
     {
         <div class="badges" aria-hidden="true">
-            @if (Img.NsfwScore is { } nsfw)
+            @if (NsfwBand is AppState.NsfwBand.Likely or AppState.NsfwBand.Unsure)
             {
-                <span class="badge nsfw @(nsfw < 0.5 ? "low" : "")" title="NSFW score @nsfw.ToString("F2")">
+                @* Shield-with-warning, not an eye-with-slash: nothing has been hidden, the
+                   model has flagged it for a look. *@
+                <span class="badge nsfw @(NsfwBand == AppState.NsfwBand.Unsure ? "low" : "")"
+                      title="@NsfwBadgeTitle">
                     <svg viewBox="0 0 24 24">
-                        <path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7z" />
-                        <line x1="3" y1="21" x2="21" y2="3" />
+                        <path d="M12 3l8 4v5c0 4.5-3.2 7.9-8 9-4.8-1.1-8-4.5-8-9V7z" />
+                        <path d="M12 8v4" />
+                        <path d="M12 16h.01" />
                     </svg>
                 </span>
             }
@@ -66,14 +70,29 @@
 
     bool Selected => AppState.Selected.Contains(Img.Id);
 
-    bool HasBadges => Img.NsfwScore is not null || AppState.IsSoft(Img) || Img.Dupe is not null;
+    AppState.NsfwBand NsfwBand => AppState.BandOf(Img);
+
+    bool Flagged => NsfwBand is AppState.NsfwBand.Likely or AppState.NsfwBand.Unsure;
+
+    bool HasBadges => Flagged || AppState.IsSoft(Img) || Img.Dupe is not null;
+
+    /// <summary>Says what the model decided and what number it decided it from, in that order.
+    /// The bare score used to be the whole tooltip, which told you nothing about whether it
+    /// was a high one.</summary>
+    string NsfwBadgeTitle =>
+        $"{AppState.BandLabel(NsfwBand)} — the model scored this "
+        + $"{Img.NsfwScore!.Value:F2} of 1.00 (flagged at {AppState.NsfwThreshold:F2} and above)";
 
     string AriaLabel
     {
         get
         {
             var bits = new List<string> { Img.FileName };
-            if (Img.NsfwScore is { } n) bits.Add($"NSFW {n:F2}");
+            // Only when it is actually flagged, and in words. Every scored photo used to
+            // announce "NSFW 0.00", so a screen-reader user heard a content warning read out
+            // over a library where nothing had been flagged at all.
+            if (Flagged)
+                bits.Add(NsfwBand == AppState.NsfwBand.Likely ? "likely explicit" : "explicit content, not sure");
             if (AppState.IsSoft(Img)) bits.Add("soft focus");
             if (Img.Dupe is { } d) bits.Add(d.IsKeeper ? "duplicate keeper" : "duplicate extra");
             return string.Join(", ", bits);

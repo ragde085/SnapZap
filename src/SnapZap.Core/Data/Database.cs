@@ -31,6 +31,36 @@ public sealed class Database : IDisposable
         cmd.ExecuteNonQuery();
     }
 
+    /// <summary>A catalogue-wide setting, or null when unset.</summary>
+    public string? Meta(string key)
+    {
+        using var cmd = Connection.CreateCommand();
+        cmd.CommandText = "SELECT value FROM meta WHERE key=$k";
+        cmd.Parameters.AddWithValue("$k", key);
+        return cmd.ExecuteScalar() as string;
+    }
+
+    /// <summary>Writes a catalogue-wide setting; null removes it.</summary>
+    public void SetMeta(string key, string? value)
+    {
+        using var cmd = Connection.CreateCommand();
+        if (value is null)
+        {
+            cmd.CommandText = "DELETE FROM meta WHERE key=$k";
+            cmd.Parameters.AddWithValue("$k", key);
+        }
+        else
+        {
+            cmd.CommandText = """
+                INSERT INTO meta(key, value) VALUES($k, $v)
+                ON CONFLICT(key) DO UPDATE SET value=excluded.value
+                """;
+            cmd.Parameters.AddWithValue("$k", key);
+            cmd.Parameters.AddWithValue("$v", value);
+        }
+        cmd.ExecuteNonQuery();
+    }
+
     void Migrate() => Exec(Schema);
 
     // Kept idempotent (IF NOT EXISTS) so re-opening an existing catalog is a no-op.
@@ -85,6 +115,15 @@ public sealed class Database : IDisposable
           skip_reason TEXT,
           error       TEXT,
           PRIMARY KEY (run_id, image_id)
+        );
+
+        -- Catalogue-wide settings that must travel with the catalogue rather than with the
+        -- app: chiefly scan_root, the folder the current session is scoped to. Keeping it here
+        -- means deleting catalog.db resets the scope along with the data it describes, and two
+        -- catalogues never disagree about which folder they are showing.
+        CREATE TABLE IF NOT EXISTS meta (
+          key   TEXT PRIMARY KEY,
+          value TEXT NOT NULL
         );
 
         CREATE TABLE IF NOT EXISTS undo_log (

@@ -12,7 +12,7 @@
            @bind:event="oninput"
            @onkeydown="HandleFolderKey" />
     <button class="primary" disabled="@(AppState.Busy || _folder.Trim().Length == 0)" @onclick="Scan">Scan</button>
-    <button disabled="@(AppState.Busy || _folder.Trim().Length == 0)" title="@DedupTitle" @onclick="Dedup">
+    <button disabled="@(AppState.Busy || AppState.ScannedFolder is null)" title="@DedupTitle" @onclick="Dedup">
         Find duplicates@(_similarReady ? "" : " *")
     </button>
     <button disabled="@(AppState.Busy || AppState.Images.Count == 0 || !_nsfwReady)" title="@NsfwTitle" @onclick="Nsfw">Score NSFW</button>
@@ -67,12 +67,14 @@ else if (AppState.Status.Length > 0)
 
     void OnDepsChanged() => InvokeAsync(StateHasChanged);
 
-    string DedupTitle => _similarReady
-        ? "Find exact and visually similar duplicates"
+    string DedupTitle =>
+        AppState.ScannedFolder is null ? "Scan a folder first."
+        : _similarReady ? $"Find exact and visually similar duplicates in {AppState.ScannedFolder}"
         : "Finds exact duplicates. Similar-photo detection needs czkawka_cli — see Setup.";
 
     string NsfwTitle => _nsfwReady
-        ? "Score every photo for explicit content"
+        ? "Ask the model to guess which photos are explicit. Higher score means more likely — "
+          + "it is a guess, not a verdict."
         : "Needs the NSFW model — see Setup.";
 
     string CountLabel => AppState.BusyTotal > 0
@@ -88,11 +90,10 @@ else if (AppState.Status.Length > 0)
         return folder.Length == 0 ? Task.CompletedTask : AppState.ScanAsync(folder);
     }
 
-    Task Dedup()
-    {
-        var folder = _folder.Trim();
-        return folder.Length == 0 ? Task.CompletedTask : AppState.DedupAsync(folder);
-    }
+    // Deliberately the scanned folder, not the text field. The field is free to be edited at
+    // any time, so taking it here let "Find duplicates" rebuild groups for a folder that was
+    // not the one on screen — clearing that folder's results while showing another's.
+    Task Dedup() => AppState.DedupAsync();
 
     Task Nsfw() => AppState.NsfwAsync();
 }

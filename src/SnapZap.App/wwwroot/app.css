@@ -266,6 +266,23 @@ main { display: flex; flex: 1; min-height: 0; }
 }
 .tb-sep { width: 1px; align-self: stretch; margin: 0 4px; background: var(--line); }
 .tb-note { font-size: var(--t-xs); color: var(--dim); margin-left: 4px; white-space: nowrap; }
+/* First thing to give up when the bar runs out of room; the controls matter more than the hint. */
+@media (max-width: 1200px) { .tb-note { display: none; } }
+
+/* Names the command group, the way the sort bar names its own control. */
+.tb-label { font-size: var(--t-xs); color: var(--muted); margin-left: 2px; }
+.tb-cmds { display: flex; align-items: center; gap: 5px; position: relative; z-index: 2; }
+.tb-cmds .tb-btn svg {
+  width: 14px; height: 14px; flex: none;
+  fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round;
+}
+
+.tb-label { font-size: var(--t-xs); color: var(--muted); margin-left: 2px; }
+.tb-cmds { display: flex; align-items: center; gap: 5px; position: relative; z-index: 2; }
+.tb-cmds .tb-btn svg {
+  width: 14px; height: 14px; flex: none;
+  fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round;
+}
 
 .popover {
   position: absolute;
@@ -337,6 +354,7 @@ main { display: flex; flex: 1; min-height: 0; }
 .f .f-label b { color: var(--ink); font-weight: 400; font-variant-numeric: tabular-nums; }
 .f.checkbox { flex-direction: row; align-items: center; gap: 7px; color: var(--ink); font-size: var(--t-sm); }
 .f select { width: 100%; }
+.f-note { font-size: var(--t-xs); color: var(--dim); line-height: 1.45; }
 
 /* Used by every panel and dialog, not just the ones that happened to sit near it. */
 .hint { font-size: var(--t-xs); color: var(--dim); margin: 2px 0 0; line-height: 1.45; }
@@ -756,6 +774,23 @@ main { display: flex; flex: 1; min-height: 0; }
 .dep-steps .quiet { color: var(--muted); }
 
 .dep-suppress { margin-top: 14px; }
+
+/* Catalogue footprint + the purge, inside Setup. */
+.setup-block { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line-soft); display: flex; flex-direction: column; gap: 9px; }
+.setup-block h3 {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: var(--t-xs);
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+}
+.setup-stat { font-size: var(--t-xs); color: var(--ink); line-height: 1.5; }
+.setup-stat b { color: var(--accent); font-variant-numeric: tabular-nums; }
+.setup-stat .quiet { color: var(--muted); display: block; font-variant-numeric: tabular-nums; }
+.setup-stat.quiet { color: var(--muted); }
+.setup-block > button { align-self: flex-start; }
 
 .shortcuts { display: flex; flex-direction: column; gap: 7px; }
 .shortcuts div { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; font-size: var(--t-xs); color: var(--muted); }
@@ -1177,7 +1212,15 @@ main { display: flex; flex: 1; min-height: 0; }
 .modal .panel .pv.accent { color: var(--accent); }
 .modal .panel .pv.ok { color: var(--ok); }
 .modal .panel .pv.warn { color: var(--warn); }
+.modal .panel .pv.warn.dim { color: color-mix(in srgb, var(--warn) 65%, var(--muted)); }
 .modal .panel .path { font-size: var(--t-xs); line-height: 1.5; }
+/* Supporting evidence under a verdict — deliberately quieter than the verdict itself. */
+.modal .panel .pv-sub {
+  font-size: var(--t-xs);
+  color: var(--dim);
+  margin-top: 2px;
+  font-variant-numeric: tabular-nums;
+}
 
 /* Top-left, over the image side: the details toggle owns the top-right corner. */
 .modal .close { position: absolute; top: 20px; left: 20px; z-index: 3; }

@@ -16,7 +16,9 @@ public sealed class DuplicateService(Database db, string? czkawkaPath = null)
 {
     public async Task<DuplicateReport> DetectAsync(string root, CancellationToken ct = default)
     {
-        var exact = new ExactDuplicateFinder(db).FindAndStore();
+        // Both detectors get the same root the view is scoped to: a duplicate the user cannot
+        // see is not one they can act on.
+        var exact = new ExactDuplicateFinder(db).FindAndStore(root);
         var czk = await new CzkawkaFinder(db, czkawkaPath).FindSimilarAsync(root, ct);
         return new DuplicateReport(exact, czk.GroupsFound, czk.Available, czk.Message);
     }

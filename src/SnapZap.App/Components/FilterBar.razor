@@ -2,24 +2,29 @@
 @inject AppState AppState
 
 @*
-    The working toolbar: filters and selection under their own buttons, and the two
-    library-wide actions inline. This replaced an icon rail whose panels pushed the grid
-    aside — filtering meant giving up a column of photos to see the sliders that decide
-    which photos to show. Menus hold the controls that are long or rarely touched; anything
-    that acts on a selection lives in SelectionBar, which only appears when there is one.
+    The working toolbar: filters, the selection tools, and the two library-wide actions. This
+    replaced an icon rail whose panels pushed the grid aside — filtering meant giving up a
+    column of photos to see the sliders that decide which photos to show.
+
+    Only Filters is a menu, because sliders and a year list need a panel. Everything else is a
+    control in the bar. Anything that acts on a selection lives in SelectionBar instead, which
+    only appears once there is one.
+
+    Escape closes the menu and returns focus to its button: the scrim catches only the mouse,
+    so without it a keyboard user could open Filters and had no way to shut it again.
 *@
-@* Escape closes an open menu and puts focus back on the button that opened it. The scrim
-   below only catches the mouse; without this a keyboard user could open a menu and had no
-   way to shut it except by running one of its commands. *@
-<div class="toolbar" role="toolbar" aria-label="Filters and actions" @onkeydown="OnKeyDown">
+@* role="group", not role="toolbar": a toolbar promises one tab stop and arrow-key movement
+   between its controls, and this bar mixes a popover, commands and a note. Announcing a
+   pattern that is not implemented is worse than announcing none. *@
+<div class="toolbar" role="group" aria-label="Filters and actions" @onkeydown="OnKeyDown">
 
     <div class="tb-group">
-        <button class="tb-btn @(_open == Menu.Filters ? "on" : "") @(AppState.HasActiveFilter ? "marked" : "")"
+        <button class="tb-btn @(_filtersOpen ? "on" : "") @(AppState.HasActiveFilter ? "marked" : "")"
                 @ref="_filtersBtn"
-                aria-expanded="@(_open == Menu.Filters ? "true" : "false")"
+                aria-expanded="@(_filtersOpen ? "true" : "false")"
                 aria-haspopup="dialog"
                 aria-controls="filters-popover"
-                @onclick="() => Toggle(Menu.Filters)">
+                @onclick="ToggleFilters">
             Filters
             @if (AppState.HasActiveFilter)
             {
@@ -28,13 +33,24 @@
             <span class="tb-caret" aria-hidden="true">▾</span>
         </button>
 
-        @if (_open == Menu.Filters)
+        @if (_filtersOpen)
         {
             <div class="popover" id="filters-popover" role="group" aria-label="Filters">
                 <label class="f">
-                    <span class="f-label">NSFW at least <b>@(AppState.NsfwMin == 0 ? "any" : AppState.NsfwMin.ToString("F2"))</b></span>
-                    <input type="range" min="0" max="1" step="0.01" @bind="AppState.NsfwMin" @bind:event="oninput" />
+                    <span class="f-label">Explicit content</span>
+                    <select @bind="AppState.Nsfw" aria-describedby="nsfw-note">
+                        <option value="@NsfwFilter.Any">Any — don't filter (@Count(null))</option>
+                        <option value="@NsfwFilter.Likely">Likely explicit (@Count(AppState.NsfwBand.Likely))</option>
+                        <option value="@NsfwFilter.Review">Likely or not sure (@ReviewCount)</option>
+                        <option value="@NsfwFilter.Clean">Looks clean (@Count(AppState.NsfwBand.Clean))</option>
+                        <option value="@NsfwFilter.Unchecked">Not checked yet (@Count(AppState.NsfwBand.Unchecked))</option>
+                    </select>
                 </label>
+                @* Outside the label and referenced by id: inside it, this whole sentence was
+                   appended to the select's accessible name and read out on every option change. *@
+                <span class="f-note" id="nsfw-note">
+                    The model's guess, not a verdict. "Not sure" is the pile worth looking at.
+                </span>
                 <label class="f">
                     <span class="f-label">Blurrier than <b>@(AppState.BlurMax == 0 ? "off" : AppState.BlurMax.ToString())</b></span>
                     <input type="range" min="0" max="300" step="5" @bind="AppState.BlurMax" @bind:event="oninput" />
@@ -62,33 +78,40 @@
                         }
                     </select>
                 </label>
-                <button class="link" disabled="@(!AppState.HasActiveFilter)" @onclick="() => AppState.ClearFilters()">Clear filters</button>
+                @* Clearing disables this button, so focus would fall to the document and the
+                   toolbar's Escape handler would never hear another key. *@
+                <button class="link" disabled="@(!AppState.HasActiveFilter)" @onclick="ClearFilters">Clear filters</button>
             </div>
         }
     </div>
 
-    <div class="tb-group">
-        <button class="tb-btn @(_open == Menu.Select ? "on" : "")"
-                @ref="_selectBtn"
-                aria-expanded="@(_open == Menu.Select ? "true" : "false")"
-                aria-haspopup="dialog"
-                aria-controls="select-popover"
-                @onclick="() => Toggle(Menu.Select)">
-            Select
-            <span class="tb-caret" aria-hidden="true">▾</span>
+    <span class="tb-sep" aria-hidden="true"></span>
+
+    @* Selection commands as controls in the bar, not a menu: they are one-shot verbs used
+       repeatedly while triaging, and a disclosure costs a click every time. Labelled rather
+       than icon-only — "invert" and "extras" have no glyph anyone guesses, and at 1400px the
+       bar has ~600px going spare. A group label, matching the sort bar's "Sort". *@
+    <span class="tb-label" id="sel-label">Select</span>
+    <div class="tb-cmds" role="group" aria-labelledby="sel-label">
+        <button class="tb-btn" title="@AllShownTitle"
+                disabled="@(AppState.Filtered().Count == 0)"
+                @onclick="() => AppState.SelectAllVisible()">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M8 12l3 3 5-6" /></svg>
+            All shown
         </button>
 
-        @if (_open == Menu.Select)
+        @* Hidden rather than greyed until a dedup run exists: greyed out it teaches nothing,
+           and "Review duplicates" beside it already explains how to get there. *@
+        @if (AppState.DupeOf.Count > 0)
         {
-            <div class="popover" id="select-popover" role="group" aria-label="Select">
-                <button @onclick="() => Run(() => AppState.SelectAllVisible())">Everything shown</button>
-                <button @onclick="() => Run(() => AppState.SelectVisibleFolder())">This folder</button>
-                <button disabled="@(AppState.DupeOf.Count == 0)" @onclick="() => Run(() => AppState.SelectDupeExtras())">
-                    Duplicate extras@(AppState.DupeExtraCount > 0 ? $" ({AppState.FormattedReclaimable})" : "")
-                </button>
-                <button disabled="@(AppState.Filtered().Count == 0)" @onclick="() => Run(() => AppState.InvertVisibleSelection())">Invert</button>
-                <p class="hint">Click a photo to select it. Shift-click to take a range.</p>
-            </div>
+            <button class="tb-btn" title="@DupeExtrasTitle"
+                    @onclick="() => AppState.SelectDupeExtras()">
+                @* The same glyph the cards' own "extra copy" badge uses, so the button and the
+                   thing it selects are visibly one object. *@
+                <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="12" height="12" rx="1" /><path d="M8 8h13v13H8z" /></svg>
+                Duplicate extras
+                <span class="tb-count">@AppState.DupeExtraCount.ToString("N0")</span>
+            </button>
         }
     </div>
 
@@ -115,7 +138,7 @@
 
     @* A click anywhere else dismisses the open menu. Transparent and behind the popover, so
        it never intercepts a click meant for the controls inside it. *@
-    @if (_open is not null)
+    @if (_filtersOpen)
     {
         <div class="popover-scrim" aria-hidden="true" @onclick="Close"></div>
     }
@@ -125,12 +148,27 @@
     [Parameter] public EventCallback OnOpenDupeReview { get; set; }
     [Parameter] public EventCallback OnOpenUndo { get; set; }
 
-    enum Menu { Filters, Select }
-
-    Menu? _open;
+    bool _filtersOpen;
     ElementReference _filtersBtn;
-    ElementReference _selectBtn;
-    Menu? _returnFocusTo;
+    bool _returnFocusToFilters;
+
+    string Count(AppState.NsfwBand? band) =>
+        (band is null ? AppState.Images.Count : AppState.CountInBand(band.Value)).ToString("N0");
+
+    string ReviewCount =>
+        (AppState.CountInBand(AppState.NsfwBand.Likely) + AppState.CountInBand(AppState.NsfwBand.Unsure))
+        .ToString("N0");
+
+    /// <summary>Reclaimable bytes belong in the label: "select 412 extras" is a different
+    /// decision from "select 412 extras and get 3.1 GB back".</summary>
+    string AllShownTitle =>
+        $"Select all {AppState.Filtered().Count:N0} photos shown ({ModKey}A)";
+
+    string DupeExtrasTitle => AppState.DupeExtraCount > 0
+        ? $"Select every extra copy — {AppState.FormattedReclaimable} reclaimable"
+        : "Select every extra copy";
+
+    static string ModKey => OperatingSystem.IsMacOS() ? "\u2318" : "Ctrl+";
 
     /// <summary>Names the step that is actually missing. One message for two different states
     /// told a user with a scanned library to go and scan it.</summary>
@@ -139,39 +177,36 @@
         : "Press Find duplicates to look for copies.";
 
     int ActiveFilterCount =>
-        (AppState.NsfwMin > 0 ? 1 : 0) +
+        (AppState.Nsfw != NsfwFilter.Any ? 1 : 0) +
         (AppState.BlurMax > 0 ? 1 : 0) +
         (AppState.DupesOnly ? 1 : 0) +
         (AppState.Folder.Length > 0 ? 1 : 0) +
         (AppState.Year.Length > 0 ? 1 : 0);
 
-    void Toggle(Menu m) => _open = _open == m ? null : m;
-    void Close() => _open = null;
-
-    // Selection commands close the menu: the result is the grid behind it, and leaving the
-    // popover open over the photos it just changed hides the thing the user asked to see.
-    // Focus goes back to the button that opened the menu rather than to <body>, which would
-    // otherwise cost a keyboard user a walk back through the whole toolbar.
-    void Run(Action command)
+    void ClearFilters()
     {
-        command();
-        _returnFocusTo = _open;
-        _open = null;
+        AppState.ClearFilters();
+        _returnFocusToFilters = true;
     }
+
+    void ToggleFilters() => _filtersOpen = !_filtersOpen;
+    void Close() => _filtersOpen = false;
 
     Task OnKeyDown(KeyboardEventArgs e)
     {
-        if (e.Key != "Escape" || _open is null) return Task.CompletedTask;
-        _returnFocusTo = _open;
-        _open = null;
+        if (e.Key != "Escape" || !_filtersOpen) return Task.CompletedTask;
+        _filtersOpen = false;
+        // Back to the button that opened it, not to <body> — otherwise a keyboard user walks
+        // the whole toolbar again to get anywhere.
+        _returnFocusToFilters = true;
         return Task.CompletedTask;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (_returnFocusTo is not { } menu) return;
-        _returnFocusTo = null;
-        await (menu == Menu.Filters ? _filtersBtn : _selectBtn).FocusAsync();
+        if (!_returnFocusToFilters) return;
+        _returnFocusToFilters = false;
+        await _filtersBtn.FocusAsync();
     }
 
     // AppState is mutated by siblings whose parameters into this component never change, so
