@@ -15,6 +15,11 @@ window.snapzap = (function () {
   const MIN_COL = 150; // keep in sync with the grid's minimum column width in app.css
   const GAP = 10;
 
+  // Everything that behaves as a modal. One list, because the two places that consult it —
+  // the focus trap and the Cmd+A guard — must never disagree about what counts: a prompt the
+  // trap protects but the guard ignores is one the user can silently re-aim from behind.
+  const DIALOGS = '.dlg, .modal, .cmp, .selbar .confirm';
+
   let gridEl = null;
   let dotnetRef = null;
   let resizeObserver = null;
@@ -107,8 +112,11 @@ window.snapzap = (function () {
         if (t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return;
 
         // Never re-scope the selection from behind a dialog: reaching for Cmd+A to select a
-        // destination path would silently arm the export against the whole library.
-        if (document.querySelector('.dlg, .modal, .cmp')) return;
+        // destination path would silently arm the export against the whole library. The
+        // selection bar's delete confirmation counts — it is the most destructive prompt in
+        // the app, and it reads AppState.Selected when you answer it, not when it opened, so
+        // a Cmd+A behind it turns "move 2 photos" into "move all of them" under the pointer.
+        if (document.querySelector(DIALOGS)) return;
 
         if (e.key === 'a' || e.key === 'A') {
           e.preventDefault();
@@ -153,7 +161,7 @@ window.snapzap = (function () {
         if (e.key !== 'Tab') return;
 
         // The last one rendered is the one on top — a preview opened from a dialog sits above it.
-        const open = document.querySelectorAll('.dlg, .cmp, .modal');
+        const open = document.querySelectorAll(DIALOGS);
         if (!open.length) return;
         const dialog = open[open.length - 1];
 
@@ -206,6 +214,37 @@ window.snapzap = (function () {
     focusFirstCard: function () {
       const first = cards()[0];
       if (first) first.focus();
+    },
+
+    /**
+     * Arrow-key movement for the folder tree's roving tabindex. The tree renders one tab stop
+     * and every other row is tabindex="-1", so without this the keyboard can reach exactly one
+     * folder. Only rows actually in the DOM are candidates, which is already the collapsed
+     * view — a collapsed branch's children are not rendered, so they are correctly skipped.
+     */
+    moveTreeFocus: function (key) {
+      const rows = Array.prototype.slice.call(document.querySelectorAll('[data-tree-path]'));
+      if (!rows.length) return;
+      const i = rows.indexOf(document.activeElement);
+      let target;
+      switch (key) {
+        case 'ArrowDown': target = i < 0 ? 0 : Math.min(i + 1, rows.length - 1); break;
+        case 'ArrowUp': target = i < 0 ? 0 : Math.max(i - 1, 0); break;
+        case 'Home': target = 0; break;
+        case 'End': target = rows.length - 1; break;
+        default: return;
+      }
+      rows[target].focus();
+      // Arrows scroll the pane by default; focusing already brings the row into view.
+      rows[target].scrollIntoView({ block: 'nearest' });
+    },
+
+    /** Which folder row has focus, so Blazor can expand or collapse that node. */
+    focusedTreePath: function () {
+      const el = document.activeElement;
+      return el && el.hasAttribute && el.hasAttribute('data-tree-path')
+        ? el.getAttribute('data-tree-path')
+        : null;
     },
 
     /**

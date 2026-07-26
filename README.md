@@ -41,7 +41,7 @@ directory, so `dotnet run` picks them up with no environment variables. Re-runni
 anything already installed and intact is skipped.
 
 Both are validated at launch: if either is missing the app says so once, shows the exact
-command to install it, and keeps a live status list under **Setup** in the sidebar with a
+command to install it, and keeps a live status list under **Setup** (the gear, top right) with a
 *Check again* button. Everything else — scanning, exact duplicates, blur, dates, export,
 delete — works without them.
 

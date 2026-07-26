@@ -7,10 +7,36 @@
 <header class="topbar">
     <div class="brand">Snap<em>Zap</em></div>
     <Toolbar />
+
+    @* Setup and shortcuts: needed rarely, so they get icons at the far edge rather than
+       space in the working toolbar below. The pip is the only reason Setup is ever urgent. *@
+    <div class="topbar-tools">
+        <button class="icon-btn" title="Keyboard shortcuts" aria-label="Keyboard shortcuts"
+                aria-haspopup="dialog" aria-expanded="@(_showHelp ? "true" : "false")"
+                @onclick="() => _showHelp = true">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M9.5 9a2.5 2.5 0 113.5 2.3c-.7.4-1 .9-1 1.7" /><circle cx="12" cy="17" r=".6" fill="currentColor" stroke="none" /></svg>
+        </button>
+        <button class="icon-btn" title="Setup" aria-label="Setup"
+                aria-haspopup="dialog" aria-expanded="@(_showSetup ? "true" : "false")"
+                @onclick="() => _showSetup = true">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 100-6 3 3 0 000 6z" /><path d="M19.4 15a1.7 1.7 0 00.3 1.9l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.9-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1A1.7 1.7 0 008.9 19a1.7 1.7 0 00-1.9.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.9 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1A1.7 1.7 0 004.6 8.4a1.7 1.7 0 00-.3-1.9l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.9.3H9a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.9-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.9V9a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z" /></svg>
+            @if (Checker.MissingCount > 0)
+            {
+                <span class="pip warn" title="@Checker.MissingCount optional feature(s) not installed">@Checker.MissingCount</span>
+            }
+        </button>
+    </div>
 </header>
 
+<FilterBar OnOpenDupeReview="OpenDupeReview" OnOpenUndo="OpenUndo" />
+
 <main>
-    <Sidebar OnOpenExport="OpenExport" OnOpenUndo="OpenUndo" OnOpenDupeReview="OpenDupeReview" />
+    @* Left pane is the folder tree and nothing else, the way a file explorer is laid out:
+       the place you navigate, not a stack of tool panels that push the photos aside. *@
+    <aside class="tree-pane" aria-label="Folders">
+        <FolderTreeView />
+    </aside>
+
     <section class="content">
         <div class="summary-row">
             <div class="summary">@((MarkupString)Summary)</div>
@@ -80,6 +106,7 @@
                 </p>
             </div>
         }
+        <SelectionBar OnOpenExport="OpenExport" />
     </section>
 </main>
 
@@ -90,12 +117,16 @@
 <PreviewModal Img="_previewImg" OnClose="ClosePreview" OnNavigate="img => _previewImg = img" />
 <DupeReview Show="_showDupes" OnClose="() => _showDupes = false" />
 <DependencyDialog Show="_showDeps" OnClose="() => _showDeps = false" />
+<SetupDialog Show="_showSetup" OnClose="() => _showSetup = false" />
+<ShortcutsDialog Show="_showHelp" OnClose="() => _showHelp = false" />
 
 @code {
     bool _showExport;
     bool _showUndo;
     bool _showDeps;
     bool _showDupes;
+    bool _showSetup;
+    bool _showHelp;
     ImageView? _previewImg;
 
     int Shown => AppState.Filtered().Count;
@@ -133,6 +164,11 @@
     {
         AppState.Changed += StateHasChanged;
 
+        // The Setup pip is rendered here, so this page has to hear about a re-check. The
+        // checker is a singleton shared across circuits, so the event can arrive off this
+        // circuit's synchronization context.
+        Checker.Changed += OnDepsChanged;
+
         // The selection is shared by every window on this library. That event can arrive from
         // another circuit's thread, so it must be marshalled onto this one before rendering.
         Session.Changed += OnSelectionChangedElsewhere;
@@ -163,9 +199,12 @@
         StateHasChanged();
     });
 
+    void OnDepsChanged() => InvokeAsync(StateHasChanged);
+
     public void Dispose()
     {
         AppState.Changed -= StateHasChanged;
+        Checker.Changed -= OnDepsChanged;
         Session.Changed -= OnSelectionChangedElsewhere;
     }
 }

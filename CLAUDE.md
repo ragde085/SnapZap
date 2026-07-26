@@ -134,9 +134,11 @@ The sidecars are excluded from publish output (`CopyToPublishDirectory="Never"`)
 
 ### Key subdirectories in `App/`
 
-- **Components/** — Razor components. `Pages/Home.razor` composes the whole app; `Toolbar`,
-  `Sidebar` (icon rail + flyout), `PhotoGrid`, `Card`, `Toast`, and the `ExportDialog` /
-  `UndoDialog` / `PreviewModal` / `DependencyDialog` overlays.
+- **Components/** — Razor components. `Pages/Home.razor` composes the whole app; `Toolbar`
+  (scan bar), `FilterBar` (filters + selection menus, library actions), `SelectionBar`
+  (contextual Export/Delete, only while something is selected), `FolderTreeView` (the entire
+  left pane), `PhotoGrid`, `Card`, `Toast`, and the `ExportDialog` / `UndoDialog` /
+  `PreviewModal` / `DependencyDialog` / `SetupDialog` / `ShortcutsDialog` overlays.
 - **Services/** — `AppState` (scoped per circuit: view state + operations, replaces the old
   `app.js` state object), `ImageView` (record wrapping `ImageRecord` for display),
   `DependencyChecker` (validates the optional sidecars, singleton).

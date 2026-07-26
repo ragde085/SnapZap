@@ -1,5 +1,6 @@
 @implements IDisposable
 @inject AppState AppState
+@inject IJSRuntime JS
 
 <section>
     <h3>Folders</h3>
@@ -10,9 +11,16 @@
     }
     else
     {
-        <div class="tree" role="tree" aria-label="Scanned folders">
+        @* Roving tabindex, as the ARIA tree pattern requires. Without it every folder is its
+           own tab stop: a library of a thousand directories put a thousand stops between the
+           toolbar and the photos, and the shortcut list's promise that Tab reaches the grid
+           became a thousand keypresses. The stop is the selected folder, or "All folders"
+           when nothing is chosen, so it always exists. *@
+        <div class="tree" role="tree" aria-label="Scanned folders" @onkeydown="TreeKey">
             <button class="tree-row @(AppState.Folder.Length == 0 ? "on" : "")"
                     role="treeitem"
+                    data-tree-path=""
+                    tabindex="@(AppState.Folder.Length == 0 ? 0 : -1)"
                     aria-selected="@(AppState.Folder.Length == 0 ? "true" : "false")"
                     @onclick="() => Select(string.Empty)">
                 <span class="tree-twist" aria-hidden="true"></span>
@@ -48,6 +56,41 @@
         if (!_collapsed.Remove(n.Path)) _collapsed.Add(n.Path);
     }
 
+    /// <summary>
+    /// The movement half of the roving-tabindex pattern: with one tab stop for the whole tree,
+    /// the arrows have to be able to reach every other row. Moving focus is a DOM concern and
+    /// stays in JS; expanding and collapsing is state and stays here.
+    /// </summary>
+    async Task TreeKey(KeyboardEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case "ArrowDown":
+            case "ArrowUp":
+            case "Home":
+            case "End":
+                await JS.InvokeVoidAsync("snapzap.moveTreeFocus", e.Key);
+                break;
+
+            // Right opens a closed folder, Left closes an open one — the tree convention.
+            case "ArrowRight":
+            case "ArrowLeft":
+                var path = await JS.InvokeAsync<string?>("snapzap.focusedTreePath");
+                if (path is null || AppState.Tree is not { } root) return;
+                if (Find(root, path) is not { HasChildren: true } node) return;
+                if (e.Key == "ArrowRight" ? !IsExpanded(node) : IsExpanded(node)) Toggle(node);
+                break;
+        }
+    }
+
+    static FolderNode? Find(FolderNode node, string path)
+    {
+        if (node.Path == path) return node;
+        foreach (var child in node.Children)
+            if (Find(child, path) is { } hit) return hit;
+        return null;
+    }
+
     async Task Select(string path)
     {
         AppState.Folder = path;   // setter notifies and invalidates the filter cache
@@ -72,7 +115,10 @@
             <div class="tree-row-wrap" style="padding-left:@(node.Depth * 11)px">
                 @if (node.HasChildren)
                 {
+                    @* Not a tab stop of its own: the row it belongs to is the stop, and
+                       ← / → expand and collapse from there. *@
                     <button class="tree-twist-btn"
+                            tabindex="-1"
                             aria-label="@(expanded ? "Collapse" : "Expand") @node.Name"
                             @onclick="() => Toggle(node)">
                         <span class="tree-twist @(expanded ? "open" : "")" aria-hidden="true">›</span>
@@ -85,6 +131,8 @@
 
                 <button class="tree-row @(selected ? "on" : "")"
                         role="treeitem"
+                        data-tree-path="@node.Path"
+                        tabindex="@(selected ? 0 : -1)"
                         aria-selected="@(selected ? "true" : "false")"
                         aria-expanded="@(node.HasChildren ? (expanded ? "true" : "false") : null)"
                         title="@StatusTitle(node)"

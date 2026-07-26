@@ -163,6 +163,21 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
     public string Folder { get => _folder; set => SetFilter(ref _folder, value ?? ""); }
     public string Year { get => _year; set => SetFilter(ref _year, value ?? ""); }
 
+    // ---- Preview ------------------------------------------------------------
+    bool _previewDetails;
+
+    /// <summary>
+    /// Whether the preview's details panel is open. Off by default so a photo opens at the
+    /// largest size the window allows; kept here rather than in the modal so the choice
+    /// survives closing and reopening — someone reading EXIF on one photo is reading it on
+    /// the next, and re-opening the panel for every shot would be its own chore.
+    /// </summary>
+    public bool PreviewDetails
+    {
+        get => _previewDetails;
+        set { if (_previewDetails == value) return; _previewDetails = value; Notify(); }
+    }
+
     /// <summary>
     /// The blur score at or below which a photo is badged as soft.
     /// </summary>

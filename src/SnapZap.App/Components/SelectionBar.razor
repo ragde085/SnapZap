@@ -1,0 +1,129 @@
+@implements IDisposable
+@inject AppState AppState
+
+@*
+    What you can do with the photos you have picked, shown only once you have picked some.
+    Export and Delete used to sit in a rail panel that was permanently one click away and
+    permanently disabled; here they appear with the selection, next to its count and size,
+    so the thing being acted on and the action are in the same sentence.
+*@
+@if (AppState.Selected.Count > 0)
+{
+    <div class="selbar" role="region" aria-label="Selection actions">
+        @* A live region: the bar appearing is what tells a screen-reader user that Export
+           and Delete are now available, and a plain region is never announced. *@
+        <div class="selbar-count" role="status" aria-live="polite" aria-atomic="true">
+            <b>@AppState.Selected.Count.ToString("N0")</b>
+            selected
+            <span class="selbar-bytes">@AppState.FormattedSelectedBytes</span>
+        </div>
+
+        <button class="primary" disabled="@(!CanAct)" title="@ActHint"
+                @onclick="() => OnOpenExport.InvokeAsync()">Export…</button>
+        <button class="danger" disabled="@(!CanAct)" title="@ActHint" @ref="_deleteBtn"
+                @onclick="AskDelete">Delete…</button>
+        <button class="link" @onclick="() => AppState.ClearSelection()">Clear</button>
+
+        @if (_confirmDelete)
+        {
+            <div class="confirm" role="alertdialog" aria-modal="true" aria-label="Confirm delete"
+                 tabindex="-1" @ref="_confirmRef" @onkeydown="ConfirmKey">
+                <p>
+                    @{ var live = PendingLive; }
+                    Move <b>@live.Count.ToString("N0")</b> photo@(live.Count == 1 ? "" : "s")
+                    (@AppState.FormatBytes(live.Sum(i => i.FileSize))) to the Recycle Bin? You can undo this from History.
+                </p>
+                <div class="row">
+                    <button class="danger" @onclick="Delete">Move to Recycle Bin</button>
+                    <button class="link" @onclick="CancelDelete">Cancel</button>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public EventCallback OnOpenExport { get; set; }
+
+    bool _confirmDelete;
+    bool _needsConfirmFocus;
+    bool _returnFocusToDelete;
+    ElementReference _confirmRef;
+    ElementReference _deleteBtn;
+
+    /// <summary>The photos the confirmation is asking about, captured when it opened.</summary>
+    /// <remarks>
+    /// Deleting re-read the live selection when the answer came back, so anything that changed
+    /// the selection while the prompt was up silently re-aimed it — Cmd+A behind the prompt
+    /// turned "move 2 photos" into "move all 3,934". interop.js now blocks that particular
+    /// route, but the prompt should be answerable only for what it actually named, whatever
+    /// else finds a way to move the selection underneath it.
+    /// </remarks>
+    List<long> _pending = [];
+    HashSet<long> _pendingSet = [];
+
+    bool CanAct => AppState.Selected.Count > 0 && !AppState.Busy;
+
+    // Both numbers come from the same live pass over the captured ids, so the sentence can
+    // never count photos its byte total has already dropped — a snapshot can go stale if
+    // another window deletes one of them while this prompt is open.
+    List<ImageView> PendingLive => AppState.Images.Where(i => _pendingSet.Contains(i.Id)).ToList();
+    long PendingBytes => PendingLive.Sum(i => i.FileSize);
+
+    string? ActHint => AppState.Busy ? "Wait for the current job to finish." : null;
+
+    protected override void OnInitialized() => AppState.Changed += OnStateChanged;
+
+    void OnStateChanged()
+    {
+        // Emptying the selection takes this bar off screen; a confirmation left armed would
+        // reappear against a different selection the next time one is made.
+        if (AppState.Selected.Count == 0) _confirmDelete = false;
+        StateHasChanged();
+    }
+
+    public void Dispose() => AppState.Changed -= OnStateChanged;
+
+    // The confirmation is a modal in everything but implementation: it must take focus so a
+    // keyboard user can answer it, and Escape must decline rather than trap them there.
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_confirmDelete && _needsConfirmFocus)
+        {
+            _needsConfirmFocus = false;
+            await _confirmRef.FocusAsync();
+        }
+        else if (_returnFocusToDelete && !_confirmDelete && AppState.Selected.Count > 0)
+        {
+            _returnFocusToDelete = false;
+            await _deleteBtn.FocusAsync();
+        }
+    }
+
+    void AskDelete()
+    {
+        _pending = AppState.Selected.ToList();
+        _pendingSet = [.. _pending];
+        _confirmDelete = true;
+        _needsConfirmFocus = true;
+    }
+
+    void CancelDelete()
+    {
+        _confirmDelete = false;
+        // Declining returns you to the button you pressed, not to <body>.
+        _returnFocusToDelete = true;
+    }
+
+    Task ConfirmKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") CancelDelete();
+        return Task.CompletedTask;
+    }
+
+    async Task Delete()
+    {
+        _confirmDelete = false;
+        await AppState.DeleteAsync(_pending);
+    }
+}

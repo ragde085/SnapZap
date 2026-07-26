@@ -1,0 +1,181 @@
+@implements IDisposable
+@inject AppState AppState
+
+@*
+    The working toolbar: filters and selection under their own buttons, and the two
+    library-wide actions inline. This replaced an icon rail whose panels pushed the grid
+    aside — filtering meant giving up a column of photos to see the sliders that decide
+    which photos to show. Menus hold the controls that are long or rarely touched; anything
+    that acts on a selection lives in SelectionBar, which only appears when there is one.
+*@
+@* Escape closes an open menu and puts focus back on the button that opened it. The scrim
+   below only catches the mouse; without this a keyboard user could open a menu and had no
+   way to shut it except by running one of its commands. *@
+<div class="toolbar" role="toolbar" aria-label="Filters and actions" @onkeydown="OnKeyDown">
+
+    <div class="tb-group">
+        <button class="tb-btn @(_open == Menu.Filters ? "on" : "") @(AppState.HasActiveFilter ? "marked" : "")"
+                @ref="_filtersBtn"
+                aria-expanded="@(_open == Menu.Filters ? "true" : "false")"
+                aria-haspopup="dialog"
+                aria-controls="filters-popover"
+                @onclick="() => Toggle(Menu.Filters)">
+            Filters
+            @if (AppState.HasActiveFilter)
+            {
+                <span class="tb-count">@ActiveFilterCount</span>
+            }
+            <span class="tb-caret" aria-hidden="true">▾</span>
+        </button>
+
+        @if (_open == Menu.Filters)
+        {
+            <div class="popover" id="filters-popover" role="group" aria-label="Filters">
+                <label class="f">
+                    <span class="f-label">NSFW at least <b>@(AppState.NsfwMin == 0 ? "any" : AppState.NsfwMin.ToString("F2"))</b></span>
+                    <input type="range" min="0" max="1" step="0.01" @bind="AppState.NsfwMin" @bind:event="oninput" />
+                </label>
+                <label class="f">
+                    <span class="f-label">Blurrier than <b>@(AppState.BlurMax == 0 ? "off" : AppState.BlurMax.ToString())</b></span>
+                    <input type="range" min="0" max="300" step="5" @bind="AppState.BlurMax" @bind:event="oninput" />
+                </label>
+                <label class="f checkbox">
+                    <input type="checkbox" @bind="AppState.DupesOnly" /> Duplicates only
+                </label>
+                @if (AppState.Folder.Length > 0)
+                {
+                    <label class="f">
+                        <span class="f-label">Folder</span>
+                        <div class="f-chip">
+                            <span title="@AppState.Folder">@ImageView.ShortFolder(AppState.Folder)</span>
+                            <button class="link" aria-label="Clear folder filter" @onclick="() => AppState.Folder = string.Empty">✕</button>
+                        </div>
+                    </label>
+                }
+                <label class="f">
+                    <span class="f-label">Year</span>
+                    <select @bind="AppState.Year">
+                        <option value="">All years</option>
+                        @foreach (var year in AppState.Years)
+                        {
+                            <option value="@year">@year</option>
+                        }
+                    </select>
+                </label>
+                <button class="link" disabled="@(!AppState.HasActiveFilter)" @onclick="() => AppState.ClearFilters()">Clear filters</button>
+            </div>
+        }
+    </div>
+
+    <div class="tb-group">
+        <button class="tb-btn @(_open == Menu.Select ? "on" : "")"
+                @ref="_selectBtn"
+                aria-expanded="@(_open == Menu.Select ? "true" : "false")"
+                aria-haspopup="dialog"
+                aria-controls="select-popover"
+                @onclick="() => Toggle(Menu.Select)">
+            Select
+            <span class="tb-caret" aria-hidden="true">▾</span>
+        </button>
+
+        @if (_open == Menu.Select)
+        {
+            <div class="popover" id="select-popover" role="group" aria-label="Select">
+                <button @onclick="() => Run(() => AppState.SelectAllVisible())">Everything shown</button>
+                <button @onclick="() => Run(() => AppState.SelectVisibleFolder())">This folder</button>
+                <button disabled="@(AppState.DupeOf.Count == 0)" @onclick="() => Run(() => AppState.SelectDupeExtras())">
+                    Duplicate extras@(AppState.DupeExtraCount > 0 ? $" ({AppState.FormattedReclaimable})" : "")
+                </button>
+                <button disabled="@(AppState.Filtered().Count == 0)" @onclick="() => Run(() => AppState.InvertVisibleSelection())">Invert</button>
+                <p class="hint">Click a photo to select it. Shift-click to take a range.</p>
+            </div>
+        }
+    </div>
+
+    <span class="tb-sep" aria-hidden="true"></span>
+
+    @* Reviewing duplicates works on the whole library rather than the selection, so it
+       belongs here and not in the contextual bar. *@
+    <button class="tb-btn"
+            disabled="@(AppState.DupeGroups.Count == 0)"
+            title="@DupeHint"
+            @onclick="() => OnOpenDupeReview.InvokeAsync()">
+        Review duplicates@(AppState.DupeGroups.Count > 0 ? $" ({AppState.DupeGroups.Count:N0})" : "")
+    </button>
+
+    <button class="tb-btn" @onclick="() => OnOpenUndo.InvokeAsync()">History</button>
+
+    @* Export and Delete live in SelectionBar, which does not exist until something is picked —
+       so with a freshly scanned library nothing on screen says exporting is possible at all.
+       The old rail at least showed them greyed out. This says where they went. *@
+    @if (AppState.Images.Count > 0 && AppState.Selected.Count == 0)
+    {
+        <span class="tb-note">Select photos to export or delete them</span>
+    }
+
+    @* A click anywhere else dismisses the open menu. Transparent and behind the popover, so
+       it never intercepts a click meant for the controls inside it. *@
+    @if (_open is not null)
+    {
+        <div class="popover-scrim" aria-hidden="true" @onclick="Close"></div>
+    }
+</div>
+
+@code {
+    [Parameter] public EventCallback OnOpenDupeReview { get; set; }
+    [Parameter] public EventCallback OnOpenUndo { get; set; }
+
+    enum Menu { Filters, Select }
+
+    Menu? _open;
+    ElementReference _filtersBtn;
+    ElementReference _selectBtn;
+    Menu? _returnFocusTo;
+
+    /// <summary>Names the step that is actually missing. One message for two different states
+    /// told a user with a scanned library to go and scan it.</summary>
+    string? DupeHint => AppState.DupeGroups.Count > 0 ? null
+        : AppState.Images.Count == 0 ? "Scan a folder first."
+        : "Press Find duplicates to look for copies.";
+
+    int ActiveFilterCount =>
+        (AppState.NsfwMin > 0 ? 1 : 0) +
+        (AppState.BlurMax > 0 ? 1 : 0) +
+        (AppState.DupesOnly ? 1 : 0) +
+        (AppState.Folder.Length > 0 ? 1 : 0) +
+        (AppState.Year.Length > 0 ? 1 : 0);
+
+    void Toggle(Menu m) => _open = _open == m ? null : m;
+    void Close() => _open = null;
+
+    // Selection commands close the menu: the result is the grid behind it, and leaving the
+    // popover open over the photos it just changed hides the thing the user asked to see.
+    // Focus goes back to the button that opened the menu rather than to <body>, which would
+    // otherwise cost a keyboard user a walk back through the whole toolbar.
+    void Run(Action command)
+    {
+        command();
+        _returnFocusTo = _open;
+        _open = null;
+    }
+
+    Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key != "Escape" || _open is null) return Task.CompletedTask;
+        _returnFocusTo = _open;
+        _open = null;
+        return Task.CompletedTask;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_returnFocusTo is not { } menu) return;
+        _returnFocusTo = null;
+        await (menu == Menu.Filters ? _filtersBtn : _selectBtn).FocusAsync();
+    }
+
+    // AppState is mutated by siblings whose parameters into this component never change, so
+    // Blazor would not otherwise re-render us — see PhotoGrid for the same subscription.
+    protected override void OnInitialized() => AppState.Changed += StateHasChanged;
+    public void Dispose() => AppState.Changed -= StateHasChanged;
+}
