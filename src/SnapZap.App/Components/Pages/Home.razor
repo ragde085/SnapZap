@@ -8,10 +8,10 @@
     <div class="brand">Snap<em>Zap</em></div>
     <Toolbar />
 
-    @* Setup and shortcuts: needed rarely, so they get icons at the far edge rather than
-       space in the working toolbar below. The pip is the only reason Setup is ever urgent. *@
+    @* Setup and help: needed rarely, so they get icons at the far edge rather than space in the
+       working toolbar below. The pip is the only reason Setup is ever urgent. *@
     <div class="topbar-tools">
-        <button class="icon-btn" title="Keyboard shortcuts" aria-label="Keyboard shortcuts"
+        <button class="icon-btn" title="Help and FAQ" aria-label="Help and FAQ"
                 aria-haspopup="dialog" aria-expanded="@(_showHelp ? "true" : "false")"
                 @onclick="() => _showHelp = true">
             <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M9.5 9a2.5 2.5 0 113.5 2.3c-.7.4-1 .9-1 1.7" /><circle cx="12" cy="17" r=".6" fill="currentColor" stroke="none" /></svg>
@@ -94,7 +94,12 @@
         }
         else if (AppState.Images.Count == 0 && !AppState.Busy)
         {
-            <div class="empty"><p>Point SnapZap at a folder of photos and press <kbd>Scan</kbd> to begin.</p></div>
+            @* The one screen every new user sees, and the only one with room to say where the
+               instructions live — the "?" icon is a 17px glyph at the far edge of the top bar. *@
+            <div class="empty">
+                <p>Point SnapZap at a folder of photos and press <kbd>Scan</kbd> to begin.</p>
+                <p><button class="link" @onclick="() => OpenHelp(null)">How SnapZap works</button></p>
+            </div>
         }
         else if (AppState.Images.Count > 0 && Shown == 0)
         {
@@ -128,7 +133,7 @@
 <DupeReview Show="_showDupes" OnClose="() => _showDupes = false" />
 <DependencyDialog Show="_showDeps" OnClose="() => _showDeps = false" />
 <SetupDialog Show="_showSetup" OnClose="() => _showSetup = false" />
-<ShortcutsDialog Show="_showHelp" OnClose="() => _showHelp = false" />
+<HelpDialog Show="_showHelp" OpenAt="@_helpAt" OnClose="CloseHelp" />
 
 @code {
     bool _showExport;
@@ -137,6 +142,11 @@
     bool _showDupes;
     bool _showSetup;
     bool _showHelp;
+
+    /// <summary>Which help section to land on. Set by <see cref="OpenHelp"/> so a "what does
+    /// this mean?" link can open the paragraph that answers it rather than the front page.</summary>
+    string? _helpAt;
+
     ImageView? _previewImg;
 
     int Shown => AppState.Filtered().Count;
@@ -222,6 +232,19 @@
     void CloseUndo() => _showUndo = false;
 
     void OpenDupeReview() => _showDupes = true;
+
+    /// <summary>Open help at a named section — see HelpDialog's own Section enum for the names.</summary>
+    void OpenHelp(string? section)
+    {
+        _helpAt = section;
+        _showHelp = true;
+    }
+
+    void CloseHelp()
+    {
+        _showHelp = false;
+        _helpAt = null;
+    }
 
     void OnSelectionChangedElsewhere() => InvokeAsync(() =>
     {
