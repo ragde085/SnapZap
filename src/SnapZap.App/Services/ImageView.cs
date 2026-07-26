@@ -9,7 +9,10 @@ public sealed record DupeInfo(long GroupId, DupeKind Kind, bool IsKeeper);
 /// URLs, resolved dupe info, and folder/year computed from the path/EXIF.</summary>
 public sealed record ImageView(ImageRecord Record, DupeInfo? Dupe)
 {
-    /// <summary>Laplacian variance below this reads as soft enough to flag on the thumbnail.</summary>
+    /// <summary>Laplacian variance below this reads as soft enough to flag on the thumbnail,
+    /// used when the user hasn't set their own threshold on the filter slider. Read it through
+    /// <c>AppState.SoftThreshold</c> — a second, independent notion of "blurry" living on the
+    /// view model is what made the badge disagree with the filter that selected the photo.</summary>
     public const double BlurFlagThreshold = 100;
 
     public long Id => Record.Id;
@@ -31,8 +34,6 @@ public sealed record ImageView(ImageRecord Record, DupeInfo? Dupe)
     public int? Year => ExifTaken is { } t
         ? DateTimeOffset.FromUnixTimeSeconds(t).UtcDateTime.Year
         : null;
-
-    public bool IsBlurry => BlurScore is { } b && b <= BlurFlagThreshold;
 
     public string Dimensions => Width is { } w && Height is { } h ? $"{w} × {h}" : "unknown";
 

@@ -29,9 +29,9 @@
                     </svg>
                 </span>
             }
-            @if (Img.IsBlurry)
+            @if (AppState.IsSoft(Img))
             {
-                <span class="badge blur" title="Soft focus — blur score @Img.BlurScore!.Value.ToString("F1")">
+                <span class="badge blur" title="Soft focus — blur score @Img.BlurScore!.Value.ToString("F1") (soft at @AppState.SoftThreshold.ToString("F0") or below)">
                     <svg viewBox="0 0 24 24">
                         <circle cx="12" cy="12" r="4" />
                         <path d="M12 3v2M12 19v2M3 12h2M19 12h2" />
@@ -66,7 +66,7 @@
 
     bool Selected => AppState.Selected.Contains(Img.Id);
 
-    bool HasBadges => Img.NsfwScore is not null || Img.IsBlurry || Img.Dupe is not null;
+    bool HasBadges => Img.NsfwScore is not null || AppState.IsSoft(Img) || Img.Dupe is not null;
 
     string AriaLabel
     {
@@ -74,7 +74,7 @@
         {
             var bits = new List<string> { Img.FileName };
             if (Img.NsfwScore is { } n) bits.Add($"NSFW {n:F2}");
-            if (Img.IsBlurry) bits.Add("soft focus");
+            if (AppState.IsSoft(Img)) bits.Add("soft focus");
             if (Img.Dupe is { } d) bits.Add(d.IsKeeper ? "duplicate keeper" : "duplicate extra");
             return string.Join(", ", bits);
         }

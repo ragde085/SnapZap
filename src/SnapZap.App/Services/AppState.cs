@@ -163,6 +163,20 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
     public string Folder { get => _folder; set => SetFilter(ref _folder, value ?? ""); }
     public string Year { get => _year; set => SetFilter(ref _year, value ?? ""); }
 
+    /// <summary>
+    /// The blur score at or below which a photo is badged as soft.
+    /// </summary>
+    /// <remarks>
+    /// Follows the filter slider once the user has moved it. The badge and the filter were two
+    /// unrelated numbers — a fixed 100 for the badge against a 0–300 slider — so filtering to
+    /// "blurrier than 150" produced a grid of photos with no soft-focus badge on any of them,
+    /// each one apparently contradicting the filter that selected it.
+    /// </remarks>
+    public double SoftThreshold => _blurMax > 0 ? _blurMax : ImageView.BlurFlagThreshold;
+
+    /// <summary>Whether this photo reads as soft at the threshold currently in force.</summary>
+    public bool IsSoft(ImageView img) => img.BlurScore is { } b && b <= SoftThreshold;
+
     void SetFilter<T>(ref T field, T value)
     {
         if (EqualityComparer<T>.Default.Equals(field, value)) return;
@@ -202,15 +216,32 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
     // ---- Load --------------------------------------------------------------
     public Task LoadAsync()
     {
-        var groups = new DupeRepository(catalog.Db).Groups();
+        var records = catalog.Images.All().ToList();
+        var present = records.Select(r => r.Id).ToHashSet();
+
+        // Groups are stored as they were detected, but members get recycled afterwards. A group
+        // with one surviving copy is no longer a duplicate of anything: it must not be counted
+        // in "5 duplicate groups", stepped through in the review, or badged on the card.
+        var groups = new DupeRepository(catalog.Db).Groups()
+            .Select(g => g with { Members = g.Members.Where(m => present.Contains(m.ImageId)).ToList() })
+            .Where(g => g.Members.Count >= 2)
+            .ToList();
+
         var dupeOf = new Dictionary<long, DupeInfo>();
         foreach (var g in groups)
-            foreach (var m in g.Members)
-                dupeOf[m.ImageId] = new DupeInfo(g.Id, g.Kind, m.IsKeeper);
+        {
+            // If the keeper itself was recycled, every survivor still reads IsKeeper=false —
+            // so they all counted as reclaimable extras, and "select all extras" would arm a
+            // delete against every remaining copy of the photo. A group always keeps one.
+            var members = g.Members;
+            var keeperId = members.FirstOrDefault(m => m.IsKeeper)?.ImageId
+                        ?? members.OrderBy(m => m.ImageId).First().ImageId;
 
-        Images = catalog.Images.All()
-            .Select(r => new ImageView(r, dupeOf.GetValueOrDefault(r.Id)))
-            .ToList();
+            foreach (var m in members)
+                dupeOf[m.ImageId] = new DupeInfo(g.Id, g.Kind, m.ImageId == keeperId);
+        }
+
+        Images = records.Select(r => new ImageView(r, dupeOf.GetValueOrDefault(r.Id))).ToList();
         DupeOf = dupeOf;
         DupeGroups = groups;
         _byId = Images.ToDictionary(i => i.Id);

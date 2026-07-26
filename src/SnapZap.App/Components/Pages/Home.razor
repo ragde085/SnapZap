@@ -39,7 +39,34 @@
         </div>
         <ScanIssues />
         <PhotoGrid OnPreview="OpenPreview" />
-        @if (AppState.Images.Count == 0 && !AppState.Busy)
+        @* "No photos" has two causes that need opposite responses: nothing scanned yet, and a
+           scan that came back empty. Showing the first message after a scan tells the user to
+           do the thing they just did. *@
+        @if (AppState.Images.Count == 0 && !AppState.Busy && AppState.ScannedFolder is { } scanned)
+        {
+            <div class="empty">
+                <p>
+                    No photos in <b>@ImageView.ShortFolder(scanned)</b>.
+                    @if (AppState.LastUnsupportedTotal > 0)
+                    {
+                        <text>
+                            <br />
+                            SnapZap found @AppState.LastUnsupportedTotal.ToString("N0") file@(AppState.LastUnsupportedTotal == 1 ? "" : "s")
+                            it can't read yet — see the note above the grid.
+                        </text>
+                    }
+                    else
+                    {
+                        <text>
+                            <br />
+                            Check the folder is the right one, and that it holds images rather
+                            than a folder of folders you meant to point at instead.
+                        </text>
+                    }
+                </p>
+            </div>
+        }
+        else if (AppState.Images.Count == 0 && !AppState.Busy)
         {
             <div class="empty"><p>Point SnapZap at a folder of photos and press <kbd>Scan</kbd> to begin.</p></div>
         }
@@ -60,7 +87,7 @@
 
 <ExportDialog Show="_showExport" OnClose="CloseExport" />
 <UndoDialog Show="_showUndo" OnClose="CloseUndo" />
-<PreviewModal Img="_previewImg" OnClose="ClosePreview" />
+<PreviewModal Img="_previewImg" OnClose="ClosePreview" OnNavigate="img => _previewImg = img" />
 <DupeReview Show="_showDupes" OnClose="() => _showDupes = false" />
 <DependencyDialog Show="_showDeps" OnClose="() => _showDeps = false" />
 

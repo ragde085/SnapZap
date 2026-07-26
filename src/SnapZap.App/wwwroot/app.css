@@ -44,6 +44,7 @@
 
   --radius: 3px;
   --rail-w: 46px;
+  --preview-panel-w: 268px;   /* the preview's metadata column; the nav buttons clear it */
   --flyout-w: 232px;
 
   --ease: cubic-bezier(0.2, 0, 0.2, 1);
@@ -895,6 +896,7 @@ main { display: flex; flex: 1; min-height: 0; }
   animation: fade-in 140ms var(--ease);
 }
 .modal .frame {
+  position: relative;          /* containing block for the position counter */
   flex: 1;
   min-width: 0;
   display: grid;
@@ -907,9 +909,43 @@ main { display: flex; flex: 1; min-height: 0; }
 }
 .modal .frame img { max-width: 100%; max-height: 100%; object-fit: contain; }
 
+/* Where you are in the run, so stepping doesn't feel unbounded. Sits over the image rather
+   than taking layout height, which would shrink the photo it's annotating. */
+.modal .frame-pos {
+  position: absolute;
+  bottom: 12px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: rgba(9, 6, 4, 0.72);
+  color: var(--muted);
+  font-size: var(--t-xs);
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+/* Step controls, held clear of the image so they never sit on top of what's being judged. */
+.modal .nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 1;
+  width: 38px;
+  height: 62px;
+  padding: 0;
+  font-size: 1.5rem;
+  line-height: 1;
+  color: var(--muted);
+  background: rgba(9, 6, 4, 0.72);
+  border: 1px solid var(--line);
+}
+.modal .nav.prev { left: 32px; border-radius: 0 var(--radius) var(--radius) 0; }
+.modal .nav.next { right: calc(var(--preview-panel-w) + 32px); border-radius: var(--radius) 0 0 var(--radius); }
+.modal .nav:hover:not(:disabled) { color: var(--ink); border-color: var(--dim); }
+.modal .nav:disabled { opacity: 0.28; }
+
 /* Metadata as labelled rows, not one run-on line joined by separators. */
 .modal .panel {
-  width: 268px;
+  width: var(--preview-panel-w);
   flex: none;
   background: var(--raised);
   border: 1px solid var(--line);
