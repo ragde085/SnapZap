@@ -21,6 +21,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\SnapZap.Core\SnapZap.Core.csproj" />
+    <ProjectReference Include="..\..\src\SnapZap.App\SnapZap.App.csproj" />
   </ItemGroup>
 
   <ItemGroup>

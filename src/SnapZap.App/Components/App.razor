@@ -6,7 +6,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>SnapZap</title>
     <base href="/" />
-    <link rel="stylesheet" href="app.css" />
+    @* Version-stamped so a browser can't serve assets from a previous build. Blazor's own
+       framework files are fingerprinted; these two are ours and were not. *@
+    <link rel="stylesheet" href="app.css@(Version)" />
     <HeadOutlet />
 </head>
 <body>
@@ -19,6 +21,32 @@
     </div>
 
     <script src="_framework/blazor.web.js"></script>
-    <script src="interop.js"></script>
+    <script src="interop.js@(Version)"></script>
 </body>
 </html>
+
+@code {
+    /// <summary>
+    /// Cache-buster tied to the build, so `app.css` and `interop.js` can never be served stale
+    /// after an update. A stale interop.js used to blank the photo grid.
+    ///
+    /// Uses <c>AppContext.BaseDirectory</c>, never <c>Assembly.Location</c>: the latter returns
+    /// an empty string in a single-file publish — which is exactly how the Windows build ships
+    /// — and <c>new FileInfo("")</c> would throw here, in a static initialiser, on every launch.
+    /// Wrapped anyway so a version stamp can never be the thing that stops the app starting.
+    /// </summary>
+    static readonly string Version = "?v=" + BuildStamp();
+
+    static string BuildStamp()
+    {
+        var version = typeof(App).Assembly.GetName().Version?.ToString() ?? "dev";
+        try
+        {
+            var asset = Path.Combine(AppContext.BaseDirectory, "wwwroot", "interop.js");
+            if (File.Exists(asset))
+                return $"{version}-{File.GetLastWriteTimeUtc(asset).Ticks}";
+        }
+        catch { /* fall through to the assembly version alone */ }
+        return version;
+    }
+}

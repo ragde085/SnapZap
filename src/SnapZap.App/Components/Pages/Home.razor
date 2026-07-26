@@ -84,7 +84,10 @@
                     ? $"<b>{Shown:N0}</b> of {total:N0} {noun}"
                     : $"<b>{total:N0}</b> {noun}",
             };
-            if (AppState.DupeOf.Count > 0) bits.Add($"{AppState.DupeOf.Count:N0} in duplicate groups");
+            if (AppState.DupeExtraCount > 0)
+                bits.Add($"{AppState.DupeExtraCount:N0} duplicate extra{(AppState.DupeExtraCount == 1 ? "" : "s")} · <b>{AppState.FormattedReclaimable}</b> reclaimable");
+            else if (AppState.DupeOf.Count > 0)
+                bits.Add($"{AppState.DupeOf.Count:N0} in duplicate groups");
             if (AppState.Selected.Count > 0) bits.Add($"<b>{AppState.Selected.Count:N0}</b> selected");
             return string.Join(" &nbsp;·&nbsp; ", bits);
         }

@@ -21,10 +21,24 @@ public enum SortKey { Scanned, Captured, Name, Size, Blur, Nsfw }
 /// object and top-level functions in the old app.js. Components subscribe to <see cref="Changed"/>
 /// and re-render; this class never touches the DOM/UI directly.
 /// </summary>
-public sealed class AppState(CatalogService catalog, ITrashService trash)
+public sealed class AppState(CatalogService catalog, ITrashService trash, SessionStore session)
 {
     public event Action? Changed;
+
     public void Notify() => Changed?.Invoke();
+
+    /// <summary>
+    /// Notify *and* record that the selection moved. Kept separate from <see cref="Notify"/>
+    /// because Notify also fires for filters, toasts and — critically — every progress tick of
+    /// a scan. Doing this work there meant one full re-serialisation of the selection and one
+    /// O(n) memo invalidation per file scanned.
+    /// </summary>
+    void NotifySelectionChanged()
+    {
+        _selectedBytes = null;
+        session.SaveSelection(Selected);
+        Changed?.Invoke();
+    }
 
     // ---- Data ----------------------------------------------------------
     public IReadOnlyList<ImageView> Images { get; private set; } = [];
@@ -32,6 +46,37 @@ public sealed class AppState(CatalogService catalog, ITrashService trash)
 
     /// <summary>Duplicate groups with their members, for the review flow.</summary>
     public IReadOnlyList<DupeGroup> DupeGroups { get; private set; } = [];
+
+    /// <summary>Bytes held by duplicate extras — what removing them would give back. This is
+    /// the number that makes the whole exercise feel worth doing, so it is computed on load
+    /// rather than left for the user to infer from a count.</summary>
+    public long ReclaimableBytes { get; private set; }
+
+    public int DupeExtraCount { get; private set; }
+
+    public string FormattedReclaimable => FormatBytes(ReclaimableBytes);
+
+    /// <summary>Bytes held by the current selection — what a delete would actually free.</summary>
+    public long SelectedBytes => _selectedBytes ??=
+        Images.Where(i => Selected.Contains(i.Id)).Sum(i => i.FileSize);
+
+    public string FormattedSelectedBytes => FormatBytes(SelectedBytes);
+
+    long? _selectedBytes;
+    bool _selectionRestored;
+
+    /// <summary>Id lookup built once per load. Rebuilding it per call made the duplicate
+    /// review scan the whole library a dozen times on every render.</summary>
+    Dictionary<long, ImageView> _byId = [];
+
+    /// <summary>Human-readable size, e.g. "14.2 GB".</summary>
+    public static string FormatBytes(long b) => b switch
+    {
+        >= 1_000_000_000 => $"{b / 1e9:F1} GB",
+        >= 1_000_000 => $"{b / 1e6:F0} MB",
+        >= 1_000 => $"{b / 1e3:F0} KB",
+        _ => $"{b} bytes",
+    };
     public HashSet<long> Selected { get; } = [];
     public long? LastClickedId { get; private set; }
 
@@ -161,17 +206,33 @@ public sealed class AppState(CatalogService catalog, ITrashService trash)
             .ToList();
         DupeOf = dupeOf;
         DupeGroups = groups;
+        _byId = Images.ToDictionary(i => i.Id);
 
         Folders = Images.Select(i => i.Folder).Distinct()
             .OrderBy(f => f, StringComparer.Ordinal).ToList();
         Years = Images.Select(i => i.Year).Where(y => y is not null).Select(y => y!.Value)
             .Distinct().OrderByDescending(y => y).ToList();
 
+        // Only non-keepers are reclaimable: every group keeps one copy.
+        var extras = Images.Where(i => dupeOf.TryGetValue(i.Id, out var d) && !d.IsKeeper).ToList();
+        DupeExtraCount = extras.Count;
+        ReclaimableBytes = extras.Sum(i => i.FileSize);
+
         Tree = FolderTreeBuilder.Build(Images, DupeOf);
+
+        var live = Images.Select(i => i.Id).ToHashSet();
+
+        // First load of a circuit: adopt whatever the last session had selected. A reload in
+        // the middle of triaging a large library would otherwise throw the work away.
+        if (!_selectionRestored)
+        {
+            _selectionRestored = true;
+            foreach (var id in session.LoadSelection())
+                if (live.Contains(id)) Selected.Add(id);
+        }
 
         // Drop selections and filter values that no longer refer to anything. The folder filter
         // is a prefix, so it stays valid as long as some folder still sits underneath it.
-        var live = Images.Select(i => i.Id).ToHashSet();
         Selected.RemoveWhere(id => !live.Contains(id));
         if (_folder.Length > 0 &&
             !Folders.Any(f => f == _folder || f.StartsWith(_folder + "/", StringComparison.Ordinal)))
@@ -179,7 +240,9 @@ public sealed class AppState(CatalogService catalog, ITrashService trash)
         if (_year.Length > 0 && !Years.Any(y => y.ToString() == _year)) _year = "";
 
         _filtered = null;
-        Notify();
+        // LoadAsync both replaces Images and prunes/restores Selected, so the selection memo
+        // must be invalidated and the (possibly pruned) selection persisted.
+        NotifySelectionChanged();
         return Task.CompletedTask;
     }
 
@@ -243,7 +306,7 @@ public sealed class AppState(CatalogService catalog, ITrashService trash)
     {
         if (!Selected.Remove(id)) Selected.Add(id);
         LastClickedId = id;
-        Notify();
+        NotifySelectionChanged();
     }
 
     public void SelectRange(long fromId, long toId, IReadOnlyList<long> visibleOrder)
@@ -254,7 +317,7 @@ public sealed class AppState(CatalogService catalog, ITrashService trash)
         var (lo, hi) = a < b ? (a, b) : (b, a);
         for (var i = lo; i <= hi; i++) Selected.Add(visibleOrder[i]);
         LastClickedId = toId;
-        Notify();
+        NotifySelectionChanged();
     }
 
     static int IndexOf(IReadOnlyList<long> list, long id)
@@ -267,7 +330,7 @@ public sealed class AppState(CatalogService catalog, ITrashService trash)
     public void SelectAllVisible()
     {
         foreach (var img in Filtered()) Selected.Add(img.Id);
-        Notify();
+        NotifySelectionChanged();
     }
 
     public void SelectVisibleFolder()
@@ -276,7 +339,7 @@ public sealed class AppState(CatalogService catalog, ITrashService trash)
         var target = _folder.Length > 0 ? _folder : visible.Count > 0 ? visible[0].Folder : "";
         foreach (var img in visible)
             if (img.Folder == target) Selected.Add(img.Id);
-        Notify();
+        NotifySelectionChanged();
     }
 
     /// <summary>
@@ -286,15 +349,12 @@ public sealed class AppState(CatalogService catalog, ITrashService trash)
     /// on every pick would make the card you just chose jump position under the cursor.
     /// Sorting by path keeps the layout still so only the badge moves.
     /// </summary>
-    public IReadOnlyList<ImageView> MembersOf(DupeGroup group)
-    {
-        var byId = Images.ToDictionary(i => i.Id);
-        return group.Members
-            .Where(m => byId.ContainsKey(m.ImageId))
-            .Select(m => byId[m.ImageId])
+    public IReadOnlyList<ImageView> MembersOf(DupeGroup group) =>
+        group.Members
+            .Where(m => _byId.ContainsKey(m.ImageId))
+            .Select(m => _byId[m.ImageId])
             .OrderBy(i => i.Path, StringComparer.Ordinal)
             .ToList();
-    }
 
     /// <summary>Override which member of a group survives an export.</summary>
     public async Task SetKeeperAsync(long groupId, long imageId)
@@ -309,7 +369,7 @@ public sealed class AppState(CatalogService catalog, ITrashService trash)
     {
         foreach (var (id, d) in DupeOf)
             if (!d.IsKeeper) Selected.Add(id);
-        Notify();
+        NotifySelectionChanged();
     }
 
     /// <summary>Flip selection within the visible set — useful after selecting the keepers.</summary>
@@ -319,14 +379,14 @@ public sealed class AppState(CatalogService catalog, ITrashService trash)
         {
             if (!Selected.Remove(img.Id)) Selected.Add(img.Id);
         }
-        Notify();
+        NotifySelectionChanged();
     }
 
     public void ClearSelection()
     {
         Selected.Clear();
         LastClickedId = null;
-        Notify();
+        NotifySelectionChanged();
     }
 
     // ---- Operations --------------------------------------------------------

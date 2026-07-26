@@ -36,12 +36,8 @@ public sealed record ImageView(ImageRecord Record, DupeInfo? Dupe)
 
     public string Dimensions => Width is { } w && Height is { } h ? $"{w} × {h}" : "unknown";
 
-    public string SizeLabel => FileSize switch
-    {
-        >= 1_000_000_000 => $"{FileSize / 1e9:F1} GB",
-        >= 1_000_000 => $"{FileSize / 1e6:F1} MB",
-        _ => $"{FileSize / 1e3:F0} KB",
-    };
+    /// <summary>Delegates so there is one byte formatter, not two that drift apart.</summary>
+    public string SizeLabel => AppState.FormatBytes(FileSize);
 
     public string CapturedLabel => ExifTaken is { } t
         ? DateTimeOffset.FromUnixTimeSeconds(t).UtcDateTime.ToString("yyyy-MM-dd")
