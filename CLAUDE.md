@@ -131,6 +131,8 @@ The sidecars are excluded from publish output (`CopyToPublishDirectory="Never"`)
 | `docs/WINDOWS-VERIFY.md` | Checklist for four Windows-only code paths |
 | `scripts/install-deps.{sh,bat}` | One-command install of both optional sidecars (pinned + checksummed) |
 | `scripts/export-nsfw-model.sh` | Build the ONNX model from PyTorch weights instead of downloading it |
+| `scripts/make-icons.py` | Rebuild the icon set from the source art (needs Pillow; outputs are committed) |
+| `assets/icon/` | Source art for the app icon + the generated 1024/256 PNGs |
 | `artifacts/` | Publish output (built, not committed) |
 | `models/` | NSFW ONNX model + preprocessor config (installed, not committed) |
 
@@ -144,8 +146,10 @@ The sidecars are excluded from publish output (`CopyToPublishDirectory="Never"`)
 - **Services/** — `AppState` (scoped per circuit: view state + operations, replaces the old
   `app.js` state object), `ImageView` (record wrapping `ImageRecord` for display),
   `DependencyChecker` (validates the optional sidecars, singleton).
-- **wwwroot/** — `app.css` (the "Darkroom" design system) and `interop.js` (grid geometry
-  measurement, scroll windowing, arrow-key focus movement).
+- **wwwroot/** — `app.css` (the "Darkroom" design system), `interop.js` (grid geometry
+  measurement, scroll windowing, arrow-key focus movement), and `favicon.ico`, which is also
+  the `.exe` icon (`<ApplicationIcon>` in the csproj points here so the tab and the taskbar
+  cannot disagree). Regenerate it with `scripts/make-icons.py`.
 
 ### Key subdirectories in `Core/`
 

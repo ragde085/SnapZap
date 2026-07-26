@@ -8,6 +8,37 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+
+    <!--
+      The .exe icon — Explorer, the taskbar, alt-tab. It deliberately points at the same file
+      App.razor links as the favicon rather than a private copy under assets/, so the icon on
+      the window and the icon on the browser tab cannot drift apart. Being inside wwwroot also
+      means it is already published as a static asset, so the running app can serve it.
+
+      Regenerate with scripts/make-icons.py; the source art is assets/icon/snapzap-source.png.
+    -->
+    <ApplicationIcon>wwwroot/favicon.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <!--
+    Win32 version info, i.e. what Properties → Details shows and, more importantly, what the
+    SmartScreen prompt reads out when someone runs an unsigned download. Left to the SDK these
+    all default to the assembly name, so the prompt said "SnapZap.App, publisher SnapZap.App".
+
+    OriginalFilename stays SnapZap.App.dll — it tracks AssemblyName, and renaming the assembly
+    would rename the shipped .exe that the README, the docs and the installer's dest option
+    all name.
+  -->
+  <PropertyGroup>
+    <Product>SnapZap</Product>
+    <Company>Moonwolf Dev</Company>
+    <!-- FileDescription reads from AssemblyTitle, not Description — Description only reaches
+         the managed AssemblyDescriptionAttribute, so setting it alone leaves the Win32 field
+         (the one SmartScreen and Task Manager show) still saying "SnapZap.App". -->
+    <AssemblyTitle>Photo manager for duplicates, NSFW and blurry photos</AssemblyTitle>
+    <Description>Photo manager for duplicates, NSFW and blurry photos</Description>
+    <Copyright>Copyright © 2026 Moonwolf Dev — MIT License</Copyright>
+    <Version>1.0.0</Version>
   </PropertyGroup>
 
   <!--

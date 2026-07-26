@@ -7,6 +7,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>SnapZap</title>
     <base href="/" />
+    @* The same .ico the .exe is built with (SnapZap.App.csproj, ApplicationIcon), so the tab
+       and the taskbar show one icon. Not version-stamped: browsers refetch a favicon on their
+       own schedule and the artwork does not change between builds. *@
+    <link rel="icon" href="favicon.ico" sizes="any" />
     @* Version-stamped so a browser can't serve assets from a previous build. Blazor's own
        framework files are fingerprinted; these two are ours and were not. *@
     <link rel="stylesheet" href="app.css@(Version)" />
