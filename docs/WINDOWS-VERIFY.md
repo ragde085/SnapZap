@@ -7,15 +7,15 @@ through this on real Windows hardware before shipping a release.
 
 ## 1. Recycle Bin — `WindowsTrashService.SendToTrashAsync`
 `shell32.SHFileOperation(FO_DELETE, FOF_ALLOWUNDO)`.
-- [ ] Delete a few images in the app's Delete mode.
-- [ ] Confirm they land in the Windows Recycle Bin (not permanently deleted).
-- [ ] Confirm the source folder no longer shows them and the grid updates.
+- [x] Delete a few images in the app's Delete mode.
+- [x] Confirm they land in the Windows Recycle Bin (not permanently deleted).
+- [x] Confirm the source folder no longer shows them and the grid updates.
 
 ## 2. Restore — `WindowsTrashService.RestoreAsync`
 Late-bound `Shell.Application` → Recycle Bin item → `Restore` verb.
-- [ ] Open the Undo panel, click Restore on a delete batch.
-- [ ] Confirm files return to their **exact original paths**.
-- [ ] Confirm the app re-scans and the images reappear in the grid.
+- [x] Open the Undo panel, click Restore on a delete batch.
+- [x] Confirm files return to their **exact original paths**.
+- [x] Confirm the app re-scans and the images reappear in the grid.
 - [ ] Edge cases: a file whose original folder was since deleted; two deleted files with the
       same name from different folders.
 
@@ -37,7 +37,6 @@ double-clickable UX). Two optional upgrades remain, both Windows-runtime-only:
 
 ## General smoke test on Windows
 - [ ] Double-click `SnapZap.App.exe` → server starts, browser opens the SPA.
-- [ ] Scan a real folder of JPG/PNG → thumbnails, blur, EXIF populate.
+- [x] Scan a real folder of JPG/PNG → thumbnails, blur, EXIF populate.
 - [ ] Place `models/nsfw.onnx` beside the exe → NSFW scoring works and scores look sane.
-- [ ] Place `czkawka_cli.exe` beside the exe → similar-image groups appear.
 - [ ] Full round-trip: scan → dedup → select duplicate extras → export (copy) → verify manifest.
