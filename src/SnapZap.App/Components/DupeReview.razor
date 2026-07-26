@@ -1,5 +1,6 @@
 @implements IDisposable
 @inject AppState AppState
+@inject IJSRuntime JS
 
 @*
     Group-at-a-time duplicate review: the core motion of the app, which the flat grid can't
@@ -7,6 +8,56 @@
     resolution, file size, date, location — and picking one rewrites the keeper flag that the
     export engine reads.
 *@
+
+@if (Show && Groups.Count > 0 && _compare)
+{
+    @* Full-resolution comparison. Thumbnails settle an exact duplicate; they cannot settle a
+       near-duplicate, where the difference is detail you have to actually look at. *@
+    <div class="cmp" role="dialog" aria-modal="true" aria-label="Compare copies at full size"
+         tabindex="-1" @ref="_cmpRef" @onkeydown="HandleCompareKey">
+
+        <div class="cmp-bar">
+            <span class="cmp-title">Group @(_index + 1) of @Groups.Count · @Distinguisher</span>
+            <div class="cmp-zoom" role="group" aria-label="Zoom">
+                @foreach (var z in Zooms)
+                {
+                    <button class="@(_zoom == z ? "on" : "")" @onclick="() => SetZoom(z)">
+                        @(z == 0 ? "Fit" : $"{z}%")
+                    </button>
+                }
+            </div>
+            <button class="link" @onclick="() => _compare = false">Close</button>
+        </div>
+
+        <div class="cmp-panes" @ref="_panesRef">
+            @foreach (var m in Members)
+            {
+                var isKeeper = AppState.DupeOf.TryGetValue(m.Id, out var dk) && dk.IsKeeper;
+                <div class="cmp-col">
+                    <div class="cmp-pane @(_zoom == 0 ? "fit" : "")">
+                        @if (_zoom == 0)
+                        {
+                            <img src="@m.FullUrl" alt="@m.FileName" />
+                        }
+                        else
+                        {
+                            <img src="@m.FullUrl" alt="@m.FileName"
+                                 style="width:@(m.Width is { } w ? w * _zoom / 100 : 0)px" />
+                        }
+                    </div>
+                    <div class="cmp-meta">
+                        <b>@m.FileName</b>
+                        <span>@m.Dimensions · @m.SizeLabel</span>
+                        <button class="@(isKeeper ? "primary" : "")" @onclick="() => Keep(m.Id)">
+                            @(isKeeper ? "Keeping this" : "Keep this")
+                        </button>
+                    </div>
+                </div>
+            }
+        </div>
+        <p class="cmp-hint">Panes scroll together. <kbd>Esc</kbd> closes.</p>
+    </div>
+}
 
 @if (Show && Groups.Count > 0)
 {
@@ -55,7 +106,10 @@
 
             <div class="dlg-actions">
                 <button class="primary" @onclick="Next" disabled="@(_index >= Groups.Count - 1)">Next group</button>
-                <button @onclick="SelectExtrasAndClose">Select all @ExtraCount extras</button>
+                <button @onclick="() => _compare = true">Compare full size</button>
+                <button @onclick="SelectExtrasAndClose">
+                    Select all @ExtraCount extras (@AppState.FormattedReclaimable)
+                </button>
                 <button class="link" @onclick="Close">Done</button>
             </div>
             <p class="hint">
@@ -75,9 +129,43 @@
     bool _needsFocus;
     ElementReference _dlgRef;
 
+    bool _compare;
+    int _zoom;                       // 0 = fit to pane
+    bool _panesWired;
+    ElementReference _cmpRef;
+    ElementReference _panesRef;
+
+    static readonly int[] Zooms = [0, 100, 200, 400];
+
+    void SetZoom(int z) => _zoom = z;
+
+    Task HandleCompareKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") _compare = false;
+        return Task.CompletedTask;
+    }
+
     IReadOnlyList<DupeGroup> Groups => AppState.DupeGroups;
     DupeGroup Current => Groups[Math.Clamp(_index, 0, Groups.Count - 1)];
-    IReadOnlyList<ImageView> Members => AppState.MembersOf(Current);
+
+    // Members is read many times per render — by both loops and by every Differs/Best helper —
+    // so resolve it once per group rather than on each access.
+    IReadOnlyList<ImageView> Members
+    {
+        get
+        {
+            var group = Current;
+            if (!ReferenceEquals(_membersOf, group))
+            {
+                _membersOf = group;
+                _members = AppState.MembersOf(group);
+            }
+            return _members;
+        }
+    }
+
+    DupeGroup? _membersOf;
+    IReadOnlyList<ImageView> _members = [];
 
     int ExtraCount => AppState.DupeOf.Count(kv => !kv.Value.IsKeeper);
 
@@ -92,6 +180,28 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (_compare && !_panesWired)
+        {
+            _panesWired = true;
+            await _cmpRef.FocusAsync();
+            try
+            {
+                await JS.InvokeVoidAsync("snapzap.syncComparePanes", _panesRef);
+            }
+            catch (JSException)
+            {
+                // Synchronised panning is an enhancement. A stale or failed interop.js must not
+                // take the circuit down and blank the whole app — the panes still scroll,
+                // just independently.
+            }
+            catch (JSDisconnectedException) { /* circuit gone */ }
+        }
+        else if (!_compare && _panesWired)
+        {
+            // Panes are recreated on each open, so their listeners are too.
+            _panesWired = false;
+        }
+
         if (Show && _needsFocus && Groups.Count > 0)
         {
             _needsFocus = false;

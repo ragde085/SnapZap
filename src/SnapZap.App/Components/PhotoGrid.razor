@@ -1,6 +1,7 @@
 @implements IAsyncDisposable
 @inject AppState AppState
 @inject IJSRuntime JS
+@inject ILogger<PhotoGrid> Log
 
 @*
     Windowed photo grid. Only the rows intersecting the viewport are rendered; the space
@@ -118,7 +119,22 @@
         {
             _wired = true;
             _self = DotNetObjectReference.Create(this);
-            await JS.InvokeVoidAsync("snapzap.initGrid", _gridRef, _self);
+            try
+            {
+                await JS.InvokeVoidAsync("snapzap.initGrid", _gridRef, _self);
+            }
+            catch (JSException ex)
+            {
+                // The window is measured in JS, and _cols gates rendering — so a stale or
+                // missing interop.js would otherwise show an empty grid with no explanation.
+                // Fall back to a fixed layout: keyboard nav and resize-tracking are lost,
+                // but the photos are there. Logged because a silent degrade is undiagnosable —
+                // the grid keeps working and nobody ever finds out interop.js is missing.
+                Log.LogError(ex, "snapzap.initGrid failed; falling back to a fixed grid layout. "
+                                 + "Check that wwwroot/interop.js was published and is reachable.");
+                SetViewport(cols: 4, rowHeight: 170, scrollTop: 0, viewportHeight: 900);
+            }
+            catch (JSDisconnectedException) { /* circuit gone */ }
         }
 
         if (_resetScroll)

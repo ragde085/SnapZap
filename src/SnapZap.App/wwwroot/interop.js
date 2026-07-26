@@ -132,6 +132,31 @@ window.snapzap = (function () {
       if (gridEl) gridEl.scrollTop = 0;
     },
 
+    /**
+     * Mirror scrolling across the compare panes so the same region of each copy stays under
+     * the eye. Judging a near-duplicate means looking at the same detail in both, which is
+     * impossible if the panes drift apart.
+     */
+    syncComparePanes: function (container) {
+      if (!container) return;
+      const panes = Array.prototype.slice.call(container.querySelectorAll('.cmp-pane'));
+      let echo = false;
+
+      panes.forEach(function (pane) {
+        pane.addEventListener('scroll', function () {
+          if (echo) return;          // we are the ones moving the others
+          echo = true;
+          panes.forEach(function (other) {
+            if (other === pane) return;
+            other.scrollTop = pane.scrollTop;
+            other.scrollLeft = pane.scrollLeft;
+          });
+          // Release on the next frame, after the programmatic scrolls have fired.
+          requestAnimationFrame(function () { echo = false; });
+        }, { passive: true });
+      });
+    },
+
     focusFirstCard: function () {
       const first = cards()[0];
       if (first) first.focus();

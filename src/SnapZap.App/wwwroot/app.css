@@ -301,6 +301,7 @@ main { display: flex; flex: 1; min-height: 0; }
 .f select { width: 100%; }
 
 .selcount { font-family: var(--serif); font-size: var(--t-md); color: var(--ink); }
+.selcount .selbytes { color: var(--muted); font-family: var(--mono); font-size: var(--t-xs); margin-left: 6px; }
 .selcount b { color: var(--accent); font-weight: 600; font-variant-numeric: tabular-nums; }
 .hint { font-size: var(--t-xs); color: var(--dim); margin: 2px 0 0; line-height: 1.45; }
 
@@ -357,6 +358,61 @@ main { display: flex; flex: 1; min-height: 0; }
 .review-facts .quiet { color: var(--muted); }
 /* Marks the copy that wins outright on a measure — resolution or file size. */
 .review-facts .win { color: var(--ok); }
+
+/* ---------- full-size compare ---------- */
+
+.cmp {
+  position: fixed;
+  inset: 0;
+  z-index: 75;               /* above the review dialog it opens from */
+  background: var(--ground);
+  display: flex;
+  flex-direction: column;
+  animation: fade-in 140ms var(--ease);
+}
+
+.cmp-bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 16px;
+  background: var(--raised);
+  border-bottom: 1px solid var(--line);
+}
+.cmp-title { flex: 1; font-size: var(--t-xs); color: var(--muted); }
+.cmp-zoom { display: flex; gap: 4px; }
+.cmp-zoom button { padding: 3px 10px; font-size: var(--t-xs); }
+.cmp-zoom button.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+
+.cmp-panes { flex: 1; display: flex; gap: 1px; min-height: 0; background: var(--line); }
+.cmp-col { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--ground); }
+
+.cmp-pane { flex: 1; min-height: 0; overflow: auto; display: block; }
+/* Fit mode centres the whole image; zoomed mode lets it overflow so panes can scroll. */
+.cmp-pane.fit { display: grid; place-items: center; overflow: hidden; padding: 10px; }
+.cmp-pane.fit img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.cmp-pane img { display: block; }
+
+.cmp-meta {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+  font-size: var(--t-xs);
+}
+.cmp-meta b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cmp-meta span { flex: 1; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cmp-meta button { flex: none; }
+
+.cmp-hint { flex: none; margin: 0; padding: 7px 16px; font-size: var(--t-xs); color: var(--dim); background: var(--raised); }
+
+@media (max-width: 800px) {
+  .cmp-panes { flex-direction: column; }
+}
 
 /* ---------- scan issues ---------- */
 

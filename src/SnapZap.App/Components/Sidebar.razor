@@ -120,10 +120,18 @@
             case Panel.Select:
                 <section>
                     <h3>Select</h3>
-                    <div class="selcount"><b>@AppState.Selected.Count</b> selected</div>
+                    <div class="selcount">
+                        <b>@AppState.Selected.Count</b> selected
+                        @if (AppState.Selected.Count > 0)
+                        {
+                            <span class="selbytes">@AppState.FormattedSelectedBytes</span>
+                        }
+                    </div>
                     <button @onclick="() => AppState.SelectAllVisible()">Everything shown</button>
                     <button @onclick="() => AppState.SelectVisibleFolder()">This folder</button>
-                    <button disabled="@(AppState.DupeOf.Count == 0)" @onclick="() => AppState.SelectDupeExtras()">Duplicate extras</button>
+                    <button disabled="@(AppState.DupeOf.Count == 0)" @onclick="() => AppState.SelectDupeExtras()">
+                        Duplicate extras@(AppState.DupeExtraCount > 0 ? $" ({AppState.FormattedReclaimable})" : "")
+                    </button>
                     <button disabled="@(AppState.Filtered().Count == 0)" @onclick="() => AppState.InvertVisibleSelection()">Invert</button>
                     <button class="link" disabled="@(AppState.Selected.Count == 0)" @onclick="() => AppState.ClearSelection()">Clear selection</button>
                     <p class="hint">Click a photo to select it. Shift-click to take a range.</p>
@@ -133,7 +141,13 @@
             case Panel.Actions:
                 <section>
                     <h3>Actions</h3>
-                    <div class="selcount"><b>@AppState.Selected.Count</b> selected</div>
+                    <div class="selcount">
+                        <b>@AppState.Selected.Count</b> selected
+                        @if (AppState.Selected.Count > 0)
+                        {
+                            <span class="selbytes">@AppState.FormattedSelectedBytes</span>
+                        }
+                    </div>
                     <button disabled="@(AppState.DupeGroups.Count == 0)" @onclick="() => OnOpenDupeReview.InvokeAsync()">
                         Review @AppState.DupeGroups.Count duplicate group@(AppState.DupeGroups.Count == 1 ? "" : "s")…
                     </button>
