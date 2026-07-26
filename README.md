@@ -1,9 +1,6 @@
 # SnapZap
 
-Offline, free, Windows desktop tool to declutter a photo folder: find duplicates and
-near-duplicates, flag NSFW and blurry images, browse by date, then **export the clean set to
-a destination folder** (which Plex, or anything else, can watch). Nothing is ever hard-deleted
-and the source folder is never touched unless you ask.
+Your personal photo assistant. Tired of duplicates and blurry shots cluttering your library? SnapZap finds them all, flags what you don't want, then exports the clean results for Plex or backup. Offline, free, and always in your control.
 
 No cloud, no subscriptions, no paid dependencies. See [DESIGN.md](docs/DESIGN.md) for the full
 architecture and rationale.
