@@ -1,10 +1,10 @@
 # Roadmap & Next Steps
 
 Living status doc for SnapZap. For architecture and rationale see
-[../DESIGN.md](DESIGN.md); for the Windows hardware checklist see
-[../WINDOWS-VERIFY.md](WINDOWS-VERIFY.md).
+[DESIGN.md](DESIGN.md); for the Windows hardware checklist see
+[WINDOWS-VERIFY.md](WINDOWS-VERIFY.md).
 
-Last updated: 2026-07-25.
+Last updated: 2026-07-25 (czkawka validated; cancellation, sort, dupe review landed).
 
 ---
 
@@ -15,8 +15,7 @@ The app runs end-to-end on macOS, cross-compiles to a self-contained `win-x64` s
 `.exe`, and has been driven through its full flow in a browser: scan → dedup → NSFW → filter →
 select → export (copy/move/hardlink) → delete → undo/restore.
 
-- **Tests:** 27 pass, 2 gated on external assets (real model + labeled fixtures) — 29 total.
-  Core and the test project were untouched by the UI migration.
+- **Tests:** 29 pass, 2 gated on external assets (real model + labeled fixtures) — 31 total.
 - **NSFW pipeline:** validated against HuggingFace's reference pipeline with the real Falconsai
   model — C# scores match within 0.002. Preprocessing is proven correct.
 - **Safety invariants:** enforced and tested (verify-before-destroy, never-overwrite,
@@ -28,7 +27,7 @@ select → export (copy/move/hardlink) → delete → undo/restore.
 |---|---|
 | Scan · hash · thumbnails · two-tier cache | ✅ tested |
 | Exact dedup (from hashes) | ✅ tested |
-| Similar dedup (Czkawka sidecar) | ⚠️ built; JSON parser needs real-output validation |
+| Similar dedup (Czkawka sidecar) | ✅ validated against czkawka 12.0.0 |
 | NSFW scoring (Falconsai ONNX, CPU) | ✅ validated vs reference |
 | Blur (Laplacian) + EXIF | ✅ tested |
 | Blazor UI: grid, badges, preview, selection, filters | ✅ browser-tested |
@@ -38,6 +37,9 @@ select → export (copy/move/hardlink) → delete → undo/restore.
 | Optional-sidecar validation + Setup panel | ✅ browser-tested |
 | Export engine + UI + pre-flight + manifest | ✅ tested (incl. hardlinks) |
 | Delete + undo (toast + history panel) | ✅ tested (real Finder trash) |
+| Duplicate group review + keeper override | ✅ verified against DB |
+| Cancel long operations (scan/NSFW/export) | ✅ verified resume-from-cache |
+| Grid sort + folder tree + scan-issue reporting | ✅ browser-tested |
 | Windows platform services | ⚠️ implemented, cross-compiled, runtime-unverified |
 | Self-contained `.exe` packaging | ✅ builds |
 | macOS `.app` bundle | ✅ runs locally (framework-dependent, script launcher) |
@@ -52,15 +54,21 @@ and whether it needs Windows hardware.
 ### P0 — Required before a real Windows release
 
 1. **Windows hardware verification** · _needs Windows_ · ~half day
-   Walk [../WINDOWS-VERIFY.md](WINDOWS-VERIFY.md): Recycle Bin, Shell restore, hardlinks,
+   Walk [WINDOWS-VERIFY.md](WINDOWS-VERIFY.md): Recycle Bin, Shell restore, hardlinks,
    and the double-click → browser launch. These paths compile and cross-build but have never
    executed. This is the single gate between "builds" and "shippable".
 
-2. **Czkawka similar-detection validation** · _needs czkawka_cli_ · ~2 hours
-   The JSON parser in `CzkawkaFinder` is defensive but was written without real
-   `czkawka_cli -C` output to test against. Install czkawka, run `image -C out.json` on a
-   folder, confirm the parser maps groups correctly, and adjust if the schema differs.
-   Exact dedup is unaffected — this only gates the "similar images" feature.
+~~2. **Czkawka similar-detection validation**~~ — ✅ **done 2026-07-25** against czkawka 12.0.0.
+   The parser's assumed schema was correct and needed no change. Validation found three real
+   integration bugs, all fixed: czkawka canonicalises paths while the catalog stores what the
+   user typed (so scanning `/tmp/x` on macOS matched nothing and reported "0 similar groups"
+   silently); an explicitly configured binary path fell through to `PATH` instead of being
+   authoritative; and the keeper tie-break could retain a compressed copy over its original.
+   Real output is now locked in by `DedupTests.Parses_real_czkawka_12_output`.
+
+   Left open deliberately: `--max-difference` is 10, but czkawka 12 defaults `--hash-size`
+   to 16, for which it recommends up to 20 — so we under-detect. Conservative on purpose for
+   a tool that deletes things; revisit if similar-detection feels too quiet.
 
 ### UI direction — done
 
@@ -73,10 +81,10 @@ from geometry measured in `interop.js`.
 
 ### P1 — High-value polish
 
-3. **Scan/score cancellation in the UI** · cross-platform · ~2 hours
-   The backend already honors `CancellationToken`. There is no SSE request to abort any more —
-   wire a Cancel button to a `CancellationTokenSource` held by `AppState` and pass its token
-   into `ScanAsync` / `NsfwAsync` / `ExportEngine.RunAsync`.
+~~3. **Scan/score cancellation in the UI**~~ — ✅ **done 2026-07-25.** A `CancellationTokenSource`
+   in `AppState.RunAsync` drives a Stop button in the progress bar and in the export dialog.
+   Work already committed is kept: stopping a 500-photo scan at 481 kept 490, and re-running
+   reported "16 new, 484 cached".
 
 4. **DirectML GPU acceleration** · _needs Windows_ · ~half day
    Swap `Microsoft.ML.OnnxRuntime` → `Microsoft.ML.OnnxRuntime.DirectML` in the Windows
@@ -111,10 +119,8 @@ from geometry measured in `interop.js`.
 ## Known limitations to keep in mind
 
 - **Windows-only paths are unverified on hardware** — see P0.1.
-- **Similar-image JSON parser is unproven** against real Czkawka output — see P0.2.
 - **NSFW is CPU inference** — correct but not GPU-accelerated yet (P1.4).
 - **Launch is a browser tab**, not a native window yet (P2.5).
-- **Long operations can't be cancelled from the UI** — the backend supports it (P1.3).
 - **The macOS build is for local use only** — framework-dependent (needs the .NET 10 runtime)
   and unnotarized, so it can't be handed to another machine as-is. It also can't be published
   self-contained or single-file: endpoint security SIGKILLs the apphost, so the `.app` bundle
