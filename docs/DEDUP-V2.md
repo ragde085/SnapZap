@@ -111,6 +111,62 @@ reason. `SelectionCommandTests` locks both in.
 Note `SelectionScope.DuplicateKeepers` is deliberately *not* filtered by kind: selecting keepers
 is how the survivors get exported, and a burst's keeper is as much a survivor as any other.
 
+### 3.1 The kinds overlap, so one group per relationship is enforced after detection
+
+The three thresholds are nested rather than disjoint — Exact is a byte match, Variant accepts
+everything within `VariantMaxBits`, Burst accepts everything within `BurstMaxBits` that also falls
+in an EXIF time window. A set of byte-identical copies satisfies all three and was written three
+times. Measured on a 38,668-photo library: **19 groups over 25 distinct photos**, every Exact group
+shadowed by a Variant group with an identical member set, and the review flow showing the same pair
+of photos as group 1 and again as group 12.
+
+`GroupReconciler` runs after the detectors and drops any group whose members are *all* covered by a
+single stronger group. Precedence is **Exact → Burst → Variant**, which is not most-to-least strict
+but most-to-least trustworthy about what the photos are:
+
+- **Exact wins outright.** Byte-identical files are copies and nothing outweighs that. Critically, a
+  copy inherits the original's EXIF, so copies look exactly like frames captured at one instant and
+  were being swept into Burst groups and withheld from bulk selection — the tool refusing to reclaim
+  the most certain duplicates it can find.
+- **Burst beats Variant**, which is the non-obvious direction and the safety-critical one.
+
+**Why pixel distance cannot decide this.** Measured on real files with the production decode path:
+
+| Relationship | Distance |
+|---|---|
+| One photo vs its 50% resize | 16 bits |
+| One photo vs its PNG re-encode | 14 bits |
+| One photo vs a q35 re-encode | 8 bits |
+| **Two different frames of one burst** | **9 bits** |
+| Unrelated photos (control) | 98–119 bits |
+
+A *different photograph* sits closer (9) than the same photo resized (16). No threshold separates
+them, which is why the disjoint-bands idea was rejected and why capture time is the only usable
+discriminator. When both detectors claim the same photos, the one that consulted the clock is the
+one to believe — and believing it errs toward review rather than toward Delete.
+
+Only exact cover is dropped. Groups that merely overlap are two different claims about two
+different sets and both survive; collapsing those would merge photographs the complete-linkage
+grouper deliberately kept apart.
+
+### 3.2 Known cost, and the clean fix
+
+`DateTimeOriginal` has one-second resolution, so this rule cannot distinguish *re-encodes sharing a
+capture second* from *burst frames shot within one second*. It resolves that ambiguity
+conservatively: both are treated as a burst, so a resized copy whose timestamp matches its original
+is labelled Burst and withheld from bulk selection. It stays in the review flow and stays
+individually selectable — it is simply not swept.
+
+That is the right way round for a tool that deletes things ("a miss costs less than a false
+positive"), but it is a real cost: the headline reclaimable figure is smaller than it could be, and
+one photo at two sizes is described as "the same scene, seconds apart".
+
+The clean fix is `SubSecTimeOriginal`, which most cameras write alongside `DateTimeOriginal`.
+Sub-second capture times separate the two cases exactly — identical instant means one photograph,
+37 ms apart means two — and would let the conservative fallback shrink to the genuinely
+undecidable case of photos with no sub-second data. Not done here; it needs `ExifExtractor` to read
+the tag and a schema column to store it.
+
 ---
 
 ## 4. The hash

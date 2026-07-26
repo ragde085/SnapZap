@@ -41,6 +41,15 @@ public sealed class DupeRepository(Database db)
         cmd.ExecuteNonQuery();
     }
 
+    /// <summary>Delete one group by id. Members cascade.</summary>
+    public void DeleteGroup(long groupId)
+    {
+        using var cmd = _c.CreateCommand();
+        cmd.CommandText = "DELETE FROM dupe_groups WHERE id=$id";
+        cmd.Parameters.AddWithValue("$id", groupId);
+        cmd.ExecuteNonQuery();
+    }
+
     /// <summary>Insert one group with its members. The first keeper is flagged; caller decides.</summary>
     public long AddGroup(DupeKind kind, string? similarity, IReadOnlyList<(long imageId, bool keeper)> members)
     {

@@ -39,12 +39,20 @@ public sealed record DedupSettings
 
     // ---- Burst: the same scene, seconds apart ----
 
-    /// <summary>
-    /// Off by default, and deliberately so. A burst is a set of *different photographs*, not
-    /// copies of one — which is why <see cref="DupeKind.Burst"/> is excluded from every bulk
-    /// selection. A user who wants them grouped should say so.
-    /// </summary>
-    public bool BurstEnabled { get; init; }
+    // Burst detection has no on/off switch, for the same reason Exact does not: the answer it
+    // produces is what stops a bulk action deleting different photographs, and a safety rule that
+    // a checkbox can turn off is not one.
+    //
+    // It used to default to off, reasoned as "a burst is a set of different photographs, so a user
+    // should opt into grouping them". What that missed is what happens when it is off. The frames
+    // do not go ungrouped — VariantFinder picks them up instead, because pixel distance cannot
+    // tell a burst from a re-encode (measured: two different burst frames 9 bits apart, one photo
+    // resized 16 bits apart). They land in a Variant group, which *is* bulk-selectable, and the
+    // whole guard is inert in the shipped configuration. The setting read as "protect my bursts?",
+    // defaulted to no.
+    //
+    // Capture time is the only evidence that separates them, so it is always gathered. The
+    // thresholds below stay tunable; whether the rule applies does not.
 
     /// <summary>Seconds between EXIF capture times for two frames to be candidates.</summary>
     public int BurstWindowSeconds { get; init; } = 3;
@@ -58,12 +66,12 @@ public sealed record DedupSettings
 
     /// <summary>
     /// Kinds a run with these settings actually covers, as stored in
-    /// <c>images.dupe_checked_kinds</c>. Exact is always present.
+    /// <c>images.dupe_checked_kinds</c>. Exact and Burst are always present.
     /// </summary>
     public DupeKinds CoveredKinds =>
         DupeKinds.Exact
-        | (VariantEnabled ? DupeKinds.Variant : 0)
-        | (BurstEnabled ? DupeKinds.Burst : 0);
+        | DupeKinds.Burst
+        | (VariantEnabled ? DupeKinds.Variant : 0);
 
     // ---- Persistence -------------------------------------------------------
 
@@ -77,7 +85,6 @@ public sealed record DedupSettings
             VariantEnabled = Bool(db, "variant.enabled", fallback.VariantEnabled),
             VariantMaxBits = Int(db, "variant.maxbits", fallback.VariantMaxBits, 0, PerceptualHash.Bits),
             VariantRotations = Bool(db, "variant.rotations", fallback.VariantRotations),
-            BurstEnabled = Bool(db, "burst.enabled", fallback.BurstEnabled),
             BurstWindowSeconds = Int(db, "burst.windowsec", fallback.BurstWindowSeconds, 0, 3600),
             BurstMaxBits = Int(db, "burst.maxbits", fallback.BurstMaxBits, 0, PerceptualHash.Bits),
         };
@@ -88,7 +95,6 @@ public sealed record DedupSettings
         db.SetMeta(Prefix + "variant.enabled", VariantEnabled ? "1" : "0");
         db.SetMeta(Prefix + "variant.maxbits", VariantMaxBits.ToString());
         db.SetMeta(Prefix + "variant.rotations", VariantRotations ? "1" : "0");
-        db.SetMeta(Prefix + "burst.enabled", BurstEnabled ? "1" : "0");
         db.SetMeta(Prefix + "burst.windowsec", BurstWindowSeconds.ToString());
         db.SetMeta(Prefix + "burst.maxbits", BurstMaxBits.ToString());
     }

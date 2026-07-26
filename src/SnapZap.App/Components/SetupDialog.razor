@@ -73,30 +73,32 @@
                     </div>
                 }
 
-                <label class="setup-check">
-                    <input type="checkbox" checked="@_dedup.BurstEnabled"
-                           @onchange="e => Set(_dedup with { BurstEnabled = (bool)e.Value! })" />
+                @* No checkbox, deliberately. Burst detection is what keeps different photographs
+                   out of a bulk delete, so it runs like exact matching does: always. It used to be
+                   off by default, which did not leave bursts ungrouped — it left them grouped as
+                   "same shot" and selectable. Only the window is tunable. *@
+                <div class="setup-check setup-check--fixed">
                     <span>
                         <b>Bursts — the same scene, seconds apart</b>
                         <span class="quiet">
-                            Grouped for review only. These are different photographs, so they are
-                            never picked up by "Select duplicate extras".
+                            Always detected. These are different photographs, so they are grouped
+                            for review and never picked up by "Select duplicate extras".
                         </span>
                     </span>
-                </label>
+                </div>
 
-                @if (_dedup.BurstEnabled)
-                {
-                    <div class="setup-nested">
-                        <label class="setup-range">
-                            <span>Frames within</span>
-                            <input type="range" min="1" max="30" step="1" value="@_dedup.BurstWindowSeconds"
-                                   @onchange="e => Set(_dedup with { BurstWindowSeconds = ToInt(e.Value, _dedup.BurstWindowSeconds) })" />
-                            <b>@_dedup.BurstWindowSeconds s</b>
-                        </label>
-                        <p class="hint">Needs an EXIF capture time — photos without one are skipped.</p>
-                    </div>
-                }
+                <div class="setup-nested">
+                    <label class="setup-range">
+                        <span>Frames within</span>
+                        <input type="range" min="1" max="30" step="1" value="@_dedup.BurstWindowSeconds"
+                               @onchange="e => Set(_dedup with { BurstWindowSeconds = ToInt(e.Value, _dedup.BurstWindowSeconds) })" />
+                        <b>@_dedup.BurstWindowSeconds s</b>
+                    </label>
+                    <p class="hint">
+                        Needs an EXIF capture time — photos without one are skipped, so a burst
+                        with no timestamps is not protected from bulk selection.
+                    </p>
+                </div>
 
                 @if (_settingsChanged)
                 {

@@ -821,6 +821,9 @@ main { display: flex; flex: 1; min-height: 0; }
 .setup-check { display: flex; gap: 9px; align-items: flex-start; cursor: pointer; font-size: var(--t-xs); }
 .setup-check input { margin-top: 2px; flex: none; cursor: pointer; }
 .setup-check input:disabled { cursor: default; }
+/* Reads as one of the list, but there is nothing to click: burst detection always runs.
+   Indented to where the checkbox rows' labels start so the column still lines up. */
+.setup-check--fixed { cursor: default; padding-left: 22px; }
 .setup-check > span { display: flex; flex-direction: column; gap: 2px; line-height: 1.45; }
 .setup-check b { color: var(--ink); font-weight: 600; }
 .setup-check .quiet { color: var(--muted); }

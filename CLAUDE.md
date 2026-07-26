@@ -288,6 +288,17 @@ Full rationale in [docs/DEDUP-V2.md](docs/DEDUP-V2.md). The short version:
   processed closest-first; ids break ties so runs are reproducible. `GrouperTests` locks this in.
 - **Thresholds are in bits out of 272** and are *not* comparable to czkawka's old
   `--max-difference 10`. Defaults live in `DedupSettings`.
+- **Exact and Burst detection have no on/off switch.** Exact because a duplicate finder that
+  cannot find identical files is not one; Burst because a safety rule a checkbox can disable is not
+  one. Burst used to default to off, which did not leave bursts ungrouped — it left them grouped as
+  `Variant`, which *is* bulk-selectable, so the guard was inert as shipped. Only `VariantEnabled`
+  and the thresholds are settings.
+- **The kinds overlap, so `GroupReconciler` enforces one group per relationship** after the
+  detectors run, dropping any group whose members are all covered by a stronger one. Precedence is
+  **Exact → Burst → Variant**. Burst beating Variant is the safety-critical, non-obvious direction:
+  pixel distance cannot separate them (two different burst frames measured 9 bits apart; one photo
+  and its 50% resize 16 apart), so the detector that consulted the capture clock wins. Counts in
+  the status line are read back off the catalogue after this pass, never summed from the detectors.
 - **Settings live in the `meta` table**, not `settings.json`, because `images.dupe_checked_kinds`
   only means anything against the settings that produced it and both must reset with `catalog.db`.
   (`settings.json` still exists for app-level prefs — `DependencyChecker.StoredSettings`.)

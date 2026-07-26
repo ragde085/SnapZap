@@ -43,8 +43,8 @@ public sealed class DuplicateService(Database db)
         var settings = DedupSettings.Load(db);
         var repo = new ImageRepository(db);
 
-        // One phase per enabled detector, plus the load.
-        int total = 1 + 1 + (settings.VariantEnabled ? 1 : 0) + (settings.BurstEnabled ? 1 : 0);
+        // One phase per enabled detector, plus the load, plus reconciliation.
+        int total = 1 + 1 + 1 + 1 + (settings.VariantEnabled ? 1 : 0);
         int done = 0;
         void Step(string? label) => progress?.Report(new DedupProgress(done, total, label));
 
@@ -71,17 +71,19 @@ public sealed class DuplicateService(Database db)
             new DupeRepository(db).ClearKind(DupeKind.Variant, root);
         }
 
-        var burst = DetectorResult.None;
-        if (settings.BurstEnabled)
-        {
-            Step("Grouping bursts");
-            burst = await Task.Run(() => new BurstFinder(db).FindAndStore(images, settings, root, ct), ct);
-            done++;
-        }
-        else
-        {
-            new DupeRepository(db).ClearKind(DupeKind.Burst, root);
-        }
+        // Always. Burst membership is what withholds different photographs from a bulk delete, and
+        // capture time is the only evidence that identifies them — VariantFinder above cannot,
+        // because a burst frame and a re-encode are indistinguishable by pixels. See DedupSettings.
+        Step("Grouping bursts");
+        var burst = await Task.Run(() => new BurstFinder(db).FindAndStore(images, settings, root, ct), ct);
+        done++;
+
+        // The detectors above answer independently over one image set, and their thresholds are
+        // nested, so the same photos can be written as two or three groups. Collapse those before
+        // anything counts or displays them.
+        Step("Reconciling groups");
+        var dropped = await Task.Run(() => GroupReconciler.Reconcile(db, root), ct);
+        done++;
 
         // Only here, after every enabled detector has returned. Cancellation throws out of the
         // awaits above and leaves the folder unmarked, which is right — it was not checked.
@@ -90,8 +92,20 @@ public sealed class DuplicateService(Database db)
 
         progress?.Report(new DedupProgress(total, total, null));
 
+        // Counted back off the catalogue rather than summed from the detectors, because
+        // reconciliation has since retired some of what they wrote. Reporting the detector totals
+        // is what produced "7 identical, 12 same shot groups" for a library with 12 findings in
+        // it — a status line that disagreed with the review flow it was describing.
+        var surviving = new DupeRepository(db).Groups()
+            .Where(g => g.Members.Count >= 2)
+            .GroupBy(g => g.Kind)
+            .ToDictionary(g => g.Key, g => g.Count());
+
+        int Surviving(DupeKind k) => surviving.GetValueOrDefault(k);
+
         return new DuplicateReport(
-            exact, variant.Groups, burst.Groups, unhashed,
+            Surviving(DupeKind.Exact), Surviving(DupeKind.Variant), Surviving(DupeKind.Burst),
+            unhashed,
             variant.Truncated || burst.Truncated,
             Note(settings, unhashed, images.Count, variant.Truncated || burst.Truncated));
     }
@@ -111,8 +125,8 @@ public sealed class DuplicateService(Database db)
         if (truncated)
             parts.Add("too many candidate matches to compare them all; tighten the threshold for a complete answer");
 
-        if (!settings.VariantEnabled && !settings.BurstEnabled)
-            parts.Add("only identical files were checked — visual matching is turned off in Setup");
+        if (!settings.VariantEnabled)
+            parts.Add("same-shot matching is turned off in Setup — only identical files and bursts were checked");
 
         return parts.Count == 0 ? null : string.Join(" · ", parts);
     }
