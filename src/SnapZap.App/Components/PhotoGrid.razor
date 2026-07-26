@@ -1,0 +1,193 @@
+@implements IAsyncDisposable
+@inject AppState AppState
+@inject IJSRuntime JS
+@inject ILogger<PhotoGrid> Log
+
+@*
+    Windowed photo grid. Only the rows intersecting the viewport are rendered; the space
+    above and below is held open by two sizing spacers, so the scrollbar reflects the whole
+    library. Row geometry is measured in the browser (interop.js) and pushed in via
+    SetViewport/SetScroll, which makes the window deterministic rather than inferred.
+*@
+<div class="grid @(AppState.Selected.Count > 0 ? "has-selection" : "")"
+     role="group"
+     aria-label="Photos"
+     @ref="_gridRef">
+
+    @if (_cols > 0 && _rows.Count > 0)
+    {
+        <div style="height:@(FirstRow * _rowHeight)px" aria-hidden="true"></div>
+
+        @for (var r = FirstRow; r < LastRow; r++)
+        {
+            var row = _rows[r];
+            <div class="grid-row" style="grid-template-columns:repeat(@_cols,minmax(0,1fr))">
+                @foreach (var img in row.Items)
+                {
+                    @* Roving tabindex: the grid is one tab stop, not one per photo. Without
+                       this, Tab has to walk 4,000 cards to reach whatever follows the grid.
+                       Arrow keys move within it (see interop.js), which is the ARIA grid
+                       contract. The stop is the first *rendered* card, so it always exists —
+                       a stop pinned to a specific photo would vanish when windowing scrolled
+                       that photo out of the DOM, leaving the grid unreachable by keyboard. *@
+                    <Card @key="img.Id"
+                          Img="img"
+                          Index="row.StartIndex + row.Items.IndexOf(img)"
+                          IsTabStop="r == FirstRow && ReferenceEquals(img, row.Items[0])"
+                          VisibleOrder="_visibleIds"
+                          OnPreview="OnPreview" />
+                }
+            </div>
+        }
+
+        <div style="height:@((_rows.Count - LastRow) * _rowHeight)px" aria-hidden="true"></div>
+    }
+</div>
+
+@code {
+    [Parameter] public EventCallback<ImageView> OnPreview { get; set; }
+
+    /// <summary>One rendered row of the grid.</summary>
+    sealed record Row(int StartIndex, List<ImageView> Items);
+
+    // Rows rendered beyond the viewport on each side. Generous on purpose: every scroll
+    // update is a round trip over the circuit, and this buffer is what the user sees
+    // instead of blank space while that lands. ~5 rows costs a few dozen extra <img> tags.
+    const int Overscan = 5;
+
+    ElementReference _gridRef;
+    DotNetObjectReference<PhotoGrid>? _self;
+    bool _wired;
+
+    int _cols;
+    int _rowHeight = 160;
+    double _scrollTop;
+    double _viewportHeight;
+
+    List<Row> _rows = [];
+    List<long> _visibleIds = [];
+    List<ImageView>? _builtFrom;
+    int _builtCols;
+    bool _resetScroll;
+
+    // Clamped to the available rows: when a filter shrinks the list while the grid is
+    // scrolled down, an unclamped window would start past the end and render nothing.
+    int FirstRow => Math.Clamp((int)(_scrollTop / _rowHeight) - Overscan, 0, Math.Max(0, _rows.Count - 1));
+
+    int LastRow => Math.Min(_rows.Count,
+        FirstRow + (int)Math.Ceiling(_viewportHeight / _rowHeight) + 2 * Overscan);
+
+    // AppState is shared, mutable, and changed by sibling components (Sidebar, Card) whose
+    // parameters into this component never change — Blazor's diffing then skips re-rendering
+    // us on their account, so we must subscribe to AppState directly rather than rely on
+    // cascading re-render from a parent.
+    protected override void OnInitialized()
+    {
+        AppState.Changed += OnStateChanged;
+    }
+
+    void OnStateChanged()
+    {
+        BuildRows();
+        StateHasChanged();
+    }
+
+    protected override void OnParametersSet() => BuildRows();
+
+    /// <summary>Chunk the visible photos into rows. Rebuilt only when the visible set or the
+    /// column count actually changed.</summary>
+    void BuildRows()
+    {
+        var visible = AppState.Filtered();
+        if (ReferenceEquals(_builtFrom, visible) && _builtCols == _cols) return;
+
+        // A different set of photos means the old scroll offset is meaningless — send the
+        // grid back to the top so filter results start where the eye already is.
+        if (_builtFrom is not null && !ReferenceEquals(_builtFrom, visible))
+        {
+            _scrollTop = 0;
+            _resetScroll = true;
+        }
+
+        _builtFrom = visible;
+        _builtCols = _cols;
+        _visibleIds = visible.Select(i => i.Id).ToList();
+        _rows = [];
+        if (_cols > 0)
+        {
+            for (var i = 0; i < visible.Count; i += _cols)
+                _rows.Add(new Row(i, visible.GetRange(i, Math.Min(_cols, visible.Count - i))));
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_wired)
+        {
+            _wired = true;
+            _self = DotNetObjectReference.Create(this);
+            try
+            {
+                await JS.InvokeVoidAsync("snapzap.initGrid", _gridRef, _self);
+                // Dialogs are rendered elsewhere, but this is the one component that owns a JS
+                // handle, and the trap is a document-level listener that installs once.
+                await JS.InvokeVoidAsync("snapzap.trapFocus");
+            }
+            catch (JSException ex)
+            {
+                // The window is measured in JS, and _cols gates rendering — so a stale or
+                // missing interop.js would otherwise show an empty grid with no explanation.
+                // Fall back to a fixed layout: keyboard nav and resize-tracking are lost,
+                // but the photos are there. Logged because a silent degrade is undiagnosable —
+                // the grid keeps working and nobody ever finds out interop.js is missing.
+                Log.LogError(ex, "snapzap.initGrid failed; falling back to a fixed grid layout. "
+                                 + "Check that wwwroot/interop.js was published and is reachable.");
+                SetViewport(cols: 4, rowHeight: 170, scrollTop: 0, viewportHeight: 900);
+            }
+            catch (JSDisconnectedException) { /* circuit gone */ }
+        }
+
+        if (_resetScroll)
+        {
+            _resetScroll = false;
+            await JS.InvokeVoidAsync("snapzap.scrollToTop");
+        }
+    }
+
+    /// <summary>Geometry changed (first measure, or the window was resized).</summary>
+    [JSInvokable]
+    public void SetViewport(int cols, int rowHeight, double scrollTop, double viewportHeight)
+    {
+        _cols = cols;
+        _rowHeight = rowHeight > 0 ? rowHeight : 160;
+        _scrollTop = scrollTop;
+        _viewportHeight = viewportHeight;
+        BuildRows();
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public void SetScroll(double scrollTop, double viewportHeight)
+    {
+        var first = FirstRow;
+        _scrollTop = scrollTop;
+        _viewportHeight = viewportHeight;
+        // Only re-render when the window actually moved.
+        if (FirstRow != first) StateHasChanged();
+    }
+
+    [JSInvokable]
+    public void SelectAllVisible() => AppState.SelectAllVisible();
+
+    [JSInvokable]
+    public void ClearSelection() => AppState.ClearSelection();
+
+    public async ValueTask DisposeAsync()
+    {
+        AppState.Changed -= OnStateChanged;
+        try { await JS.InvokeVoidAsync("snapzap.disposeGrid"); }
+        catch (JSDisconnectedException) { /* circuit already gone */ }
+        catch (InvalidOperationException) { /* prerender / no JS available */ }
+        _self?.Dispose();
+    }
+}

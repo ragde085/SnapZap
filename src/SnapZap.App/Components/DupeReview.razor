@@ -1,0 +1,279 @@
+@implements IDisposable
+@inject AppState AppState
+@inject IJSRuntime JS
+
+@*
+    Group-at-a-time duplicate review: the core motion of the app, which the flat grid can't
+    express. Members sit side by side with the facts that actually decide which copy survives —
+    resolution, file size, date, location — and picking one rewrites the keeper flag that the
+    export engine reads.
+*@
+
+@if (Show && Groups.Count > 0 && _compare)
+{
+    @* Full-resolution comparison. Thumbnails settle an exact duplicate; they cannot settle a
+       near-duplicate, where the difference is detail you have to actually look at. *@
+    <div class="cmp" role="dialog" aria-modal="true" aria-label="Compare copies at full size"
+         tabindex="-1" @ref="_cmpRef" @onkeydown="HandleCompareKey">
+
+        <div class="cmp-bar">
+            <span class="cmp-title">Group @(_index + 1) of @Groups.Count · @Distinguisher</span>
+            <div class="cmp-zoom" role="group" aria-label="Zoom">
+                @foreach (var z in Zooms)
+                {
+                    <button class="@(_zoom == z ? "on" : "")" @onclick="() => SetZoom(z)">
+                        @(z == 0 ? "Fit" : $"{z}%")
+                    </button>
+                }
+            </div>
+            <button class="link" @onclick="() => _compare = false">Close</button>
+        </div>
+
+        <div class="cmp-panes" @ref="_panesRef">
+            @foreach (var m in Members)
+            {
+                var isKeeper = AppState.DupeOf.TryGetValue(m.Id, out var dk) && dk.IsKeeper;
+                <div class="cmp-col">
+                    <div class="cmp-pane @(_zoom == 0 ? "fit" : "")">
+                        @if (_zoom == 0)
+                        {
+                            <img src="@m.FullUrl" alt="@m.FileName" />
+                        }
+                        else
+                        {
+                            <img src="@m.FullUrl" alt="@m.FileName"
+                                 style="width:@(m.Width is { } w ? w * _zoom / 100 : 0)px" />
+                        }
+                    </div>
+                    <div class="cmp-meta">
+                        <b>@m.FileName</b>
+                        <span>@m.Dimensions · @m.SizeLabel</span>
+                        <button class="@(isKeeper ? "primary" : "")" @onclick="() => Keep(m.Id)">
+                            @(isKeeper ? "Keeping this" : "Keep this")
+                        </button>
+                    </div>
+                </div>
+            }
+        </div>
+        <p class="cmp-hint">Panes scroll together. <kbd>Esc</kbd> closes.</p>
+    </div>
+}
+
+@if (Show && Groups.Count > 0)
+{
+    <div class="dlg" role="dialog" aria-modal="true" aria-label="Review duplicates"
+         tabindex="-1" @ref="_dlgRef" @onkeydown="HandleKeyDown">
+        <div class="dlg-box review">
+            <div class="review-head">
+                <div>
+                    <h2>Review duplicates</h2>
+                    <p class="dlg-sub">
+                        Group @(_index + 1) of @Groups.Count · @Members.Count cop@(Members.Count == 1 ? "y" : "ies") · @Distinguisher
+                    </p>
+                </div>
+                <div class="review-nav">
+                    <button disabled="@(_index == 0)" @onclick="Prev" aria-label="Previous group">‹</button>
+                    <button disabled="@(_index >= Groups.Count - 1)" @onclick="Next" aria-label="Next group">›</button>
+                </div>
+            </div>
+
+            <div class="review-grid">
+                @foreach (var m in Members)
+                {
+                    var isKeeper = AppState.DupeOf.TryGetValue(m.Id, out var d) && d.IsKeeper;
+                    <button class="review-card @(isKeeper ? "keeper" : "")"
+                            aria-pressed="@(isKeeper ? "true" : "false")"
+                            @onclick="() => Keep(m.Id)">
+                        <span class="review-shot">
+                            <img src="@m.ThumbUrl" alt="@m.FileName" loading="lazy" />
+                            @if (isKeeper)
+                            {
+                                <span class="review-badge">Keeping</span>
+                            }
+                        </span>
+                        @* Facts that are identical across the group can't decide anything, so
+                           they recede; whatever actually differs is what the eye needs. *@
+                        <span class="review-facts">
+                            <b title="@m.Path" class="@Cls(NameDiffers)">@m.FileName</b>
+                            <span class="@Cls(PixelsDiffer, Best(m, Pixels))">@m.Dimensions</span>
+                            <span class="@Cls(SizeDiffers, Best(m, x => x.FileSize))">@m.SizeLabel</span>
+                            <span class="@Cls(FolderDiffers)" title="@m.Folder">@ImageView.ShortFolder(m.Folder)</span>
+                            <span class="@Cls(DateDiffers)">@m.CapturedLabel</span>
+                        </span>
+                    </button>
+                }
+            </div>
+
+            <div class="dlg-actions">
+                <button class="primary" @onclick="Next" disabled="@(_index >= Groups.Count - 1)">Next group</button>
+                <button @onclick="() => _compare = true">Compare full size</button>
+                <button @onclick="SelectExtrasAndClose">
+                    Select all @ExtraCount extras (@AppState.FormattedReclaimable)
+                </button>
+                <button class="link" @onclick="Close">Done</button>
+            </div>
+            <p class="hint">
+                <kbd>←</kbd> <kbd>→</kbd> move between groups · <kbd>1</kbd>–<kbd>9</kbd> pick a keeper ·
+                <kbd>Esc</kbd> close. Nothing is deleted here — this only decides which copy survives an export.
+            </p>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool Show { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    int _index;
+    bool _wasShown;
+    bool _needsFocus;
+    ElementReference _dlgRef;
+
+    bool _compare;
+    int _zoom;                       // 0 = fit to pane
+    bool _panesWired;
+    ElementReference _cmpRef;
+    ElementReference _panesRef;
+
+    static readonly int[] Zooms = [0, 100, 200, 400];
+
+    void SetZoom(int z) => _zoom = z;
+
+    Task HandleCompareKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") _compare = false;
+        return Task.CompletedTask;
+    }
+
+    IReadOnlyList<DupeGroup> Groups => AppState.DupeGroups;
+    DupeGroup Current => Groups[Math.Clamp(_index, 0, Groups.Count - 1)];
+
+    // Members is read many times per render — by both loops and by every Differs/Best helper —
+    // so resolve it once per group rather than on each access.
+    IReadOnlyList<ImageView> Members
+    {
+        get
+        {
+            var group = Current;
+            if (!ReferenceEquals(_membersOf, group))
+            {
+                _membersOf = group;
+                _members = AppState.MembersOf(group);
+            }
+            return _members;
+        }
+    }
+
+    DupeGroup? _membersOf;
+    IReadOnlyList<ImageView> _members = [];
+
+    int ExtraCount => AppState.DupeOf.Count(kv => !kv.Value.IsKeeper);
+
+    protected override void OnInitialized() => AppState.Changed += StateHasChanged;
+    public void Dispose() => AppState.Changed -= StateHasChanged;
+
+    protected override void OnParametersSet()
+    {
+        if (Show && !_wasShown) { _index = 0; _needsFocus = true; }
+        _wasShown = Show;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_compare && !_panesWired)
+        {
+            _panesWired = true;
+            await _cmpRef.FocusAsync();
+            try
+            {
+                await JS.InvokeVoidAsync("snapzap.syncComparePanes", _panesRef);
+            }
+            catch (JSException)
+            {
+                // Synchronised panning is an enhancement. A stale or failed interop.js must not
+                // take the circuit down and blank the whole app — the panes still scroll,
+                // just independently.
+            }
+            catch (JSDisconnectedException) { /* circuit gone */ }
+        }
+        else if (!_compare && _panesWired)
+        {
+            // Panes are recreated on each open, so their listeners are too.
+            _panesWired = false;
+        }
+
+        if (Show && _needsFocus && Groups.Count > 0)
+        {
+            _needsFocus = false;
+            await _dlgRef.FocusAsync();
+        }
+    }
+
+    static long Pixels(ImageView i) => (long)(i.Width ?? 0) * (i.Height ?? 0);
+
+    // Which facts actually vary within this group. Exact duplicates are byte-identical, so
+    // resolution and size always tie and location is the only thing that decides — the card
+    // has to say so rather than presenting every fact with equal weight.
+    bool NameDiffers => Members.Select(m => m.FileName).Distinct().Count() > 1;
+    bool PixelsDiffer => Members.Select(Pixels).Distinct().Count() > 1;
+    bool SizeDiffers => Members.Select(m => m.FileSize).Distinct().Count() > 1;
+    bool FolderDiffers => Members.Select(m => m.Folder).Distinct().Count() > 1;
+    bool DateDiffers => Members.Select(m => m.CapturedLabel).Distinct().Count() > 1;
+
+    /// <summary>Identical across the group → muted. Differs → normal. Strict winner → green.</summary>
+    static string Cls(bool differs, bool best = false) =>
+        !differs ? "quiet" : best ? "win" : "";
+
+    /// <summary>What the user should actually compare on, said plainly.</summary>
+    string Distinguisher
+    {
+        get
+        {
+            if (PixelsDiffer) return "different resolutions";
+            if (SizeDiffers) return "different file sizes";
+            if (FolderDiffers) return "identical copies — choose by location";
+            if (NameDiffers) return "identical copies — choose by name";
+            return "identical copies";
+        }
+    }
+
+    /// <summary>True when this member is the strict best on a measure — highlights the one
+    /// fact that distinguishes copies, instead of leaving the user to compare numbers.</summary>
+    bool Best(ImageView m, Func<ImageView, long> measure)
+    {
+        var value = measure(m);
+        if (value == 0) return false;
+        var top = Members.Max(measure);
+        return value == top && Members.Count(x => measure(x) == top) == 1;
+    }
+
+    void Prev() { if (_index > 0) _index--; }
+    void Next() { if (_index < Groups.Count - 1) _index++; }
+
+    Task Keep(long imageId) => AppState.SetKeeperAsync(Current.Id, imageId);
+
+    async Task SelectExtrasAndClose()
+    {
+        AppState.SelectDupeExtras();
+        await Close();
+    }
+
+    async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case "ArrowRight": Next(); break;
+            case "ArrowLeft": Prev(); break;
+            case "Escape": await Close(); break;
+            default:
+                if (e.Key.Length == 1 && char.IsDigit(e.Key[0]))
+                {
+                    var n = e.Key[0] - '1';
+                    if (n >= 0 && n < Members.Count) await Keep(Members[n].Id);
+                }
+                break;
+        }
+    }
+
+    Task Close() => OnClose.InvokeAsync();
+}

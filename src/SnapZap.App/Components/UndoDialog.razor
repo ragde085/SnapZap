@@ -1,0 +1,110 @@
+@implements IDisposable
+@inject AppState AppState
+
+@if (Show)
+{
+    <div class="dlg" role="dialog" aria-modal="true" aria-label="History"
+         tabindex="-1" @ref="_dlgRef" @onkeydown="HandleKeyDown">
+        <div class="dlg-box">
+            <h2>History</h2>
+            @* Not everything here was recycled — an export in Move mode relocates files rather
+               than binning them, and calling that "recycled" sends people to the wrong place
+               to look for their photos. *@
+            <p class="dlg-sub">Every batch SnapZap has recycled or moved. Restoring puts the files back where they came from.</p>
+
+            <div class="undo-list">
+                @if (_batches.Count == 0)
+                {
+                    <p class="hint">Nothing has been recycled yet.</p>
+                }
+                else
+                {
+                    @foreach (var b in _batches)
+                    {
+                        var done = b.Restored >= b.Total;
+                        var busy = _restoring == b.BatchId;
+                        <div class="undo-row @(done ? "done" : "")">
+                            <div>
+                                <b>@Describe(b)</b>
+                                <div class="meta">
+                                    @DateTimeOffset.FromUnixTimeSeconds(b.Ts).LocalDateTime.ToString("MMM d, yyyy 'at' h:mm tt")
+                                    @if (b.Restored > 0)
+                                    {
+                                        <text> · @b.Restored restored</text>
+                                    }
+                                </div>
+                            </div>
+                            <button disabled="@(done || busy)" @onclick="() => Restore(b.BatchId)">
+                                @(done ? "Restored" : busy ? "Restoring…" : "Restore")
+                            </button>
+                        </div>
+                    }
+                }
+            </div>
+
+            <div class="dlg-actions"><button class="link" @onclick="Close">Close</button></div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool Show { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    List<UndoBatch> _batches = [];
+    string? _restoring;
+    bool _wasShown;
+    bool _needsFocus;
+    ElementReference _dlgRef;
+
+    protected override void OnInitialized() => AppState.Changed += StateHasChanged;
+    public void Dispose() => AppState.Changed -= StateHasChanged;
+
+    protected override void OnParametersSet()
+    {
+        if (Show && !_wasShown) { Refresh(); _needsFocus = true; }
+        _wasShown = Show;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (Show && _needsFocus)
+        {
+            _needsFocus = false;
+            await _dlgRef.FocusAsync();
+        }
+    }
+
+    void Refresh() => _batches = AppState.Batches().ToList();
+
+    static string Describe(UndoBatch b)
+    {
+        var what = b.BatchId switch
+        {
+            var s when s.StartsWith("move-") => "Moved out by export",
+            var s when s.StartsWith("export-") => "Recycled during export",
+            _ => "Deleted",
+        };
+        return $"{what} · {b.Total} photo{(b.Total == 1 ? "" : "s")}";
+    }
+
+    async Task Restore(string batchId)
+    {
+        _restoring = batchId;
+        StateHasChanged();
+        try
+        {
+            await AppState.RestoreAndReloadAsync(batchId);
+            Refresh();
+        }
+        finally
+        {
+            _restoring = null;
+        }
+    }
+
+    Task HandleKeyDown(KeyboardEventArgs e) =>
+        e.Key == "Escape" && _restoring is null ? Close() : Task.CompletedTask;
+
+    Task Close() => OnClose.InvokeAsync();
+}

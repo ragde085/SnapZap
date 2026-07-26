@@ -1,0 +1,114 @@
+@implements IDisposable
+@inject AppState AppState
+
+<section>
+    <h3>Folders</h3>
+
+    @if (AppState.Tree is not { } root)
+    {
+        <p class="hint">Scan a folder to see its structure.</p>
+    }
+    else
+    {
+        <div class="tree" role="tree" aria-label="Scanned folders">
+            <button class="tree-row @(AppState.Folder.Length == 0 ? "on" : "")"
+                    role="treeitem"
+                    aria-selected="@(AppState.Folder.Length == 0 ? "true" : "false")"
+                    @onclick="() => Select(string.Empty)">
+                <span class="tree-twist" aria-hidden="true"></span>
+                <span class="tree-name">All folders</span>
+                <span class="tree-count">@root.TotalCount.ToString("N0")</span>
+            </button>
+
+            @foreach (var child in root.Children)
+            {
+                @RenderNode(child)
+            }
+        </div>
+
+        <p class="hint">
+            Selecting a folder includes everything beneath it.
+            A dot marks work that hasn't reached that folder yet.
+        </p>
+    }
+</section>
+
+@code {
+    [Parameter] public EventCallback OnPicked { get; set; }
+
+    readonly HashSet<string> _collapsed = new(StringComparer.Ordinal);
+
+    protected override void OnInitialized() => AppState.Changed += StateHasChanged;
+    public void Dispose() => AppState.Changed -= StateHasChanged;
+
+    bool IsExpanded(FolderNode n) => !_collapsed.Contains(n.Path);
+
+    void Toggle(FolderNode n)
+    {
+        if (!_collapsed.Remove(n.Path)) _collapsed.Add(n.Path);
+    }
+
+    async Task Select(string path)
+    {
+        AppState.Folder = path;   // setter notifies and invalidates the filter cache
+        await OnPicked.InvokeAsync();
+    }
+
+    static string StatusTitle(FolderNode n)
+    {
+        var pending = n.PendingSteps().ToList();
+        return pending.Count == 0
+            ? $"{n.TotalCount:N0} photos — all steps complete"
+            : $"{n.TotalCount:N0} photos — {string.Join(", ", pending)}";
+    }
+
+    RenderFragment RenderNode(FolderNode node) => __builder =>
+    {
+        var selected = AppState.Folder == node.Path;
+        var expanded = IsExpanded(node);
+        var pending = node.PendingSteps().Any();
+
+        <div class="tree-branch">
+            <div class="tree-row-wrap" style="padding-left:@(node.Depth * 11)px">
+                @if (node.HasChildren)
+                {
+                    <button class="tree-twist-btn"
+                            aria-label="@(expanded ? "Collapse" : "Expand") @node.Name"
+                            @onclick="() => Toggle(node)">
+                        <span class="tree-twist @(expanded ? "open" : "")" aria-hidden="true">›</span>
+                    </button>
+                }
+                else
+                {
+                    <span class="tree-twist-spacer" aria-hidden="true"></span>
+                }
+
+                <button class="tree-row @(selected ? "on" : "")"
+                        role="treeitem"
+                        aria-selected="@(selected ? "true" : "false")"
+                        aria-expanded="@(node.HasChildren ? (expanded ? "true" : "false") : null)"
+                        title="@StatusTitle(node)"
+                        @onclick="() => Select(node.Path)">
+                    <span class="tree-name">@node.Name</span>
+                    @if (node.InDupeGroup > 0)
+                    {
+                        <span class="tree-dupes" title="@node.InDupeGroup in duplicate groups">⧉</span>
+                    }
+                    @if (pending)
+                    {
+                        <span class="tree-pending" aria-hidden="true"></span>
+                    }
+                    <span class="tree-count">@node.TotalCount.ToString("N0")</span>
+                </button>
+            </div>
+
+            @if (expanded && node.HasChildren)
+            {
+                @foreach (var child in node.Children)
+                {
+                    @RenderNode(child)
+                }
+            }
+        </div>
+    };
+}

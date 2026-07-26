@@ -1,0 +1,98 @@
+@using Microsoft.AspNetCore.Components.Web
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SnapZap</title>
+    <base href="/" />
+    @* Version-stamped so a browser can't serve assets from a previous build. Blazor's own
+       framework files are fingerprinted; these two are ours and were not. *@
+    <link rel="stylesheet" href="app.css@(Version)" />
+    <HeadOutlet />
+</head>
+<body>
+    <Routes @rendermode="InteractiveServer" />
+
+    <div id="blazor-error-ui">
+        An unhandled error has occurred.
+        <a href="." class="reload">Reload</a>
+        <span class="dismiss">🗙</span>
+    </div>
+
+    @*
+        Reconnection UI. Supplying an element with this id makes Blazor drive it by CSS class
+        instead of building its own — the default is a white dialog inside a shadow root, which
+        no stylesheet can reach, and it talks about "rejoining the server" to someone who is
+        looking at a local photo app. The runtime only adds classes; showing and hiding is the
+        stylesheet's job, so this is hidden by default.
+
+        Must be plain markup in the host page, not a component: when the circuit is down there
+        is nothing on the server left to render it.
+    *@
+    <div id="components-reconnect-modal" class="reconnect">
+        <div class="reconnect-box" role="alertdialog" aria-live="assertive" aria-label="Connection to SnapZap">
+            <div class="reconnect-pulse" aria-hidden="true"><span></span><span></span></div>
+
+            <h2 class="reconnect-title">SnapZap has stopped responding</h2>
+
+            <p class="reconnect-line when-retrying">
+                Trying to reconnect — next attempt in
+                <b id="components-seconds-to-next-attempt">…</b>s
+                (<b id="components-reconnect-current-attempt">1</b> of
+                <b id="components-reconnect-max-retries">30</b>).
+            </p>
+
+            <p class="reconnect-line when-failed">
+                The SnapZap process isn't running any more. Start it again, then reload.
+            </p>
+
+            <p class="reconnect-line when-rejected">
+                This window is out of date because SnapZap restarted. Reload to pick up where
+                you left off.
+            </p>
+
+            @* The question anyone actually has when a photo app drops out mid-operation. *@
+            <p class="reconnect-safe">
+                Nothing has been lost. Your selection is saved, and every scan, export and
+                delete is journalled — completed work is on disk, and an interrupted export
+                resumes where it stopped.
+            </p>
+
+            <div class="reconnect-actions">
+                <button type="button" class="reconnect-retry">Try again</button>
+                <button type="button" class="reconnect-reload">Reload</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="_framework/blazor.web.js"></script>
+    <script src="interop.js@(Version)"></script>
+</body>
+</html>
+
+@code {
+    /// <summary>
+    /// Cache-buster tied to the build, so `app.css` and `interop.js` can never be served stale
+    /// after an update. A stale interop.js used to blank the photo grid.
+    ///
+    /// Uses <c>AppContext.BaseDirectory</c>, never <c>Assembly.Location</c>: the latter returns
+    /// an empty string in a single-file publish — which is exactly how the Windows build ships
+    /// — and <c>new FileInfo("")</c> would throw here, in a static initialiser, on every launch.
+    /// Wrapped anyway so a version stamp can never be the thing that stops the app starting.
+    /// </summary>
+    static readonly string Version = "?v=" + BuildStamp();
+
+    static string BuildStamp()
+    {
+        var version = typeof(App).Assembly.GetName().Version?.ToString() ?? "dev";
+        try
+        {
+            var asset = Path.Combine(AppContext.BaseDirectory, "wwwroot", "interop.js");
+            if (File.Exists(asset))
+                return $"{version}-{File.GetLastWriteTimeUtc(asset).Ticks}";
+        }
+        catch { /* fall through to the assembly version alone */ }
+        return version;
+    }
+}

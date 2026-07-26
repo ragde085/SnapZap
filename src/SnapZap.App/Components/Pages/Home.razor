@@ -1,0 +1,171 @@
+@page "/"
+@implements IDisposable
+@inject AppState AppState
+@inject DependencyChecker Checker
+@inject SessionStore Session
+
+<header class="topbar">
+    <div class="brand">Snap<em>Zap</em></div>
+    <Toolbar />
+</header>
+
+<main>
+    <Sidebar OnOpenExport="OpenExport" OnOpenUndo="OpenUndo" OnOpenDupeReview="OpenDupeReview" />
+    <section class="content">
+        <div class="summary-row">
+            <div class="summary">@((MarkupString)Summary)</div>
+            @if (AppState.Images.Count > 0)
+            {
+                <div class="sortbar">
+                    <label for="sortby">Sort</label>
+                    <select id="sortby" @bind="AppState.Sort">
+                        <option value="@SortKey.Scanned">Scan order</option>
+                        <option value="@SortKey.Captured">Date taken</option>
+                        <option value="@SortKey.Name">Name</option>
+                        <option value="@SortKey.Size">File size</option>
+                        <option value="@SortKey.Blur">Sharpness</option>
+                        <option value="@SortKey.Nsfw">NSFW score</option>
+                    </select>
+                    @* One description, not two that disagree: the tooltip used to report the
+                       current state while the accessible name announced the opposite action. *@
+                    <button class="sort-dir"
+                            title="@SortDirLabel"
+                            aria-label="@SortDirLabel"
+                            @onclick="() => AppState.SortDescending = !AppState.SortDescending">
+                        @(AppState.SortDescending ? "↓" : "↑")
+                    </button>
+                </div>
+            }
+        </div>
+        <ScanIssues />
+        <PhotoGrid OnPreview="OpenPreview" />
+        @* "No photos" has two causes that need opposite responses: nothing scanned yet, and a
+           scan that came back empty. Showing the first message after a scan tells the user to
+           do the thing they just did. *@
+        @if (AppState.Images.Count == 0 && !AppState.Busy && AppState.ScannedFolder is { } scanned)
+        {
+            <div class="empty">
+                <p>
+                    No photos in <b>@ImageView.ShortFolder(scanned)</b>.
+                    @if (AppState.LastUnsupportedTotal > 0)
+                    {
+                        <text>
+                            <br />
+                            SnapZap found @AppState.LastUnsupportedTotal.ToString("N0") file@(AppState.LastUnsupportedTotal == 1 ? "" : "s")
+                            it can't read yet — see the note above the grid.
+                        </text>
+                    }
+                    else
+                    {
+                        <text>
+                            <br />
+                            Check the folder is the right one, and that it holds images rather
+                            than a folder of folders you meant to point at instead.
+                        </text>
+                    }
+                </p>
+            </div>
+        }
+        else if (AppState.Images.Count == 0 && !AppState.Busy)
+        {
+            <div class="empty"><p>Point SnapZap at a folder of photos and press <kbd>Scan</kbd> to begin.</p></div>
+        }
+        else if (AppState.Images.Count > 0 && Shown == 0)
+        {
+            <div class="empty">
+                <p>
+                    None of the @AppState.Images.Count.ToString("N0") photos match these filters.
+                    <br />
+                    <button class="link" @onclick="() => AppState.ClearFilters()">Clear filters</button>
+                </p>
+            </div>
+        }
+    </section>
+</main>
+
+<Toast />
+
+<ExportDialog Show="_showExport" OnClose="CloseExport" />
+<UndoDialog Show="_showUndo" OnClose="CloseUndo" />
+<PreviewModal Img="_previewImg" OnClose="ClosePreview" OnNavigate="img => _previewImg = img" />
+<DupeReview Show="_showDupes" OnClose="() => _showDupes = false" />
+<DependencyDialog Show="_showDeps" OnClose="() => _showDeps = false" />
+
+@code {
+    bool _showExport;
+    bool _showUndo;
+    bool _showDeps;
+    bool _showDupes;
+    ImageView? _previewImg;
+
+    int Shown => AppState.Filtered().Count;
+
+    /// <summary>States where the sort is now and what pressing this does — both audiences get
+    /// the same sentence, so the tooltip and the screen reader can't contradict each other.</summary>
+    string SortDirLabel => AppState.SortDescending
+        ? "Sorted descending — switch to ascending"
+        : "Sorted ascending — switch to descending";
+
+    string Summary
+    {
+        get
+        {
+            var total = AppState.Images.Count;
+            if (total == 0) return "";
+
+            var noun = total == 1 ? "photo" : "photos";
+            var bits = new List<string>
+            {
+                AppState.HasActiveFilter
+                    ? $"<b>{Shown:N0}</b> of {total:N0} {noun}"
+                    : $"<b>{total:N0}</b> {noun}",
+            };
+            if (AppState.DupeExtraCount > 0)
+                bits.Add($"{AppState.DupeExtraCount:N0} duplicate extra{(AppState.DupeExtraCount == 1 ? "" : "s")} · <b>{AppState.FormattedReclaimable}</b> reclaimable");
+            else if (AppState.DupeOf.Count > 0)
+                bits.Add($"{AppState.DupeOf.Count:N0} in duplicate groups");
+            if (AppState.Selected.Count > 0) bits.Add($"<b>{AppState.Selected.Count:N0}</b> selected");
+            return string.Join(" &nbsp;·&nbsp; ", bits);
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        AppState.Changed += StateHasChanged;
+
+        // The selection is shared by every window on this library. That event can arrive from
+        // another circuit's thread, so it must be marshalled onto this one before rendering.
+        Session.Changed += OnSelectionChangedElsewhere;
+
+        // Validate the optional sidecars at launch. Only surfaced when something is actually
+        // missing and the user hasn't asked to stop being reminded — a clean install with
+        // everything present never sees a dialog.
+        if (!Checker.PromptSuppressed && Checker.MissingCount > 0)
+            _showDeps = true;
+
+        await AppState.LoadAsync();
+    }
+
+    void OpenPreview(ImageView img) => _previewImg = img;
+    void ClosePreview() => _previewImg = null;
+
+    void OpenExport() => _showExport = true;
+    void CloseExport() => _showExport = false;
+
+    void OpenUndo() => _showUndo = true;
+    void CloseUndo() => _showUndo = false;
+
+    void OpenDupeReview() => _showDupes = true;
+
+    void OnSelectionChangedElsewhere() => InvokeAsync(() =>
+    {
+        AppState.RefreshSelection();
+        StateHasChanged();
+    });
+
+    public void Dispose()
+    {
+        AppState.Changed -= StateHasChanged;
+        Session.Changed -= OnSelectionChangedElsewhere;
+    }
+}

@@ -1,0 +1,98 @@
+@implements IDisposable
+@inject AppState AppState
+@inject DependencyChecker Checker
+
+<div class="folder">
+    <input type="text"
+           placeholder="Folder to scan, e.g. /Volumes/Archive/Photos"
+           spellcheck="false"
+           aria-label="Folder to scan"
+           disabled="@AppState.Busy"
+           @bind="_folder"
+           @bind:event="oninput"
+           @onkeydown="HandleFolderKey" />
+    <button class="primary" disabled="@(AppState.Busy || _folder.Trim().Length == 0)" @onclick="Scan">Scan</button>
+    <button disabled="@(AppState.Busy || _folder.Trim().Length == 0)" title="@DedupTitle" @onclick="Dedup">
+        Find duplicates@(_similarReady ? "" : " *")
+    </button>
+    <button disabled="@(AppState.Busy || AppState.Images.Count == 0 || !_nsfwReady)" title="@NsfwTitle" @onclick="Nsfw">Score NSFW</button>
+</div>
+
+@if (AppState.Busy)
+{
+    <div class="op" role="status" aria-live="polite">
+        <div class="op-line">
+            <span>@AppState.BusyLabel…</span>
+            <b>@CountLabel</b>
+            <button class="op-stop" disabled="@(!AppState.CanCancel)" @onclick="() => AppState.Cancel()">
+                @(AppState.CanCancel ? "Stop" : "Stopping…")
+            </button>
+        </div>
+        <div class="op-track">
+            @if (AppState.BusyFraction is { } f)
+            {
+                <div class="op-fill" style="width:@((f * 100).ToString("F1", System.Globalization.CultureInfo.InvariantCulture))%"></div>
+            }
+            else
+            {
+                <div class="op-fill indeterminate"></div>
+            }
+        </div>
+    </div>
+}
+else if (AppState.Status.Length > 0)
+{
+    <div class="status" role="status" aria-live="polite">@AppState.Status</div>
+}
+
+@code {
+    string _folder = "";
+
+    // Surface a missing sidecar before the user commits to a run, rather than only
+    // reporting it in the result line afterwards.
+    bool _similarReady => Checker.Current.First(d => d.Id == "czkawka").Found;
+    bool _nsfwReady => Checker.Current.First(d => d.Id == "nsfw-model").Found;
+
+    protected override void OnInitialized()
+    {
+        AppState.Changed += StateHasChanged;
+        Checker.Changed += OnDepsChanged;
+    }
+
+    public void Dispose()
+    {
+        AppState.Changed -= StateHasChanged;
+        Checker.Changed -= OnDepsChanged;
+    }
+
+    void OnDepsChanged() => InvokeAsync(StateHasChanged);
+
+    string DedupTitle => _similarReady
+        ? "Find exact and visually similar duplicates"
+        : "Finds exact duplicates. Similar-photo detection needs czkawka_cli — see Setup.";
+
+    string NsfwTitle => _nsfwReady
+        ? "Score every photo for explicit content"
+        : "Needs the NSFW model — see Setup.";
+
+    string CountLabel => AppState.BusyTotal > 0
+        ? $"{AppState.BusyDone:N0} / {AppState.BusyTotal:N0}"
+        : AppState.BusyDone > 0 ? $"{AppState.BusyDone:N0}" : "";
+
+    Task HandleFolderKey(KeyboardEventArgs e) =>
+        e.Key == "Enter" ? Scan() : Task.CompletedTask;
+
+    Task Scan()
+    {
+        var folder = _folder.Trim();
+        return folder.Length == 0 ? Task.CompletedTask : AppState.ScanAsync(folder);
+    }
+
+    Task Dedup()
+    {
+        var folder = _folder.Trim();
+        return folder.Length == 0 ? Task.CompletedTask : AppState.DedupAsync(folder);
+    }
+
+    Task Nsfw() => AppState.NsfwAsync();
+}

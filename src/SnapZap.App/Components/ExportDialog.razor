@@ -1,0 +1,302 @@
+@implements IDisposable
+@inject AppState AppState
+@inject CatalogService Catalog
+@inject ILinkService Links
+@inject ITrashService Trash
+
+@if (Show)
+{
+    <div class="dlg" role="dialog" aria-modal="true" aria-label="Export selected photos"
+         tabindex="-1" @ref="_dlgRef" @onkeydown="HandleKeyDown">
+        <div class="dlg-box">
+            <h2>Export selected photos</h2>
+            <p class="dlg-sub">@AppState.Selected.Count photo@(AppState.Selected.Count == 1 ? "" : "s") will be written to the destination. Originals are verified before anything is removed.</p>
+
+            <label class="field">Destination folder
+                <input type="text" placeholder="Where the clean library goes" spellcheck="false" @bind="_destination" @bind:event="oninput" @bind:after="InvalidatePreflight" />
+            </label>
+
+            <div class="field-row">
+                <label class="field">Transfer
+                    <select @bind="_mode" @bind:after="InvalidatePreflight">
+                        <option value="Copy">Copy (safest)</option>
+                        <option value="Move">Move (verify, then remove source)</option>
+                        <option value="Hardlink">Hardlink (zero-copy, same drive)</option>
+                    </select>
+                </label>
+                <label class="field">Structure
+                    <select @bind="_structure" @bind:after="InvalidatePreflight">
+                        <option value="Date">By date · YYYY/YYYY-MM</option>
+                        <option value="Mirror">Mirror source tree</option>
+                        <option value="Flat">Flat</option>
+                    </select>
+                </label>
+            </div>
+
+            <label class="field checkbox">
+                <input type="checkbox" disabled="@(RejectCount == 0)" @bind="_recycleRejects" @bind:after="InvalidatePreflight" />
+                @if (RejectCount == 0)
+                {
+                    <text>Everything is selected, so there is nothing left to recycle.</text>
+                }
+                else
+                {
+                    <text>
+                        Also recycle the @RejectCount.ToString("N0") photo@(RejectCount == 1 ? "" : "s")
+                        you didn't select — every photo in the catalogue, not just the ones on screen
+                    </text>
+                }
+            </label>
+
+            @if (_recycleRejects && RejectCount > 0)
+            {
+                @* The most destructive control in the app; it deserves more than a tick box. *@
+                <div class="confirm">
+                    <p>
+                        <b>@RejectCount.ToString("N0")</b> photo@(RejectCount == 1 ? "" : "s")
+                        (@AppState.FormatBytes(RejectBytes)) will go to the Recycle Bin after the
+                        export verifies. Filters don't limit this — it covers the whole catalogue.
+                        It's reversible from History.
+                    </p>
+                </div>
+            }
+
+            @if (_preflight is { } p)
+            {
+                <div class="preflight">
+                    <div><b>@p.KeeperCount</b> photo@(p.KeeperCount == 1 ? "" : "s") · @AppState.FormatBytes(p.TotalBytes) to write</div>
+                    @if (p.DestinationFreeBytes is { } freeBytes)
+                    {
+                        <div>
+                            @AppState.FormatBytes(freeBytes) free at the destination —
+                            @if (p.EnoughSpace)
+                            {
+                                <span class="ok">enough room</span>
+                            }
+                            else
+                            {
+                                <span class="bad">not enough room</span>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="warn-line">
+                            Couldn't read the free space on that drive, so the export isn't
+                            blocked — but nothing has confirmed it will fit either.
+                        </div>
+                    }
+                    @if (p.HardlinkPossible)
+                    {
+                        <div class="ok">Hardlinks available — this will use no extra space.</div>
+                    }
+                    @if (p.SampleDestinations.Count > 0)
+                    {
+                        <div>Example folder: @p.SampleDestinations[0]</div>
+                    }
+                </div>
+            }
+
+            <div class="dlg-actions">
+                <button @onclick="RunPreflight">Check destination</button>
+                <button class="primary" disabled="@(_preflight is null || !_preflight.EnoughSpace || _running || _done)" @onclick="RunExport">
+                    @(_running ? "Exporting…" : "Export")
+                </button>
+                @if (_running)
+                {
+                    <button class="danger" disabled="@(_cts is not { IsCancellationRequested: false })" @onclick="StopExport">
+                        @(_cts is { IsCancellationRequested: false } ? "Stop" : "Stopping…")
+                    </button>
+                }
+                else if (_done)
+                {
+                    <button class="link" @onclick="Close">Done</button>
+                }
+                else
+                {
+                    <button class="link" @onclick="Close">Cancel</button>
+                }
+            </div>
+            @if (_resultText.Length > 0)
+            {
+                <div class="exp-result">@_resultText</div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool Show { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    string _destination = "";
+    TransferMode _mode = TransferMode.Copy;
+    ExportStructure _structure = ExportStructure.Date;
+    bool _recycleRejects;
+    bool _running;
+    Preflight? _preflight;
+    string _resultText = "";
+    bool _wasShown;
+    bool _done;
+    ElementReference _dlgRef;
+    CancellationTokenSource? _cts;
+
+    int RejectCount => AppState.Images.Count - AppState.Selected.Count;
+
+    long RejectBytes => AppState.Images.Where(i => !AppState.Selected.Contains(i.Id)).Sum(i => i.FileSize);
+
+    protected override void OnInitialized() => AppState.Changed += StateHasChanged;
+    public void Dispose() => AppState.Changed -= StateHasChanged;
+
+    Task HandleKeyDown(KeyboardEventArgs e) =>
+        e.Key == "Escape" && !_running ? Close() : Task.CompletedTask;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (Show && _needsFocus)
+        {
+            _needsFocus = false;
+            await _dlgRef.FocusAsync();
+        }
+    }
+
+    bool _needsFocus;
+
+    protected override void OnParametersSet()
+    {
+        if (Show && !_wasShown) { _preflight = null; _resultText = ""; _done = false; _needsFocus = true; }
+        _wasShown = Show;
+    }
+
+    ExportRequest BuildRequest() => new()
+    {
+        Destination = _destination.Trim(),
+        SourceRoot = AppState.ScannedFolder ?? "",
+        Mode = _mode,
+        Structure = _structure,
+        RejectAction = _recycleRejects ? RejectAction.Recycle : RejectAction.Leave,
+        KeeperIds = AppState.Selected.ToList(),
+        RejectIds = _recycleRejects
+            ? AppState.Images.Select(i => i.Id).Except(AppState.Selected).ToList()
+            : [],
+    };
+
+    void RunPreflight()
+    {
+        _preflight = null;
+
+        if (string.IsNullOrWhiteSpace(_destination))
+        {
+            _resultText = "Enter a destination folder first.";
+            return;
+        }
+        if (!Path.IsPathRooted(_destination.Trim()))
+        {
+            // A relative path silently resolved against the server's working directory, which
+            // sits inside the source tree — exporting into the folder being cleaned.
+            _resultText = "Enter a full path, starting from the root of the drive.";
+            return;
+        }
+        if (_structure == ExportStructure.Mirror && string.IsNullOrWhiteSpace(AppState.ScannedFolder))
+        {
+            // Mirror needs a source root to make paths relative to. It is only set by a scan in
+            // this session, and the cache means reopening and exporting without scanning is the
+            // normal path — which used to throw out of Path.GetFullPath and kill the circuit.
+            _resultText = "Mirror keeps your existing folder structure, so scan the source folder first — or choose By date or Flat.";
+            return;
+        }
+
+        try
+        {
+            var engine = new ExportEngine(Catalog.Db, Links, Trash);
+            _preflight = engine.Plan(BuildRequest());
+            _resultText = "";
+        }
+        catch (Exception ex)
+        {
+            _resultText = $"Could not check that destination: {ex.Message}";
+        }
+    }
+
+    /// <summary>
+    /// Any change to what would be exported invalidates the check. Without this the panel kept
+    /// showing a stale "enough room" for a destination and mode the user had since changed —
+    /// so Export stayed armed for a Move into a folder that was never checked.
+    /// </summary>
+    void InvalidatePreflight()
+    {
+        if (_done) return;   // a finished run is history, not a stale check
+        _preflight = null;
+        _resultText = "";
+    }
+
+    async Task RunExport()
+    {
+        if (_preflight is null || _running) return;
+        _running = true;
+        _resultText = "Exporting…";
+        StateHasChanged();
+
+        var engine = new ExportEngine(Catalog.Db, Links, Trash);
+        // Progress<T>.Report posts its callback to the sync context rather than running
+        // inline, so for a fast/synchronous export the run can finish (and this method can set
+        // the final _resultText) before the last progress post is actually delivered. Guard
+        // against that post clobbering the final message once we're done.
+        var inFlight = true;
+        var progress = new Progress<ExportProgress>(p =>
+        {
+            if (!inFlight) return;
+            _resultText = $"{p.Phase} {p.Done}/{p.Total} — {p.Current}";
+            InvokeAsync(StateHasChanged);
+        });
+
+        _cts = new CancellationTokenSource();
+        try
+        {
+            var result = await engine.RunAsync(BuildRequest(), progress, _cts.Token);
+            inFlight = false;
+            var (csv, _) = ManifestWriter.Write(Catalog.Db, result, Catalog.ManifestDir);
+
+            var bits = new List<string> { $"Exported {result.Exported}" };
+            if (result.SkippedExisting > 0) bits.Add($"{result.SkippedExisting} already there");
+            if (result.Failed > 0) bits.Add($"{result.Failed} failed");
+            if (result.Recycled > 0) bits.Add($"{result.Recycled} recycled");
+            _resultText = string.Join(" · ", bits);
+
+            // Move deletes the originals. Saying only "Exported N" — identical to Copy — hides
+            // the destructive half of what just happened.
+            if (_mode == TransferMode.Move && result.Exported > 0)
+                _resultText += $"\n{result.Exported} original{(result.Exported == 1 ? " was" : "s were")} removed from the source folder. Undo it from History.";
+
+            _resultText += $"\nManifest written to {csv}";
+            _done = true;
+
+            await AppState.LoadAsync();
+        }
+        catch (OperationCanceledException)
+        {
+            inFlight = false;
+            // Every file already written was hash-verified before the stop, and a re-run skips
+            // them via the resume table — so stopping is safe and costs nothing but time.
+            _resultText = "Export stopped. Photos already copied are verified and complete; "
+                        + "running it again resumes where this left off.";
+            await AppState.LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            inFlight = false;
+            _resultText = $"Export stopped: {ex.Message}";
+        }
+        finally
+        {
+            _running = false;
+            _cts?.Dispose();
+            _cts = null;
+            StateHasChanged();
+        }
+    }
+
+    void StopExport() => _cts?.Cancel();
+
+    Task Close() => OnClose.InvokeAsync();
+}
