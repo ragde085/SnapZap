@@ -39,13 +39,14 @@ The source folder is never modified unless you explicitly ask for it.
 │    AppState → Scanner ─ Analyzer ─ Exporter │
 └──┬─────────┬──────────┬──────────┬──────────┘
    │         │          │          │
- SQLite   ONNX RT   SkiaSharp   czkawka_cli
- (cache) (NSFW ViT) (decode/    (subprocess)
+ SQLite   ONNX RT   SkiaSharp
+ (cache) (NSFW ViT) (decode/
                      thumbs)
 ```
 
-Everything runs in one process on localhost. The UI is served by the same binary that
-hosts it. `czkawka_cli` is the only external executable.
+Everything runs in one process on localhost, with no external executable at all. The UI is
+served by the same binary that hosts it. (`czkawka_cli` used to sit alongside SkiaSharp here;
+perceptual matching moved in-process in v2 — see [DEDUP-V2.md](DEDUP-V2.md).)
 
 Components call Core services directly over the circuit — there is no JSON/DTO layer for
 application logic. Only image bytes still travel over HTTP: `/api/thumb/{hash}` and
@@ -60,8 +61,12 @@ what makes Blazor Server's per-interaction round trip a non-issue.
 - **Web UI over native XAML:** a dense windowed photo grid with lazy thumbnails, shift-click
   ranges and live filters is substantially less work in CSS grid than in XAML. (Originally a
   vanilla-JS SPA; migrated to Blazor Server — see [BLAZOR-MIGRATION.md](BLAZOR-MIGRATION.md).)
-- **Czkawka over a hand-rolled deduper:** it is mature, Rust-fast, and already does both
-  exact and perceptual matching. Reinventing it has no upside.
+- **~~Czkawka over a hand-rolled deduper~~ — reversed in v2.** The original reasoning was that
+  czkawka is mature and Rust-fast, so reinventing it had no upside. What that missed: it decoded
+  the entire library a second time in its own process, having no access to the decode the scan had
+  already done; the grouping semantics we actually needed were ours to get right either way; and
+  every format it could read beyond SkiaSharp's set was discarded anyway, because those files were
+  never in the catalog to match against. See [DEDUP-V2.md](DEDUP-V2.md) §2 for the full accounting.
 
 ### Implementation deviations (as built)
 
@@ -73,6 +78,8 @@ what makes Blazor Server's per-interaction round trip a non-issue.
   (`Dedup/ExactDuplicateFinder.cs`) with no external tool. **Czkawka is used *only* for
   *similar* (perceptual) images** (`Dedup/CzkawkaFinder.cs`). Consequence: exact dedup works
   even with no Czkawka installed; only near-duplicate detection needs the sidecar.
+  **Superseded in v2:** near-duplicate detection is now in-process too and the sidecar is gone
+  entirely. See [DEDUP-V2.md](DEDUP-V2.md).
 - **Czkawka JSON parser is validated** against czkawka 12.0.0 (2026-07-25). Real output is an
   array of groups, each an array of objects carrying `path` plus size/width/height/difference
   metadata we ignore — which is what the defensive parser already assumed, so it needed no

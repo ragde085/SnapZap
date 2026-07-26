@@ -103,9 +103,13 @@ public sealed class DupeRepository(Database db)
         var meta = new List<(long id, DupeKind kind, string? sim)>();
         using (var r = cmd.ExecuteReader())
             while (r.Read())
-                meta.Add((r.GetInt64(0),
-                          Enum.Parse<DupeKind>(r.GetString(1), ignoreCase: true),
-                          r.IsDBNull(2) ? null : r.GetString(2)));
+            {
+                // Skip rather than throw on a kind this build does not know. A catalogue written
+                // by a newer version has to degrade to "some groups are not shown", not to an
+                // exception on the code path that loads the grid.
+                if (!Enum.TryParse<DupeKind>(r.GetString(1), ignoreCase: true, out var k)) continue;
+                meta.Add((r.GetInt64(0), k, r.IsDBNull(2) ? null : r.GetString(2)));
+            }
 
         foreach (var (id, k, sim) in meta)
         {

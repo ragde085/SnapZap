@@ -13,13 +13,22 @@ namespace SnapZap.Tests;
 /// </summary>
 public class FolderTreeTests
 {
-    static ImageView Img(long id, string path, long? dupeCheckedAt = null) =>
+    /// <param name="checkedKinds">
+    /// Which detectors covered this row. Defaults to <see cref="DupeKinds.None"/> alongside a null
+    /// timestamp — the two travel together, since a stamp without a mask is exactly the state the
+    /// mask was added to rule out.
+    /// </param>
+    static ImageView Img(
+        long id, string path, long? dupeCheckedAt = null, DupeKinds checkedKinds = DupeKinds.None) =>
         new(new ImageRecord
         {
             Id = id,
             Path = path,
             ContentHash = "h" + id,
             DupeCheckedAt = dupeCheckedAt,
+            DupeCheckedKinds = dupeCheckedAt is null ? DupeKinds.None
+                             : checkedKinds == DupeKinds.None ? DupeKinds.Exact
+                             : checkedKinds,
         }, null);
 
     /// <summary>The check that matters: does selecting this node show the photos in it?</summary>
@@ -165,6 +174,29 @@ public class FolderTreeTests
         // The parent is 2 of 3 — complete for neither child's sake.
         Assert.Equal(new StepStat(2, 3), root.Deduped);
         Assert.False(root.DupeCheckComplete);
+    }
+
+    /// <summary>
+    /// The reason <c>dupe_checked_kinds</c> exists. A row stamped by an exact-only run is fully
+    /// checked while that is all that is enabled, and becomes outstanding again the moment variant
+    /// detection is switched on — without anyone re-scanning or re-running anything.
+    /// </summary>
+    [Fact]
+    public void Enabling_another_detector_makes_previously_checked_folders_pending_again()
+    {
+        List<ImageView> images =
+        [
+            Img(1, "/lib/a.jpg", dupeCheckedAt: 1_700_000_000, checkedKinds: DupeKinds.Exact),
+            Img(2, "/lib/b.jpg", dupeCheckedAt: 1_700_000_000, checkedKinds: DupeKinds.Exact),
+        ];
+        var noDupes = new Dictionary<long, DupeInfo>();
+
+        var asStamped = FolderTreeBuilder.Build(images, noDupes, DupeKinds.Exact)!;
+        Assert.True(asStamped.DupeCheckComplete);
+
+        var withVariantOn = FolderTreeBuilder.Build(images, noDupes, DupeKinds.Exact | DupeKinds.Variant)!;
+        Assert.False(withVariantOn.DupeCheckComplete);
+        Assert.Equal(new StepStat(0, 2), withVariantOn.Deduped);
     }
 
     /// <summary>Collapsing a passthrough chain rebuilds the node field by field, so a new

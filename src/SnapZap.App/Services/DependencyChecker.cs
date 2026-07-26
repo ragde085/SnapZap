@@ -1,6 +1,4 @@
-using System.Runtime.InteropServices;
 using System.Text.Json;
-using SnapZap.Core.Dedup;
 
 namespace SnapZap.App.Services;
 
@@ -114,7 +112,11 @@ public sealed class DependencyChecker
 
     // Kept in step with scripts/install-deps.{sh,bat} — the dialog quotes those scripts, so a
     // version bump there has to land here too or the app will advertise a stale command.
-    const string CzkawkaVersion = "12.0.0";
+    //
+    // Only one sidecar remains. czkawka was removed when similar-image detection moved in-process
+    // (docs/DEDUP-V2.md); the list is still built as a list because the shape of the dialog, the
+    // Setup panel and the rail pip all render from it, and collapsing it to a single item would
+    // just have to be undone the next time something optional appears.
     const string ModelRevision = "1ceb3c7fe1e9f3f2507e6df577437f23a9149fd5";
     const string ModelBase =
         "https://huggingface.co/onnx-community/nsfw_image_detection-ONNX/resolve/" + ModelRevision;
@@ -144,14 +146,6 @@ public sealed class DependencyChecker
             ? "Then restart the app — the build copies it into place."
             : null;
 
-        // Same resolution the dedup run uses: explicit config → beside the binary → PATH.
-        var czkawkaPath = new CzkawkaFinder(_catalog.Db).LocateBinary();
-        var czkawkaName = win ? "czkawka_cli.exe" : "czkawka_cli";
-        var czkawkaAsset = win ? "windows_czkawka_cli.exe"
-            : OperatingSystem.IsMacOS() ? "mac_czkawka_cli_arm64"
-            : RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? "linux_czkawka_cli_arm64"
-            : "linux_czkawka_cli_x86_64";
-
         var modelPath = _catalog.NsfwModelPath;
         var modelFound = File.Exists(modelPath);
         var modelDir = Path.GetDirectoryName(modelPath) ?? sidecarDir;
@@ -164,30 +158,6 @@ public sealed class DependencyChecker
 
         return
         [
-            new DependencyInfo
-            {
-                Id = "czkawka",
-                Name = "Similar-photo detection",
-                Unlocks = "Finds photos that look alike — bursts, re-edits, resized copies.",
-                WithoutIt = "Exact duplicates are still found, from SnapZap's own checksums.",
-                Found = czkawkaPath is not null,
-                FoundAt = czkawkaPath,
-                FileName = czkawkaName,
-                InstallTo = sidecarDir,
-                Command = Install("--czkawka-only", sidecarDir),
-                CommandNote = Note(sidecarDir),
-                Downloads =
-                [
-                    // Straight at the binary for this platform, not the releases page — that
-                    // page lists ~50 assets for five different tools and picking wrong is easy.
-                    new DownloadLink(
-                        $"https://github.com/qarmin/czkawka/releases/download/{CzkawkaVersion}/{czkawkaAsset}",
-                        czkawkaAsset, czkawkaName, "~45 MB"),
-                ],
-                ExtraStep = win
-                    ? null
-                    : $"Make it runnable:  chmod +x \"{Path.Combine(sidecarDir, czkawkaName)}\"",
-            },
             new DependencyInfo
             {
                 Id = "nsfw-model",

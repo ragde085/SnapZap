@@ -32,6 +32,17 @@ public class ExactDedupTests : IDisposable
         data.SaveTo(fs);
     }
 
+    /// <summary>A smaller copy of an existing image: same picture, different bytes and pixels.</summary>
+    static void Downscale(string sourcePath, string destPath, int w, int h)
+    {
+        using var src = SKBitmap.Decode(sourcePath);
+        using var small = src.Resize(new SKImageInfo(w, h), SKSamplingOptions.Default)!;
+        using var img = SKImage.FromBitmap(small);
+        using var data = img.Encode(SKEncodedImageFormat.Png, 100);
+        using var fs = File.Create(destPath);
+        data.SaveTo(fs);
+    }
+
     [Fact]
     public async Task Exact_finder_groups_identical_files_and_picks_highest_res_keeper()
     {
@@ -55,23 +66,101 @@ public class ExactDedupTests : IDisposable
         Assert.Equal(1, stored[0].Members.Count(m => m.IsKeeper)); // exactly one keeper
     }
 
+    /// <summary>
+    /// Exact detection has no toggle by design, so turning the visual detectors off must still
+    /// find identical files — and must say out loud that only part of the job ran. "0 groups" and
+    /// "0 groups, and we only compared checksums" have to look different to the user.
+    /// </summary>
     [Fact]
-    public async Task Detect_without_czkawka_still_reports_exact_and_notes_absence()
+    public async Task With_visual_detectors_off_exact_still_runs_and_the_note_says_so()
     {
         WritePng(Path.Combine(_photos, "a.png"), 100, 100, SKColors.Red);
         File.Copy(Path.Combine(_photos, "a.png"), Path.Combine(_photos, "b.png"));
 
         using var db = new Database(_dbPath);
         await new Scanner(db, new SkiaImageService(), _thumbs).ScanAsync(_photos);
+        new DedupSettings { VariantEnabled = false, BurstEnabled = false }.Save(db);
 
-        // Point at a non-existent czkawka path → similar detection unavailable, exact still works.
-        var report = await new DuplicateService(db, czkawkaPath: "/nonexistent/czkawka_cli")
-            .DetectAsync(_photos);
+        var report = await new DuplicateService(db).DetectAsync(_photos);
 
         Assert.Equal(1, report.ExactGroups);
-        Assert.False(report.CzkawkaAvailable);
-        Assert.Equal(0, report.SimilarGroups);
-        Assert.Contains("not found", report.Note);
+        Assert.Equal(0, report.VariantGroups);
+        Assert.Equal(0, report.BurstGroups);
+        Assert.Contains("visual matching is turned off", report.Note);
+    }
+
+    /// <summary>
+    /// The pass czkawka used to run, now in-process: a downscaled copy is not byte-identical, so
+    /// only the variant detector can pair it with its original.
+    /// </summary>
+    [Fact]
+    public async Task Variant_detection_pairs_a_downscaled_copy_and_keeps_the_larger()
+    {
+        var original = Path.Combine(_photos, "big.png");
+        WritePng(original, 480, 360, SKColors.Teal);
+        Downscale(original, Path.Combine(_photos, "small.png"), 160, 120);
+
+        using var db = new Database(_dbPath);
+        await new Scanner(db, new SkiaImageService(), _thumbs).ScanAsync(_photos);
+        new DedupSettings { VariantEnabled = true, BurstEnabled = false }.Save(db);
+
+        var report = await new DuplicateService(db).DetectAsync(_photos);
+
+        Assert.Equal(1, report.VariantGroups);
+        var group = Assert.Single(new DupeRepository(db).Groups(DupeKind.Variant));
+        Assert.Equal(2, group.Members.Count);
+
+        // Keeper is the higher-resolution copy, never the shrunken one.
+        var keeperId = group.Members.Single(m => m.IsKeeper).ImageId;
+        var keeper = new ImageRepository(db).Under(_photos).Single(i => i.Id == keeperId);
+        Assert.EndsWith("big.png", keeper.Path);
+    }
+
+    /// <summary>
+    /// A disabled detector has to clear its own groups. Leaving them on screen after switching it
+    /// off shows results nothing is maintaining, and nothing tells the user they are stale.
+    /// </summary>
+    [Fact]
+    public async Task Disabling_a_detector_clears_the_groups_it_had_written()
+    {
+        var original = Path.Combine(_photos, "big.png");
+        WritePng(original, 480, 360, SKColors.Teal);
+        Downscale(original, Path.Combine(_photos, "small.png"), 160, 120);
+
+        using var db = new Database(_dbPath);
+        await new Scanner(db, new SkiaImageService(), _thumbs).ScanAsync(_photos);
+
+        new DedupSettings { VariantEnabled = true }.Save(db);
+        await new DuplicateService(db).DetectAsync(_photos);
+        Assert.Single(new DupeRepository(db).Groups(DupeKind.Variant));
+
+        new DedupSettings { VariantEnabled = false }.Save(db);
+        await new DuplicateService(db).DetectAsync(_photos);
+        Assert.Empty(new DupeRepository(db).Groups(DupeKind.Variant));
+    }
+
+    /// <summary>
+    /// The coverage mask, not just the timestamp. Enabling a detector after a run has to leave the
+    /// folder reading as pending, or the tree's dot is decorative.
+    /// </summary>
+    [Fact]
+    public async Task Coverage_records_which_detectors_actually_ran()
+    {
+        WritePng(Path.Combine(_photos, "a.png"), 100, 100, SKColors.Red);
+
+        using var db = new Database(_dbPath);
+        await new Scanner(db, new SkiaImageService(), _thumbs).ScanAsync(_photos);
+
+        new DedupSettings { VariantEnabled = false, BurstEnabled = false }.Save(db);
+        await new DuplicateService(db).DetectAsync(_photos);
+
+        var row = new ImageRepository(db).Under(_photos).Single();
+        Assert.Equal(DupeKinds.Exact, row.DupeCheckedKinds);
+
+        // With variant detection switched on, the stored mask no longer covers what is enabled,
+        // which is what makes the folder tree show the work as outstanding again.
+        var richer = new DedupSettings { VariantEnabled = true, BurstEnabled = false };
+        Assert.NotEqual(richer.CoveredKinds, row.DupeCheckedKinds & richer.CoveredKinds);
     }
 
     /// <summary>
@@ -91,10 +180,8 @@ public class ExactDedupTests : IDisposable
         var repo = new ImageRepository(db);
         Assert.All(repo.Under(_photos), i => Assert.Null(i.DupeCheckedAt));
 
-        await new DuplicateService(db, czkawkaPath: "/nonexistent/czkawka_cli").DetectAsync(_photos);
+        await new DuplicateService(db).DetectAsync(_photos);
 
-        // Marked even with czkawka absent: the run did everything this install can do, and
-        // withholding the stamp would leave a pending dot the user has no way to clear.
         Assert.All(repo.Under(_photos), i => Assert.NotNull(i.DupeCheckedAt));
     }
 
@@ -112,7 +199,7 @@ public class ExactDedupTests : IDisposable
         using var db = new Database(_dbPath);
         var scanner = new Scanner(db, new SkiaImageService(), _thumbs);
         await scanner.ScanAsync(_photos);
-        await new DuplicateService(db, czkawkaPath: "/nonexistent/czkawka_cli").DetectAsync(_photos);
+        await new DuplicateService(db).DetectAsync(_photos);
 
         var repo = new ImageRepository(db);
         Assert.NotNull(repo.Under(_photos).Single().DupeCheckedAt);
@@ -151,93 +238,12 @@ public class ExactDedupTests : IDisposable
         Assert.EndsWith("a.png", scoped[0].Path);
 
         // And the write path scopes identically to the read path.
-        Assert.Equal(1, repo.MarkDupeChecked(inside));
+        Assert.Equal(1, repo.MarkDupeChecked(inside, DupeKinds.Exact));
         Assert.All(repo.Under(sibling), i => Assert.Null(i.DupeCheckedAt));
     }
 
     public void Dispose()
     {
         try { if (Directory.Exists(_work)) Directory.Delete(_work, true); } catch { }
-    }
-}
-
-public class CzkawkaParserTests
-{
-    // Guards the defensive parser against the shapes czkawka's JSON might take. The first test
-    // below is real captured output; the rest lock in tolerated variations.
-    [Fact]
-    public void Parses_real_czkawka_12_output()
-    {
-        // Captured verbatim from `czkawka_cli image -d <dir> --max-difference 10 -C out.json`
-        // on czkawka 12.0.0. Shape confirmed: array of groups, each an array of file objects
-        // carrying `path` plus metadata the parser ignores.
-        var json = """
-        [[{"path":"/private/tmp/czk2/compressed.jpg","size":33428,"width":900,"height":700,"modified_date":1785023032,"hashes":[],"difference":0},{"path":"/private/tmp/czk2/orig.jpg","size":158731,"width":900,"height":700,"modified_date":1785023032,"hashes":[],"difference":6}]]
-        """;
-
-        var groups = CzkawkaFinder.ParseGroups(json);
-
-        Assert.Single(groups);
-        Assert.Equal(2, groups[0].Count);
-        Assert.Contains("/private/tmp/czk2/orig.jpg", groups[0]);
-        Assert.Contains("/private/tmp/czk2/compressed.jpg", groups[0]);
-    }
-
-    [Fact]
-    public void Canonical_resolves_symlinked_ancestors()
-    {
-        // czkawka reports canonical paths while the catalog stores what the user typed. On
-        // macOS /tmp is a symlink to /private/tmp, which silently broke every group match.
-        var probe = Path.Combine(Path.GetTempPath(), $"snapzap_canon_{Guid.NewGuid():N}.txt");
-        File.WriteAllText(probe, "x");
-        try
-        {
-            var canonical = CzkawkaFinder.Canonical(probe);
-
-            Assert.Equal(Path.GetFileName(probe), Path.GetFileName(canonical));
-            // Whatever the platform, canonicalising twice must be stable.
-            Assert.Equal(canonical, CzkawkaFinder.Canonical(canonical));
-        }
-        finally { File.Delete(probe); }
-    }
-
-    [Fact]
-    public void Parses_array_of_groups_of_file_entries()
-    {
-        // Shape A: top-level array of groups, each group an array of {path,...} objects.
-        var json = """
-        [
-          [ {"path":"/p/a.jpg","size":10}, {"path":"/p/b.jpg","size":12} ],
-          [ {"path":"/p/c.jpg"}, {"path":"/p/d.jpg"}, {"path":"/p/e.jpg"} ]
-        ]
-        """;
-        var groups = CzkawkaFinder.ParseGroups(json);
-        Assert.Equal(2, groups.Count);
-        Assert.Equal(2, groups[0].Count);
-        Assert.Equal(3, groups[1].Count);
-        Assert.Contains("/p/c.jpg", groups[1]);
-    }
-
-    [Fact]
-    public void Finds_groups_nested_under_object_keys()
-    {
-        // Shape B: groups wrapped in an object (e.g. keyed by hash or under a results field).
-        var json = """
-        { "similar_images": {
-            "grp1": [ {"path":"/x/1.png"}, {"path":"/x/2.png"} ]
-        } }
-        """;
-        var groups = CzkawkaFinder.ParseGroups(json);
-        Assert.Single(groups);
-        Assert.Equal(2, groups[0].Count);
-    }
-
-    [Fact]
-    public void Ignores_singletons_and_non_file_arrays()
-    {
-        var json = """
-        { "meta": [1,2,3], "lonely": [ {"path":"/only/one.jpg"} ] }
-        """;
-        Assert.Empty(CzkawkaFinder.ParseGroups(json)); // no group of size >= 2
     }
 }

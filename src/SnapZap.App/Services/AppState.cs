@@ -39,6 +39,21 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
         Changed?.Invoke();
     }
 
+    /// <summary>
+    /// Rebuild the folder tree after the detector settings changed.
+    /// </summary>
+    /// <remarks>
+    /// The tree counts a row as checked only when the run that stamped it covered every currently
+    /// enabled detector, so switching one on has to re-derive it. Without this the checkbox in
+    /// Setup and the pending dots in the tree disagree until the next scan — and the dots are the
+    /// only thing telling the user there is now work outstanding.
+    /// </remarks>
+    public void NotifyDedupSettingsChanged()
+    {
+        Tree = FolderTreeBuilder.Build(Images, DupeOf, DedupSettings.Load(catalog.Db).CoveredKinds);
+        Changed?.Invoke();
+    }
+
     /// <summary>Adopt a selection change made by another window and re-render.</summary>
     public void RefreshSelection()
     {
@@ -350,12 +365,18 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
         Years = Images.Select(i => i.Year).Where(y => y is not null).Select(y => y!.Value)
             .Distinct().OrderByDescending(y => y).ToList();
 
-        // Only non-keepers are reclaimable: every group keeps one copy.
-        var extras = Images.Where(i => dupeOf.TryGetValue(i.Id, out var d) && !d.IsKeeper).ToList();
+        // Only non-keepers are reclaimable, and only in kinds a bulk action would actually take.
+        // Counting burst frames here would advertise space that "Select duplicate extras" is
+        // deliberately never going to free, and send the user hunting for the missing gigabytes.
+        var extras = Images
+            .Where(i => dupeOf.TryGetValue(i.Id, out var d) && !d.IsKeeper && d.Kind.IsBulkSelectable())
+            .ToList();
         DupeExtraCount = extras.Count;
         ReclaimableBytes = extras.Sum(i => i.FileSize);
 
-        Tree = FolderTreeBuilder.Build(Images, DupeOf);
+        // Built against the detectors that are on right now, not against whatever was on when the
+        // rows were stamped — that difference is exactly what re-flags folders as pending.
+        Tree = FolderTreeBuilder.Build(Images, DupeOf, DedupSettings.Load(catalog.Db).CoveredKinds);
 
         var live = Images.Select(i => i.Id).ToHashSet();
 
@@ -490,6 +511,21 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
     /// <summary>Select exactly the non-keepers across all duplicate groups — the one-click
     /// "delete extras, keep best". Replaces the selection rather than adding to it, so the
     /// count on the button is the count you end up with.</summary>
+    /// <summary>
+    /// Select every non-keeper in every group whose kind is safe to sweep in bulk.
+    /// </summary>
+    /// <remarks>
+    /// <b>Safety-critical.</b> The filter to <see cref="DupeKindExtensions.IsBulkSelectable"/> is
+    /// what makes it possible to widen duplicate detection at all. Exact and Variant groups are
+    /// copies of one photograph, so selecting the extras is exactly what the user asked for. A
+    /// Burst group is five *different photographs* of one moment, and only one of them is the shot
+    /// where the kid was smiling — sweeping those into a delete would make this a shredder rather
+    /// than a triage tool. Burst members stay individually selectable; they are simply never
+    /// selected wholesale.
+    ///
+    /// The rule lives on <see cref="DupeKindExtensions"/>, not inline here, so a fourth kind added
+    /// later cannot become bulk-selectable by default just because nobody thought about it.
+    /// </remarks>
     public void SelectDupeExtras()
     {
         var dupes = DupeOf;
@@ -497,7 +533,7 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
         {
             sel.Clear();
             foreach (var (id, d) in dupes)
-                if (!d.IsKeeper) sel.Add(id);
+                if (!d.IsKeeper && d.Kind.IsBulkSelectable()) sel.Add(id);
         });
         NotifySelectionChanged();
     }
@@ -614,13 +650,21 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
             var report = await new DuplicateService(catalog.Db).DetectAsync(folder, progress, ct);
             await LoadAsync();
 
-            // Counted from the loaded, scoped groups rather than the detector's own tallies,
+            // Counted from the loaded, scoped groups rather than the detectors' own tallies,
             // so the sentence agrees with the grid behind it.
-            var exact = DupeGroups.Count(g => g.Kind == DupeKind.Exact);
-            var similar = DupeGroups.Count(g => g.Kind == DupeKind.Similar);
-            return report.CzkawkaAvailable
-                ? $"{exact} exact, {similar} similar groups"
-                : $"{exact} exact groups (similar-image tool not installed)";
+            var counts = new List<string>();
+            foreach (var kind in (ReadOnlySpan<DupeKind>)[DupeKind.Exact, DupeKind.Variant, DupeKind.Burst])
+            {
+                var n = DupeGroups.Count(g => g.Kind == kind);
+                if (n > 0) counts.Add($"{n:N0} {kind.Label().ToLowerInvariant()}");
+            }
+
+            var headline = counts.Count == 0 ? "No duplicates found" : string.Join(", ", counts) + " groups";
+            // The note carries the partial-result warnings — unhashed photos, a truncated
+            // comparison, detectors switched off. Appending it rather than replacing the count is
+            // the point: "0 groups" and "0 groups, but half the library has no signature" have to
+            // look different.
+            return report.Note is null ? headline : $"{headline} · {report.Note}";
         });
     }
 

@@ -1,4 +1,5 @@
 using Microsoft.Data.Sqlite;
+using SnapZap.Core.Dedup;
 
 namespace SnapZap.Core.Data;
 
@@ -33,16 +34,17 @@ public sealed class ImageRepository(Database db)
         cmd.CommandText = """
             INSERT INTO images
               (path, content_hash, file_size, mtime, width, height, format,
-               nsfw_score, blur_score, exif_taken, exif_camera, thumb_path, analyzed_at)
+               nsfw_score, blur_score, exif_taken, exif_camera, thumb_path, analyzed_at, phash)
             VALUES
-              ($path,$hash,$size,$mtime,$w,$h,$fmt,$nsfw,$blur,$taken,$camera,$thumb,$at)
+              ($path,$hash,$size,$mtime,$w,$h,$fmt,$nsfw,$blur,$taken,$camera,$thumb,$at,$phash)
             ON CONFLICT(path) DO UPDATE SET
               content_hash=excluded.content_hash, file_size=excluded.file_size,
               mtime=excluded.mtime, width=excluded.width, height=excluded.height,
               format=excluded.format, nsfw_score=excluded.nsfw_score,
               blur_score=excluded.blur_score, exif_taken=excluded.exif_taken,
               exif_camera=excluded.exif_camera, thumb_path=excluded.thumb_path,
-              analyzed_at=excluded.analyzed_at, dupe_checked_at=NULL
+              analyzed_at=excluded.analyzed_at, phash=excluded.phash,
+              dupe_checked_at=NULL, dupe_checked_kinds=0
             RETURNING id;
             """;
         cmd.Parameters.AddWithValue("$path", img.Path);
@@ -58,6 +60,7 @@ public sealed class ImageRepository(Database db)
         cmd.Parameters.AddWithValue("$camera", (object?)img.ExifCamera ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$thumb", (object?)img.ThumbPath ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$at", (object?)img.AnalyzedAt ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$phash", (object?)img.Phash ?? DBNull.Value);
         return (long)cmd.ExecuteScalar()!;
     }
 
@@ -151,13 +154,74 @@ public sealed class ImageRepository(Database db)
     /// threw has told us nothing about these photos, and marking them checked would hide exactly
     /// the folders the user needs to go back to.
     /// </remarks>
-    public int MarkDupeChecked(string? root, long? whenUtc = null)
+    public int MarkDupeChecked(string? root, DupeKinds kinds, long? whenUtc = null)
     {
         using var cmd = _c.CreateCommand();
-        cmd.CommandText = $"UPDATE images SET dupe_checked_at=$at WHERE {PathScope.Where(root)}";
+        cmd.CommandText =
+            $"UPDATE images SET dupe_checked_at=$at, dupe_checked_kinds=$kinds WHERE {PathScope.Where(root)}";
         cmd.Parameters.AddWithValue("$at", whenUtc ?? DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+        cmd.Parameters.AddWithValue("$kinds", (int)kinds);
         PathScope.Bind(cmd, root);
         return cmd.ExecuteNonQuery();
+    }
+
+    /// <summary>
+    /// The columns the perceptual detectors need, for every row under <paramref name="root"/>.
+    /// </summary>
+    /// <remarks>
+    /// A narrow projection rather than <see cref="Under"/>: a detector holds the whole scope in
+    /// memory and walks it in a tight n-squared loop, so carrying paths, thumbnails and NSFW
+    /// scores through that would multiply the working set for fields it never reads.
+    /// </remarks>
+    public List<HashedImage> HashedUnder(string? root)
+    {
+        var list = new List<HashedImage>();
+        using var cmd = _c.CreateCommand();
+        cmd.CommandText = $"""
+            SELECT id, phash,
+                   COALESCE(width,0) * COALESCE(height,0) AS pixels,
+                   file_size, exif_taken, exif_camera, blur_score
+            FROM images
+            WHERE {PathScope.Where(root)}
+            ORDER BY id
+            """;
+        PathScope.Bind(cmd, root);
+
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+        {
+            var blob = r.IsDBNull(1) ? null : (byte[])r[1];
+            list.Add(new HashedImage(
+                Id: r.GetInt64(0),
+                Hash: PerceptualHash.FromBytes(blob),
+                Pixels: r.GetInt64(2),
+                Bytes: r.GetInt64(3),
+                TakenUtc: r.IsDBNull(4) ? null : r.GetInt64(4),
+                Camera: r.IsDBNull(5) ? null : r.GetString(5),
+                BlurScore: r.IsDBNull(6) ? null : r.GetDouble(6)));
+        }
+        return list;
+    }
+
+    /// <summary>Rows under <paramref name="root"/> that still need a perceptual signature.</summary>
+    public List<(long Id, string Path)> NeedingPhash(string? root)
+    {
+        var list = new List<(long, string)>();
+        using var cmd = _c.CreateCommand();
+        cmd.CommandText = $"SELECT id, path FROM images WHERE phash IS NULL AND {PathScope.Where(root)} ORDER BY id";
+        PathScope.Bind(cmd, root);
+        using var r = cmd.ExecuteReader();
+        while (r.Read()) list.Add((r.GetInt64(0), r.GetString(1)));
+        return list;
+    }
+
+    public void SetPhash(long id, byte[]? phash)
+    {
+        using var cmd = _c.CreateCommand();
+        cmd.CommandText = "UPDATE images SET phash=$p WHERE id=$id";
+        cmd.Parameters.AddWithValue("$p", (object?)phash ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$id", id);
+        cmd.ExecuteNonQuery();
     }
 
     /// <summary>
@@ -263,7 +327,7 @@ public sealed class ImageRepository(Database db)
         cmd.CommandText = $"""
             SELECT id, path, content_hash, file_size, mtime, width, height, format,
                    nsfw_score, blur_score, exif_taken, exif_camera, thumb_path, analyzed_at,
-                   dupe_checked_at
+                   dupe_checked_at, dupe_checked_kinds, phash
             FROM images
             WHERE {PathScope.Where(root)}
             ORDER BY id
@@ -290,6 +354,8 @@ public sealed class ImageRepository(Database db)
                 ThumbPath = r.IsDBNull(12) ? null : r.GetString(12),
                 AnalyzedAt = r.IsDBNull(13) ? null : r.GetInt64(13),
                 DupeCheckedAt = r.IsDBNull(14) ? null : r.GetInt64(14),
+                DupeCheckedKinds = r.IsDBNull(15) ? DupeKinds.None : (DupeKinds)r.GetInt32(15),
+                Phash = r.IsDBNull(16) ? null : (byte[])r[16],
             };
         }
     }

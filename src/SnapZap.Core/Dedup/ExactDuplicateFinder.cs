@@ -4,9 +4,10 @@ using SnapZap.Core.Data;
 namespace SnapZap.Core.Dedup;
 
 /// <summary>
-/// Exact-duplicate detection straight from the SHA-256 content hashes already in the
-/// catalog — no external tool required (DESIGN §2 note). Czkawka is reserved for *similar*
-/// (perceptual) detection; byte-identical files are found here for free and always work.
+/// Exact-duplicate detection straight from the SHA-256 content hashes already in the catalog.
+/// Perceptual matching is <see cref="VariantFinder"/>'s job; byte-identical files are found here
+/// for free — and unlike every other detector this one has no setting to switch it off, because a
+/// duplicate finder that cannot find identical files is not one.
 ///
 /// The auto-keeper heuristic (best = highest resolution → largest file → lowest id) picks a
 /// default keeper per group; the user can override in the UI (step 6).

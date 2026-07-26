@@ -19,8 +19,18 @@ public sealed class BlurDetector(SkiaImageService imaging)
     {
         var decoded = imaging.DecodeGray(imagePath, WorkEdge);
         if (decoded is not { } d) return null;
-        return Variance(Laplacian(d.gray, d.w, d.h));
+        return ScoreFrom(d.gray, d.w, d.h);
     }
+
+    /// <summary>Score an already-decoded greyscale buffer.</summary>
+    /// <remarks>
+    /// Split out from <see cref="Score"/> so the scan can decode once and derive both this and the
+    /// perceptual signature from the same buffer. Decoding is by far the most expensive thing the
+    /// scan does; the previous arrangement paid for it twice per image, and the czkawka subprocess
+    /// paid for it a third time in its own process.
+    /// </remarks>
+    public static double? ScoreFrom(float[] gray, int w, int h) =>
+        w < 3 || h < 3 ? null : Variance(Laplacian(gray, w, h));
 
     static float[] Laplacian(float[] g, int w, int h)
     {

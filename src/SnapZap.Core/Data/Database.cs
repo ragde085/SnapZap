@@ -69,7 +69,25 @@ public sealed class Database : IDisposable
         // existing catalogue, so adding a column to Schema below reaches new databases only —
         // every already-created one needs a guarded ALTER here too.
         AddColumnIfMissing("images", "dupe_checked_at", "INTEGER");
+        AddColumnIfMissing("images", "dupe_checked_kinds", "INTEGER NOT NULL DEFAULT 0");
+        AddColumnIfMissing("images", "phash", "BLOB");
+
+        RenameSimilarToVariant();
     }
+
+    /// <summary>
+    /// Carry pre-v2 groups across the <c>Similar</c> → <c>Variant</c> rename.
+    /// </summary>
+    /// <remarks>
+    /// Rewritten rather than discarded. czkawka produced these at comparable strictness, and a
+    /// group carries the keeper the user chose — possibly after an evening of reviewing. Dropping
+    /// them would silently throw that away and present a re-detect as the only way back.
+    ///
+    /// The rows are left in place if a 'variant' kind already exists, so this runs exactly once
+    /// per catalogue no matter how often the app restarts.
+    /// </remarks>
+    void RenameSimilarToVariant() =>
+        Exec("UPDATE dupe_groups SET kind='variant' WHERE kind='similar';");
 
     /// <summary>Idempotent ALTER: SQLite has no ADD COLUMN IF NOT EXISTS.</summary>
     void AddColumnIfMissing(string table, string column, string declaration)
@@ -103,7 +121,13 @@ public sealed class Database : IDisposable
           -- When duplicate detection last covered this row. Null means "never checked", which is
           -- what lets the folder tree tell a folder with no duplicates apart from one nobody has
           -- looked at yet. Cleared by Upsert, so re-analysing a changed file makes it stale again.
-          dupe_checked_at INTEGER
+          dupe_checked_at INTEGER,
+          -- Which detectors that run covered (DupeKinds bitmask). The timestamp alone lies once
+          -- detectors are configurable — enabling one later must re-flag folders as pending.
+          dupe_checked_kinds INTEGER NOT NULL DEFAULT 0,
+          -- 160-byte perceptual signature: 4 rotations x 5 x 64 bits. Null = not hashed yet.
+          -- Cleared by Upsert alongside dupe_checked_at: a file whose bytes moved needs re-hashing.
+          phash         BLOB
         );
         CREATE INDEX IF NOT EXISTS ix_images_hash  ON images(content_hash);
         CREATE INDEX IF NOT EXISTS ix_images_nsfw  ON images(nsfw_score);

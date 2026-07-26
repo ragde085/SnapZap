@@ -80,14 +80,13 @@ resolve the runtime by absolute path (Finder gives GUI apps a minimal `PATH` tha
 
 ### Sidecar assets (optional, ship beside the binary)
 ```bash
-# Install both optional sidecars: NSFW ONNX model (328 MB) + czkawka_cli (45 MB).
+# Install the optional sidecar: NSFW ONNX model (328 MB).
 # Pinned URLs, SHA-256 verified, idempotent. Writes <repo>/models and <repo>/tools, which
 # SnapZap.App.csproj copies into the build output (but NOT into publish output).
 scripts/install-deps.sh            # macOS / Linux
 scripts\install-deps.bat           # Windows
 
 scripts/install-deps.sh --model-only
-scripts/install-deps.sh --czkawka-only
 scripts/install-deps.sh --force
 scripts/install-deps.sh --dest artifacts/win-x64   # for a published binary
 
@@ -106,10 +105,9 @@ SnapZap.App.exe
 wwwroot/                    (published automatically)
 models/nsfw.onnx            (optional — enables NSFW scoring)
 models/preprocessor_config.json
-czkawka_cli.exe             (optional — enables similar-image detection)
 ```
 
-Graceful degradation: missing NSFW model disables NSFW scoring; missing `czkawka_cli.exe` disables near-duplicate detection. Only exact duplicates (from our SHA-256 content hash) always work.
+Graceful degradation: a missing NSFW model disables NSFW scoring and nothing else. Duplicate detection — exact, variant and burst — is entirely in-process and needs no sidecar.
 
 The sidecars are excluded from publish output (`CopyToPublishDirectory="Never"`), so the published `.exe` stays ~130 MB whether or not they are installed locally. Populate a publish folder with `scripts/install-deps.sh --dest artifacts/win-x64`.
 
@@ -130,7 +128,6 @@ The sidecars are excluded from publish output (`CopyToPublishDirectory="Never"`)
 | `scripts/export-nsfw-model.sh` | Build the ONNX model from PyTorch weights instead of downloading it |
 | `artifacts/` | Publish output (built, not committed) |
 | `models/` | NSFW ONNX model + preprocessor config (installed, not committed) |
-| `tools/` | `czkawka_cli` binary (installed, not committed) |
 
 ### Key subdirectories in `App/`
 
@@ -148,7 +145,7 @@ The sidecars are excluded from publish output (`CopyToPublishDirectory="Never"`)
 ### Key subdirectories in `Core/`
 
 - **Scanning/** — file enumeration, SHA-256 hashing (`Hasher.cs`), cache-probe optimization
-- **Dedup/** — `ExactDuplicateFinder` (SQL on our hashes), `CzkawkaFinder` (JSON parse of subprocess output)
+- **Dedup/** — `ExactDuplicateFinder` (SQL on our hashes), `PerceptualHash` (272-bit dHash, 4 rotations), `VariantFinder` / `BurstFinder`, `SimilarityGrouper` (complete-linkage), `DedupSettings` (in `meta`)
 - **Nsfw/** — ONNX Runtime inference (`OnnxNsfwClassifier`), image preprocessing, score thresholds
 - **Analysis/** — EXIF extraction (`ExifExtractor`), blur detection via Laplacian variance (`BlurDetector`)
 - **Export/** — `ExportEngine` (copy/move/hardlink modes), manifest writer, hash verification, collision-safe naming
@@ -203,7 +200,7 @@ Folder pick
                   ├ Blur score (Laplacian variance)
                   ├ EXIF (date, camera)
                   └ Thumbnail (SkiaSharp)
-  → czkawka_cli subprocess for similar-image groups
+  → in-process perceptual matching (variant + burst groups)
   → SQLite (faceted query)
   → AppState (per-circuit view state) → Blazor grid (select, filter)
   → Export (copy/move/hardlink → hash-verify → manifest)
@@ -242,11 +239,10 @@ capability, never an error.
 
 | Sidecar | Unlocks | Resolution order |
 |---|---|---|
-| `czkawka_cli` | Similar-photo detection | explicit path → beside the binary → `PATH` |
 | `models/nsfw.onnx` | NSFW scoring | `PC_NSFW_MODEL` → `models/` beside the binary |
 
-Detection reuses `CzkawkaFinder.LocateBinary()` — the same lookup the feature itself performs —
-so "Ready" in the UI can never disagree with what happens at run time. When something is
+Detection reuses the same lookup the feature itself performs, so "Ready" in the UI can never
+disagree with what happens at run time. When something is
 missing the app shows a dialog once at startup (dismissible, and suppressible via
 `settings.json` in app-data), flags it with a pip on the **Setup** rail icon, and annotates
 the affected toolbar buttons. **Add new sidecars in `DependencyChecker.Detect()`** — the
@@ -266,13 +262,35 @@ All other deps are MIT or Apache-2.0. No paid, no subscription-gated.
 - **Preprocessing** (resize, normalize) is in `NsfwPreprocess.cs`; the config is in `preprocessor_config.json` (downloaded alongside the model).
 - **Model validation** (test category `NsfwModelValidation`) requires labeled fixtures to confirm the model's scores are sensible. Tests skip unless you provide them.
 
-### Czkawka integration
+### Duplicate detection (v2 — in-process)
 
-- **Used only for similar-image detection**, not exact duplicates.
-- **Exact duplicates** come from our own SHA-256 hashes in SQLite (faster, works offline, no sidecar required).
-- **Parser** (`CzkawkaFinder.cs`) recursively finds arrays of `{path,...}` objects in the JSON output. ✅ **Validated against czkawka 12.0.0** (2026-07-25): real output is an array of groups of objects carrying `path` plus size/width/height/difference. `DedupTests.Parses_real_czkawka_12_output` locks the captured shape in. The parser stays tolerant, so a schema change should degrade rather than break.
-- **Paths must be canonicalised.** czkawka reports resolved paths while the catalog stores what the user typed. On macOS `/tmp` is a symlink, so scanning `/tmp/x` used to match nothing and report "0 similar groups" silently. `CzkawkaFinder.Canonical` resolves symlinked ancestors and both spellings are indexed.
-- **`--max-difference` is set to 10**, but czkawka 12 defaults `--hash-size` to 16, for which it recommends up to 20. We therefore under-detect relative to czkawka's own guidance — deliberate, since this feeds a tool that deletes things, but raise it if similar-detection feels too quiet.
+Full rationale in [docs/DEDUP-V2.md](docs/DEDUP-V2.md). The short version:
+
+- **Three kinds, and the split is safety-critical.** `Exact` (SHA-256), `Variant` (same shot,
+  resized/re-encoded/rotated) and `Burst` (same scene seconds apart). `SelectDupeExtras` and
+  `ReclaimableBytes` filter to `DupeKindExtensions.IsBulkSelectable()` — i.e. `Exact | Variant`.
+  A burst is five *different photographs*; sweeping them into a delete would make this a shredder.
+  **Never re-derive that rule inline; a new kind must not become bulk-selectable by default.**
+- **The hash** is a 272-bit gradient hash on a 17×17 square grid, stored for **all four rotations**
+  (160 bytes in `images.phash`). Do *not* "optimise" it to store only the smallest of the four:
+  noise flips which rotation wins, so near-identical photos canonicalise to different orbit members
+  and stop matching entirely.
+- **It rides on the scan's existing decode.** `Scanner.Analyze` calls `DecodeGray` once and feeds
+  both `BlurDetector.ScoreFrom` and `PerceptualHash.FromGray`. Adding a second decode here would
+  give back the main saving of the rewrite.
+- **Grouping is complete-linkage, not union-find** (`SimilarityGrouper`). Perceptual similarity is
+  not transitive — A~B and B~C does not give A~C — so union-find collapses a real library into one
+  group of thousands with all but one flagged for deletion. A group is a clique; pairs are
+  processed closest-first; ids break ties so runs are reproducible. `GrouperTests` locks this in.
+- **Thresholds are in bits out of 272** and are *not* comparable to czkawka's old
+  `--max-difference 10`. Defaults live in `DedupSettings`.
+- **Settings live in the `meta` table**, not `settings.json`, because `images.dupe_checked_kinds`
+  only means anything against the settings that produced it and both must reset with `catalog.db`.
+  (`settings.json` still exists for app-level prefs — `DependencyChecker.StoredSettings`.)
+- **Matching is brute force**, deliberately. ~1.25 B pairs at 50k photos, but the ceiling in
+  `DistanceTo` bails on the first 64-bit word for unrelated pairs. Revisit an index past ~150k.
+- **Not detected: crops and reframes.** No grid hash can find them. Documented and accepted in
+  DEDUP-V2 §9, not an oversight.
 
 ### Gotchas
 
@@ -280,7 +298,7 @@ All other deps are MIT or Apache-2.0. No paid, no subscription-gated.
 
 2. **Hashing is SHA-256, not BLAKE3**, for portability (hardware-accelerated in .NET, zero native build dependencies). Swappable in `Scanning/Hasher.cs` if needed.
 
-3. **Exact duplicates from our hashes, not Czkawka.** Czkawka is only for similar detection. This means exact dedup works even without the `czkawka_cli.exe` sidecar.
+3. **Duplicate detection has no external dependency.** All three detectors run in-process; the `czkawka_cli` sidecar was removed in v2 (docs/DEDUP-V2.md). Exact detection has no setting to switch it off.
 
 4. **Windows-specific code is stubbed on macOS.** The four `IPlatformServices` methods for Windows (Recycle Bin, hardlinks, DirectML, Photino window) are macOS-compatible stubs or no-ops. Full end-to-end testing happens on macOS, but **those four paths must be verified on Windows hardware** before shipping.
 

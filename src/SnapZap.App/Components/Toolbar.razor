@@ -13,7 +13,7 @@
            @onkeydown="HandleFolderKey" />
     <button class="primary" disabled="@(AppState.Busy || _folder.Trim().Length == 0)" @onclick="Scan">Scan</button>
     <button disabled="@(AppState.Busy || AppState.ScannedFolder is null)" title="@DedupTitle" @onclick="Dedup">
-        Find duplicates@(_similarReady ? "" : " *")
+        Find duplicates
     </button>
     <button disabled="@(AppState.Busy || AppState.Images.Count == 0 || !_nsfwReady)" title="@NsfwTitle" @onclick="Nsfw">Score NSFW</button>
 </div>
@@ -49,8 +49,8 @@ else if (AppState.Status.Length > 0)
     string _folder = "";
 
     // Surface a missing sidecar before the user commits to a run, rather than only
-    // reporting it in the result line afterwards.
-    bool _similarReady => Checker.Current.First(d => d.Id == "czkawka").Found;
+    // reporting it in the result line afterwards. Duplicate detection no longer has one —
+    // visual matching moved in-process (docs/DEDUP-V2.md), so it always works.
     bool _nsfwReady => Checker.Current.First(d => d.Id == "nsfw-model").Found;
 
     protected override void OnInitialized()
@@ -68,9 +68,10 @@ else if (AppState.Status.Length > 0)
     void OnDepsChanged() => InvokeAsync(StateHasChanged);
 
     string DedupTitle =>
-        AppState.ScannedFolder is null ? "Scan a folder first."
-        : _similarReady ? $"Find exact and visually similar duplicates in {AppState.ScannedFolder}"
-        : "Finds exact duplicates. Similar-photo detection needs czkawka_cli — see Setup.";
+        AppState.ScannedFolder is null
+            ? "Scan a folder first."
+            : $"Find identical files and repeated shots in {AppState.ScannedFolder}. "
+              + "Choose which checks run in Setup.";
 
     string NsfwTitle => _nsfwReady
         ? "Ask the model to guess which photos are explicit. Higher score means more likely — "

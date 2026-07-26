@@ -1,3 +1,5 @@
+using SnapZap.Core;
+
 namespace SnapZap.App.Services;
 
 /// <summary>
@@ -76,7 +78,15 @@ public sealed class FolderNode
 /// </summary>
 public static class FolderTreeBuilder
 {
-    public static FolderNode? Build(IReadOnlyList<ImageView> images, IReadOnlyDictionary<long, DupeInfo> dupeOf)
+    /// <param name="enabledKinds">
+    /// The detectors currently switched on. A row counts as checked only when the run that stamped
+    /// it covered all of them — otherwise turning a detector on tomorrow would leave every folder
+    /// still claiming to have been checked, and the pending dot would be decorative.
+    /// </param>
+    public static FolderNode? Build(
+        IReadOnlyList<ImageView> images,
+        IReadOnlyDictionary<long, DupeInfo> dupeOf,
+        DupeKinds enabledKinds = DupeKinds.Exact)
     {
         if (images.Count == 0) return null;
 
@@ -110,7 +120,9 @@ public static class FolderTreeBuilder
             var blur = items.Count(i => i.BlurScore is not null);
             var dated = items.Count(i => i.ExifTaken is not null);
             var nsfw = items.Count(i => i.NsfwScore is not null);
-            var checkedForDupes = items.Count(i => i.Record.DupeCheckedAt is not null);
+            var checkedForDupes = items.Count(i =>
+                i.Record.DupeCheckedAt is not null &&
+                (i.Record.DupeCheckedKinds & enabledKinds) == enabledKinds);
             var dupes = items.Count(i => dupeOf.ContainsKey(i.Id));
 
             node.Analyzed = new StepStat(analyzed, items.Count);
