@@ -9,7 +9,7 @@ namespace SnapZap.Core.Dedup;
 /// for free — and unlike every other detector this one has no setting to switch it off, because a
 /// duplicate finder that cannot find identical files is not one.
 ///
-/// The auto-keeper heuristic (best = highest resolution → largest file → lowest id) picks a
+/// The auto-keeper heuristic (best = highest resolution → largest file → first path) picks a
 /// default keeper per group; the user can override in the UI (step 6).
 /// </summary>
 public sealed class ExactDuplicateFinder(Database db)
@@ -23,13 +23,13 @@ public sealed class ExactDuplicateFinder(Database db)
         repo.ClearKind(DupeKind.Exact, root);
 
         // Gather members of every hash that appears more than once.
-        var byHash = new Dictionary<string, List<(long id, long pixels, long size)>>();
+        var byHash = new Dictionary<string, List<(long id, long pixels, long size, string path)>>();
         using (var cmd = db.Connection.CreateCommand())
         {
             cmd.CommandText = $"""
                 SELECT content_hash, id,
                        COALESCE(width,0) * COALESCE(height,0) AS pixels,
-                       file_size
+                       file_size, path
                 FROM images
                 WHERE {PathScope.Where(root)}
                   AND content_hash IN (
@@ -44,7 +44,7 @@ public sealed class ExactDuplicateFinder(Database db)
             {
                 var h = r.GetString(0);
                 (byHash.TryGetValue(h, out var list) ? list : byHash[h] = [])
-                    .Add((r.GetInt64(1), r.GetInt64(2), r.GetInt64(3)));
+                    .Add((r.GetInt64(1), r.GetInt64(2), r.GetInt64(3), r.GetString(4)));
             }
         }
 
@@ -52,11 +52,17 @@ public sealed class ExactDuplicateFinder(Database db)
         using var tx = db.Connection.BeginTransaction();
         foreach (var (_, members) in byHash)
         {
-            // Keeper = most pixels, then largest bytes, then lowest id (stable).
+            // Keeper = most pixels, then largest bytes, then first path.
+            //
+            // Path is the key that actually decides here, every time: these files are
+            // byte-identical by definition, so pixels and bytes always tie. It has to be a value
+            // the library itself determines — id is assigned in parallel scan-completion order, so
+            // tie-breaking on it handed a different photo the keeper flag on every fresh scan of
+            // an unchanged folder. Same reasoning as StoreGroups.Keeper; both must stay in step.
             var keeperId = members
                 .OrderByDescending(m => m.pixels)
                 .ThenByDescending(m => m.size)
-                .ThenBy(m => m.id)
+                .ThenBy(m => m.path, StringComparer.Ordinal)
                 .First().id;
 
             repo.AddGroup(DupeKind.Exact, similarity: "identical",

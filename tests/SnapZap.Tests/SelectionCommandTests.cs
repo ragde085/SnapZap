@@ -137,6 +137,42 @@ public class SelectionCommandTests : IDisposable
         Assert.DoesNotContain(hiddenExtra, _state.Selected);
     }
 
+    // ---- The folder box ------------------------------------------------------
+
+    /// <summary>
+    /// The folder box is a text field, so people type shell paths into it. Nothing downstream
+    /// understands <c>~</c>, so <c>~/Photos</c> reported "Folder not found" for a folder that
+    /// plainly exists — which reads as the app being broken, not as a spelling problem.
+    /// </summary>
+    [Theory]
+    [InlineData("~")]
+    [InlineData("~/Pictures")]
+    [InlineData("~/Pictures/2024 holiday")]
+    public void Tilde_paths_resolve_under_the_home_directory(string typed)
+    {
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var expanded = AppState.ExpandHome(typed);
+
+        Assert.StartsWith(home, expanded);
+        Assert.DoesNotContain('~', expanded);
+    }
+
+    /// <summary>
+    /// Only a leading <c>~/</c> is a home reference. Folders really are called things like
+    /// <c>~snapshots</c>, and an absolute path must survive untouched.
+    /// </summary>
+    [Theory]
+    [InlineData("/Volumes/Archive/Photos")]
+    [InlineData("~snapshots")]
+    [InlineData("/tmp/a~b")]
+    [InlineData("relative/path")]
+    public void Non_home_paths_are_left_alone(string typed) =>
+        Assert.Equal(typed, AppState.ExpandHome(typed));
+
+    [Fact]
+    public void Surrounding_whitespace_is_trimmed_off_a_pasted_path() =>
+        Assert.Equal("/Volumes/Archive", AppState.ExpandHome("  /Volumes/Archive  "));
+
     // ---- The bulk-selectable rule --------------------------------------------
 
     /// <summary>

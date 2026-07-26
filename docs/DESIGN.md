@@ -1,6 +1,6 @@
 # SnapZap — Design
 
-**Status:** design agreed, implementation not started
+**Status:** implemented; see [ROADMAP.md](ROADMAP.md) for what is outstanding
 **Target platform:** Windows (x64), single self-contained `.exe`
 **Development platform:** macOS (cross-compiled; see [Platform abstraction](#platform-abstraction))
 
@@ -73,20 +73,20 @@ what makes Blazor Server's per-interaction round trip a non-issue.
 - **Hashing is SHA-256, not BLAKE3.** Built into .NET, hardware-accelerated, zero native
   dependency to complicate the Mac→Windows cross-compile. Isolated in `Scanning/Hasher.cs`,
   swappable later. See that file's comment.
-- **Exact duplicates come from our own content hashes, not Czkawka.** Since every image is
-  SHA-256 hashed during the scan, byte-identical files are found in pure SQL
-  (`Dedup/ExactDuplicateFinder.cs`) with no external tool. **Czkawka is used *only* for
-  *similar* (perceptual) images** (`Dedup/CzkawkaFinder.cs`). Consequence: exact dedup works
-  even with no Czkawka installed; only near-duplicate detection needs the sidecar.
-  **Superseded in v2:** near-duplicate detection is now in-process too and the sidecar is gone
-  entirely. See [DEDUP-V2.md](DEDUP-V2.md).
-- **Czkawka JSON parser is validated** against czkawka 12.0.0 (2026-07-25). Real output is an
-  array of groups, each an array of objects carrying `path` plus size/width/height/difference
-  metadata we ignore — which is what the defensive parser already assumed, so it needed no
-  change. Validation did surface three integration bugs, all fixed: paths were not
-  canonicalised (czkawka resolves symlinks, the catalog does not, so groups were silently
-  dropped), an explicitly configured binary path was not authoritative, and the keeper
-  tie-break could retain a compressed copy over its original.
+- **All duplicate detection runs in-process, on signatures the scan already produced.**
+  Byte-identical files are found in pure SQL over the SHA-256 content hashes
+  (`Dedup/ExactDuplicateFinder.cs`); perceptual matching runs off the stored 272-bit hash
+  (`Dedup/PerceptualHash.cs`, `VariantFinder`, `BurstFinder`, `SimilarityGrouper`). There is no
+  external tool and no sidecar in this path — duplicate detection works out of the box.
+  See [DEDUP-V2.md](DEDUP-V2.md) for the full rationale.
+  *(Through v1 this was the `czkawka_cli` subprocess, kept for* similar *images only. It decoded
+  the whole library a second time in a second process and deadlocked on its own undrained stdout
+  pipe; v2 removed it and `Dedup/CzkawkaFinder.cs` with it.)*
+- **Keeper selection must be reproducible.** Both finders order by pixels, then bytes, then
+  **path** — never by row id. Ids are assigned as the parallel scan completes rows, so an
+  id tie-break silently follows scan-completion order and hands the keeper flag to a different
+  photo on each fresh scan of an unchanged folder. Byte-identical files tie on every earlier key
+  by definition, so this last key is the one that decides.
 
 ---
 
@@ -102,7 +102,7 @@ All MIT or Apache-2.0. Nothing paid, nothing with a revenue-threshold license.
 | Image decode / thumbnails | SkiaSharp | MIT |
 | EXIF | MetadataExtractor | Apache-2.0 |
 | Cache / state | `Microsoft.Data.Sqlite` | MIT |
-| Duplicate detection | `czkawka_cli` (external process) | MIT |
+| Duplicate detection | in-process (SHA-256 + 272-bit gradient hash) | — |
 | NSFW model | Falconsai/nsfw_image_detection (ViT → ONNX) | Apache-2.0 |
 | Recycle Bin | `Microsoft.VisualBasic.FileIO` (Windows) | MIT |
 | Blur detection | hand-rolled Laplacian variance over SkiaSharp pixels | — |
@@ -112,10 +112,10 @@ All MIT or Apache-2.0. Nothing paid, nothing with a revenue-threshold license.
 
 ### Sidecar assets (not embedded in the `.exe`)
 
-The NSFW ONNX model (~350 MB) and `czkawka_cli.exe` ship *beside* the binary, not inside
-it. Both are detected at startup; if missing, the UI degrades gracefully and points the
-user at the download rather than failing hard. This keeps the executable lean and lets each
-piece be updated independently.
+The NSFW ONNX model (~350 MB) ships *beside* the binary, not inside it. It is detected at
+startup; if missing, the UI degrades gracefully and points the user at the download rather
+than failing hard. This keeps the executable lean and lets the model be updated independently.
+It is the only sidecar — duplicate detection needs nothing installed.
 
 ---
 
@@ -127,7 +127,7 @@ Folder pick
    ├─► Enumerate files ──► cache probe (path, size, mtime)
    │                          │hit → reuse row, skip all analysis
    │                          │miss ↓
-   │                       content hash (BLAKE3)
+   │                       content hash (SHA-256)
    │                          ↓
    │                    parallel analysis
    │                      ├─ NSFW score   (ONNX)
@@ -135,7 +135,7 @@ Folder pick
    │                      ├─ EXIF         (date, camera)
    │                      └─ Thumbnail    (SkiaSharp)
    │
-   └─► czkawka_cli subprocess ──► exact + similar groups
+   └─► in-process dedup ──► exact + variant + burst groups
                    │
                    ▼
               SQLite  ──►  Blazor faceted grid  ──►  Export
@@ -185,8 +185,8 @@ CREATE INDEX ix_images_taken ON images(exif_taken);
 
 CREATE TABLE dupe_groups (
   id          INTEGER PRIMARY KEY,
-  kind        TEXT NOT NULL,      -- 'exact' | 'similar'
-  similarity  TEXT                -- czkawka level, for 'similar'
+  kind        TEXT NOT NULL,      -- 'exact' | 'variant' | 'burst'
+  similarity  TEXT                -- how it matched, e.g. '<=20 of 272 bits', 'within 3s'
 );
 
 CREATE TABLE dupe_members (
@@ -393,7 +393,7 @@ is genuinely cross-platform and testable locally.
 | GPU provider | `IInferenceProvider` | DirectML | CoreML / CPU |
 | Window host | `IAppHost` | Photino + WebView2 | Photino + WKWebView |
 
-Everything else — scanning, hashing, ONNX inference, Czkawka orchestration, the export
+Everything else — scanning, hashing, duplicate detection, ONNX inference, the export
 engine, the entire UI — is portable and developed against directly.
 
 Ship with:

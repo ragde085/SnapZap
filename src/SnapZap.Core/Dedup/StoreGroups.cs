@@ -42,9 +42,19 @@ public static class StoreGroups
     }
 
     /// <remarks>
-    /// Every ordering ends on <c>Id</c>. Without that last key a tie is broken by enumeration
-    /// order, and the keeper flag — which the user may have spent an evening overriding — would
-    /// land on a different photo on the next run for no reason they could see.
+    /// <para>Every ordering ends on <c>Path</c>. Without a final total key a tie is broken by
+    /// enumeration order, and the keeper flag — which the user may have spent an evening
+    /// overriding — would land on a different photo on the next run for no reason they could
+    /// see.</para>
+    ///
+    /// <para><b>The last key has to be <c>Path</c>, not <c>Id</c>.</b> Id looks stable and is not:
+    /// rows are inserted as the parallel scan completes them, so a fresh catalogue over the same
+    /// folder assigns different ids each run and an Id tie-break silently follows that order. Two
+    /// re-encodes of one photo at the same dimensions and byte count — a burst off a tripod, a
+    /// folder of exported copies — tie on every earlier key, so this is the key that decides, and
+    /// it decided differently every run. Path is unique (the schema enforces it) and depends on
+    /// nothing but the library itself, so the same folder yields the same keeper on any machine
+    /// and after any "forget everything".</para>
     /// </remarks>
     static long Keeper(List<HashedImage> members, KeeperRule rule) => rule switch
     {
@@ -52,13 +62,13 @@ public static class StoreGroups
             .OrderByDescending(m => m.BlurScore ?? double.NegativeInfinity)
             .ThenByDescending(m => m.Pixels)
             .ThenByDescending(m => m.Bytes)
-            .ThenBy(m => m.Id)
+            .ThenBy(m => m.Path, StringComparer.Ordinal)
             .First().Id,
 
         _ => members
             .OrderByDescending(m => m.Pixels)
             .ThenByDescending(m => m.Bytes)
-            .ThenBy(m => m.Id)
+            .ThenBy(m => m.Path, StringComparer.Ordinal)
             .First().Id,
     };
 }

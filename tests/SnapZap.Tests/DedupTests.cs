@@ -242,6 +242,44 @@ public class ExactDedupTests : IDisposable
         Assert.All(repo.Under(sibling), i => Assert.Null(i.DupeCheckedAt));
     }
 
+    /// <summary>
+    /// The keeper must be the same photo every run, on any machine.
+    /// </summary>
+    /// <remarks>
+    /// Rows are inserted as the parallel scan completes them, so a fresh catalogue over the same
+    /// folder assigns different ids each run. When the members tie on every earlier key — same
+    /// pixels, same bytes, which is exactly what re-encodes of one shot look like — the final key
+    /// is the one that decides, and an Id tie-break silently inherited the scan's completion
+    /// order. Observed live: the same four-file group kept a different photo on 2 of 5 runs.
+    ///
+    /// Five fresh catalogues over one unchanged folder, and the answer has to be identical.
+    /// </remarks>
+    [Fact]
+    public async Task Keeper_is_the_same_photo_across_independent_scans_of_one_folder()
+    {
+        // Four files that tie on pixels and bytes: identical content, distinct paths.
+        WritePng(Path.Combine(_photos, "frame_a.png"), 200, 200, SKColors.Teal);
+        foreach (var n in new[] { "frame_b.png", "frame_c.png", "frame_d.png" })
+            File.Copy(Path.Combine(_photos, "frame_a.png"), Path.Combine(_photos, n));
+
+        var keepers = new List<string>();
+        for (var run = 0; run < 5; run++)
+        {
+            var dbPath = Path.Combine(_work, $"run{run}.db");
+            using var db = new Database(dbPath);
+            await new Scanner(db, new SkiaImageService(), Path.Combine(_work, $"t{run}")).ScanAsync(_photos);
+
+            new ExactDuplicateFinder(db).FindAndStore();
+
+            var repo = new ImageRepository(db);
+            var group = new DupeRepository(db).Groups().Single();
+            var keeperId = group.Members.Single(m => m.IsKeeper).ImageId;
+            keepers.Add(Path.GetFileName(repo.ByIds([keeperId]).Single().Path));
+        }
+
+        Assert.Single(keepers.Distinct());
+    }
+
     public void Dispose()
     {
         try { if (Directory.Exists(_work)) Directory.Delete(_work, true); } catch { }

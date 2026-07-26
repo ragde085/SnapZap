@@ -739,9 +739,31 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
         });
     }
 
+    /// <summary>
+    /// Expand a leading <c>~</c> to the user's home directory.
+    /// </summary>
+    /// <remarks>
+    /// The folder box is a text field, so people type what they would type in a shell. Nothing
+    /// downstream understands <c>~</c> — <see cref="Directory"/> treats it as a relative path —
+    /// so <c>~/Photos</c> came back "Folder not found" for a folder that plainly exists, which
+    /// reads as the app being broken rather than as the path needing a different spelling.
+    ///
+    /// Only a leading <c>~/</c> (or a bare <c>~</c>) is touched. A directory genuinely called
+    /// <c>~snapshots</c> is a real thing on some backup tools and must keep working.
+    /// </remarks>
+    internal static string ExpandHome(string folder)
+    {
+        var f = folder.Trim();
+        if (f == "~") return Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        if (!f.StartsWith("~/") && !f.StartsWith(@"~\")) return f;
+        return Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), f[2..]);
+    }
+
     public async Task ScanAsync(string folder)
     {
         if (Busy) return;
+        folder = ExpandHome(folder);
         await RunAsync("Scanning", async (report, ct) =>
         {
             var progress = new Progress<ScanProgress>(p => report(p.Seen, 0, null));

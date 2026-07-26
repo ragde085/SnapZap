@@ -180,7 +180,7 @@ public sealed class ImageRepository(Database db)
         cmd.CommandText = $"""
             SELECT id, phash,
                    COALESCE(width,0) * COALESCE(height,0) AS pixels,
-                   file_size, exif_taken, exif_camera, blur_score
+                   file_size, exif_taken, exif_camera, blur_score, path
             FROM images
             WHERE {PathScope.Where(root)}
             ORDER BY id
@@ -193,6 +193,7 @@ public sealed class ImageRepository(Database db)
             var blob = r.IsDBNull(1) ? null : (byte[])r[1];
             list.Add(new HashedImage(
                 Id: r.GetInt64(0),
+                Path: r.GetString(7),
                 Hash: PerceptualHash.FromBytes(blob),
                 Pixels: r.GetInt64(2),
                 Bytes: r.GetInt64(3),
