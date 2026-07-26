@@ -222,23 +222,27 @@ public sealed class ExportEngine(Database db, ILinkService links, ITrashService 
 
     long OpenRun(ExportRequest req, TransferMode effectiveMode)
     {
-        using var cmd = db.Connection.CreateCommand();
-        cmd.CommandText = """
-            INSERT INTO export_runs(started_utc, destination, mode, structure, reject_action, status)
-            VALUES ($t,$d,$m,$s,$r,'running') RETURNING id
-            """;
-        cmd.Parameters.AddWithValue("$t", DateTimeOffset.UtcNow.ToUnixTimeSeconds());
-        cmd.Parameters.AddWithValue("$d", req.Destination);
-        cmd.Parameters.AddWithValue("$m", effectiveMode.ToString().ToLowerInvariant());
-        cmd.Parameters.AddWithValue("$s", req.Structure.ToString().ToLowerInvariant());
-        cmd.Parameters.AddWithValue("$r", req.RejectAction.ToString().ToLowerInvariant());
-        return (long)cmd.ExecuteScalar()!;
+        lock (db.WriteLock)
+        {
+            using var cmd = db.Writer.CreateCommand();
+            cmd.CommandText = """
+                INSERT INTO export_runs(started_utc, destination, mode, structure, reject_action, status)
+                VALUES ($t,$d,$m,$s,$r,'running') RETURNING id
+                """;
+            cmd.Parameters.AddWithValue("$t", DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+            cmd.Parameters.AddWithValue("$d", req.Destination);
+            cmd.Parameters.AddWithValue("$m", effectiveMode.ToString().ToLowerInvariant());
+            cmd.Parameters.AddWithValue("$s", req.Structure.ToString().ToLowerInvariant());
+            cmd.Parameters.AddWithValue("$r", req.RejectAction.ToString().ToLowerInvariant());
+            return (long)cmd.ExecuteScalar()!;
+        }
     }
 
     Dictionary<long, string> LoadCompleted(long runId)
     {
         var map = new Dictionary<long, string>();
-        using var cmd = db.Connection.CreateCommand();
+        using var c = db.OpenRead();
+        using var cmd = c.CreateCommand();
         cmd.CommandText = "SELECT image_id, status FROM export_items WHERE run_id=$r AND status IN ('verified','skipped')";
         cmd.Parameters.AddWithValue("$r", runId);
         using var r = cmd.ExecuteReader();
@@ -248,45 +252,54 @@ public sealed class ExportEngine(Database db, ILinkService links, ITrashService 
 
     void RecordItem(long runId, long imageId, string status, string? dest, string? detail)
     {
-        using var cmd = db.Connection.CreateCommand();
-        cmd.CommandText = """
-            INSERT INTO export_items(run_id, image_id, dest_path, status, skip_reason, error)
-            VALUES ($run,$img,$dest,$status,$skip,$err)
-            ON CONFLICT(run_id, image_id) DO UPDATE SET
-              dest_path=excluded.dest_path, status=excluded.status,
-              skip_reason=excluded.skip_reason, error=excluded.error
-            """;
-        cmd.Parameters.AddWithValue("$run", runId);
-        cmd.Parameters.AddWithValue("$img", imageId);
-        cmd.Parameters.AddWithValue("$dest", (object?)dest ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("$status", status);
-        cmd.Parameters.AddWithValue("$skip", (object?)(status == "skipped" ? detail : null) ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("$err", (object?)(status == "failed" ? detail : null) ?? DBNull.Value);
-        cmd.ExecuteNonQuery();
+        lock (db.WriteLock)
+        {
+            using var cmd = db.Writer.CreateCommand();
+            cmd.CommandText = """
+                INSERT INTO export_items(run_id, image_id, dest_path, status, skip_reason, error)
+                VALUES ($run,$img,$dest,$status,$skip,$err)
+                ON CONFLICT(run_id, image_id) DO UPDATE SET
+                  dest_path=excluded.dest_path, status=excluded.status,
+                  skip_reason=excluded.skip_reason, error=excluded.error
+                """;
+            cmd.Parameters.AddWithValue("$run", runId);
+            cmd.Parameters.AddWithValue("$img", imageId);
+            cmd.Parameters.AddWithValue("$dest", (object?)dest ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("$status", status);
+            cmd.Parameters.AddWithValue("$skip", (object?)(status == "skipped" ? detail : null) ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("$err", (object?)(status == "failed" ? detail : null) ?? DBNull.Value);
+            cmd.ExecuteNonQuery();
+        }
     }
 
     void CloseRun(long runId, string status)
     {
-        using var cmd = db.Connection.CreateCommand();
-        cmd.CommandText = "UPDATE export_runs SET finished_utc=$t, status=$s WHERE id=$id";
-        cmd.Parameters.AddWithValue("$t", DateTimeOffset.UtcNow.ToUnixTimeSeconds());
-        cmd.Parameters.AddWithValue("$s", status);
-        cmd.Parameters.AddWithValue("$id", runId);
-        cmd.ExecuteNonQuery();
+        lock (db.WriteLock)
+        {
+            using var cmd = db.Writer.CreateCommand();
+            cmd.CommandText = "UPDATE export_runs SET finished_utc=$t, status=$s WHERE id=$id";
+            cmd.Parameters.AddWithValue("$t", DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+            cmd.Parameters.AddWithValue("$s", status);
+            cmd.Parameters.AddWithValue("$id", runId);
+            cmd.ExecuteNonQuery();
+        }
     }
 
     void LogUndo(string batch, string op, string original, string? newLoc)
     {
-        using var cmd = db.Connection.CreateCommand();
-        cmd.CommandText = """
-            INSERT INTO undo_log(batch_id, op, original_path, new_location, ts_utc)
-            VALUES ($b,$o,$p,$n,$t)
-            """;
-        cmd.Parameters.AddWithValue("$b", batch);
-        cmd.Parameters.AddWithValue("$o", op);
-        cmd.Parameters.AddWithValue("$p", original);
-        cmd.Parameters.AddWithValue("$n", (object?)newLoc ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("$t", DateTimeOffset.UtcNow.ToUnixTimeSeconds());
-        cmd.ExecuteNonQuery();
+        lock (db.WriteLock)
+        {
+            using var cmd = db.Writer.CreateCommand();
+            cmd.CommandText = """
+                INSERT INTO undo_log(batch_id, op, original_path, new_location, ts_utc)
+                VALUES ($b,$o,$p,$n,$t)
+                """;
+            cmd.Parameters.AddWithValue("$b", batch);
+            cmd.Parameters.AddWithValue("$o", op);
+            cmd.Parameters.AddWithValue("$p", original);
+            cmd.Parameters.AddWithValue("$n", (object?)newLoc ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("$t", DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+            cmd.ExecuteNonQuery();
+        }
     }
 }

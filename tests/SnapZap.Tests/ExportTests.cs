@@ -223,8 +223,9 @@ public class ExportTests : IDisposable
         WritePng(Path.Combine(_photos, "d.png"), 100, 100, SKColors.Purple);
         using var db = Scan();
         // Inject an EXIF date directly into the catalog row (no EXIF on generated PNG).
-        using (var cmd = db.Connection.CreateCommand())
+        lock (db.WriteLock)
         {
+            using var cmd = db.Writer.CreateCommand();
             var when = new DateTimeOffset(new DateTime(2019, 3, 4, 0, 0, 0, DateTimeKind.Utc)).ToUnixTimeSeconds();
             cmd.CommandText = "UPDATE images SET exif_taken=$t WHERE path LIKE '%d.png'";
             cmd.Parameters.AddWithValue("$t", when);
@@ -262,7 +263,8 @@ public class ExportTests : IDisposable
         Assert.False(File.Exists(Path.Combine(_photos, "junk.png"))); // reject recycled
 
         // Undo log recorded the recycle for restore (step 9).
-        using var cmd = db.Connection.CreateCommand();
+        using var c = db.OpenRead();
+        using var cmd = c.CreateCommand();
         cmd.CommandText = "SELECT COUNT(*) FROM undo_log WHERE op='recycle'";
         Assert.Equal(1L, (long)cmd.ExecuteScalar()!);
     }
@@ -295,8 +297,9 @@ public class ExportTests : IDisposable
         // Corrupt the stored hash so the destination re-hash can never match → Verify throws.
         WritePng(Path.Combine(_photos, "safe.png"), 100, 100, SKColors.Crimson);
         using var db = Scan();
-        using (var cmd = db.Connection.CreateCommand())
+        lock (db.WriteLock)
         {
+            using var cmd = db.Writer.CreateCommand();
             cmd.CommandText = "UPDATE images SET content_hash='deadbeef_wrong' WHERE path LIKE '%safe.png'";
             cmd.ExecuteNonQuery();
         }

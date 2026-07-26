@@ -42,6 +42,24 @@ public readonly struct PerceptualHash : IEquatable<PerceptualHash>
     /// <summary>Serialized size of a full signature.</summary>
     public const int ByteLength = Rotations * Words * sizeof(ulong);   // 160
 
+    /// <summary>
+    /// Version of the signature-derivation recipe: decode scale, resampling filter, orientation
+    /// handling and grid size. Bump this whenever any of those change — see
+    /// <see cref="Data.Database.RecipeMigration"/>, which invalidates every stored <c>phash</c> the
+    /// moment this constant no longer matches what a catalogue was written under. The tier-1 probe
+    /// never re-analyses an unchanged file, so a signature that isn't invalidated here is never
+    /// recomputed on its own; extending the list above is mandatory, not optional, when touching
+    /// any of it.
+    /// </summary>
+    /// <remarks>
+    /// 1 = original: 512px nearest-neighbour decode, no orientation handling.
+    /// 2 = scaled decode via <c>SKCodec.GetScaledDimensions</c> + linear/mipmap resampling
+    ///     (tech-spec Phase C, Tasks 9-12).
+    /// 3 = EXIF orientation normalisation via <c>codec.EncodedOrigin</c> (tech-spec Phase D,
+    ///     Task 14) — hashing now describes the photo as displayed, not as the sensor stored it.
+    /// </remarks>
+    public const int PhashRecipeVersion = 3;
+
     // Rotation r occupies _w[r * Words .. r * Words + Words]. Never null on a constructed value;
     // default(PerceptualHash) is the "absent" sentinel and IsEmpty reports it.
     readonly ulong[]? _w;
@@ -204,6 +222,13 @@ public readonly struct PerceptualHash : IEquatable<PerceptualHash>
         }
         return best;
     }
+
+    /// <summary>
+    /// Raw words for one rotation. Internal — the band-prefilter index (Task 21) needs direct bit
+    /// access to build and probe band tables; every other caller should use <see cref="DistanceTo"/>.
+    /// </summary>
+    internal ReadOnlySpan<ulong> WordsFor(int rotation) =>
+        _w is null ? default : _w.AsSpan(rotation * Words, Words);
 
     public bool Equals(PerceptualHash other) =>
         _w is null ? other._w is null : other._w is not null && _w.AsSpan().SequenceEqual(other._w);

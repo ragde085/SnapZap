@@ -1,4 +1,5 @@
 using SnapZap.Core.Data;
+using SnapZap.Core.Imaging;
 
 namespace SnapZap.Core.Dedup;
 
@@ -35,18 +36,65 @@ public sealed record DedupProgress(int Done, int Total, string? Detail);
 /// are read once at the top so a mid-run change cannot leave half the catalogue detected under one
 /// threshold and half under another.</para>
 /// </remarks>
-public sealed class DuplicateService(Database db)
+public sealed class DuplicateService(Database db, SkiaImageService? imaging = null, string? thumbDir = null)
 {
+    readonly SkiaImageService _imaging = imaging ?? new SkiaImageService();
+
+    /// <summary>Matches <c>Scanner</c>'s decode/grey size, so a backfilled signature is derived
+    /// exactly the same way a fresh scan would derive it.</summary>
+    const int BackfillDecodeMaxEdge = 512;
+
     public async Task<DuplicateReport> DetectAsync(
         string root, IProgress<DedupProgress>? progress = null, CancellationToken ct = default)
     {
         var settings = DedupSettings.Load(db);
         var repo = new ImageRepository(db);
 
-        // One phase per enabled detector, plus the load, plus reconciliation.
-        int total = 1 + 1 + 1 + 1 + (settings.VariantEnabled ? 1 : 0);
+        // The lazy half of Task 13's eager-invalidate/lazy-backfill split: Database.EnsurePhashRecipe
+        // clears stale signatures at catalogue open but never decodes an image to do it, so the
+        // recompute happens here, the first time detection actually runs. NeedingPhash also picks
+        // up any file whose own signal computation failed at scan time, independent of a recipe bump.
+        var needingPhash = repo.NeedingPhash(root);
+
+        // One phase per enabled detector, plus the load, plus reconciliation, plus the backfill
+        // when there is one to do.
+        int total = 1 + 1 + 1 + 1 + (settings.VariantEnabled ? 1 : 0) + (needingPhash.Count > 0 ? 1 : 0);
         int done = 0;
         void Step(string? label) => progress?.Report(new DedupProgress(done, total, label));
+
+        if (needingPhash.Count > 0)
+        {
+            Step("Recomputing signatures");
+            await Task.Run(() =>
+            {
+                foreach (var (id, path, contentHash) in needingPhash)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    try
+                    {
+                        using var decoded = _imaging.DecodeScaled(path, BackfillDecodeMaxEdge);
+                        if (decoded is null) continue; // best-effort: leave phash NULL, same as a failed scan signal
+                        var g = SkiaImageService.GrayFrom(decoded, BackfillDecodeMaxEdge);
+                        var sig = PerceptualHash.FromGray(g.gray, g.w, g.h);
+                        if (!sig.IsEmpty) repo.SetPhash(id, sig.ToBytes());
+
+                        // Thumbnails are keyed by content hash, which does not change when
+                        // orientation handling does, so a stale (wrongly-rotated) cached JPEG would
+                        // never self-invalidate. This decode is already in hand, so regenerating it
+                        // here is free — riding the same lazy pass Task 13 built for the signature
+                        // (Task 16), rather than a separate eager pass over the whole cache.
+                        if (thumbDir is not null)
+                        {
+                            var thumbPath = Path.Combine(thumbDir, contentHash[..2], contentHash + ".jpg");
+                            try { _imaging.WriteThumbnailFrom(decoded, thumbPath); }
+                            catch { /* best-effort, same as the scan's own thumbnail write */ }
+                        }
+                    }
+                    catch { /* best-effort, same as the scan's own signal computation */ }
+                }
+            }, ct);
+            done++;
+        }
 
         Step("Reading signatures");
         var images = await Task.Run(() => repo.HashedUnder(root), ct);
@@ -119,8 +167,11 @@ public sealed class DuplicateService(Database db)
     {
         var parts = new List<string>();
 
+        // The backfill phase above already tried every unhashed row this run — what's left is a
+        // photo whose file couldn't be decoded, not one merely waiting for the next scan. The old
+        // "re-scan to include them" wording stopped being true once the backfill became automatic.
         if (unhashed > 0 && total > 0)
-            parts.Add($"{unhashed:N0} of {total:N0} photos have no visual signature yet — re-scan to include them");
+            parts.Add($"{unhashed:N0} of {total:N0} photos still have no visual signature — their file could not be decoded");
 
         if (truncated)
             parts.Add("too many candidate matches to compare them all; tighten the threshold for a complete answer");

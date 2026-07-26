@@ -1,40 +1,93 @@
 using Microsoft.Data.Sqlite;
+using SnapZap.Core.Dedup;
 
 namespace SnapZap.Core.Data;
 
+/// <summary>Result of the eager phash-recipe check run once at catalogue open (see
+/// <see cref="Database.EnsurePhashRecipe"/>).</summary>
+public sealed record PhashRecipeMigration(bool Migrated, int RowsInvalidated, string? BackupPath);
+
 /// <summary>
-/// Owns the SQLite connection and schema (DESIGN.md §5). One database file per catalog;
-/// WAL mode so reads (the SPA) don't block the writer (the scanner).
+/// Owns the SQLite connections and schema (DESIGN.md §5). One database file per catalog;
+/// WAL mode so reads (the SPA, the HTTP endpoints) don't block the writer (the scanner).
 /// </summary>
+/// <remarks>
+/// <b>Connection ownership.</b> <c>SqliteConnection</c> is not thread-safe, so no single instance
+/// is ever shared across threads. Reads open a fresh, cheap, pooled connection per operation via
+/// <see cref="OpenRead"/> — WAL lets these run concurrently with the writer. Writes funnel through
+/// one dedicated <see cref="Writer"/> connection, serialized by <see cref="WriteLock"/>; a plain
+/// C# <c>lock</c> is re-entrant for the same thread, so a caller composing several writes into one
+/// transaction (e.g. <c>StoreGroups.Write</c>) can safely lock once around the whole operation
+/// while the individual repository methods it calls also lock internally.
+/// </remarks>
 public sealed class Database : IDisposable
 {
-    public SqliteConnection Connection { get; }
+    readonly string _connectionString;
+    readonly string _dbPath;
+
+    /// <summary>The single connection every write goes through. Never touch this without holding
+    /// <see cref="WriteLock"/> — it is not safe to use from more than one thread at a time.</summary>
+    public SqliteConnection Writer { get; }
+
+    /// <summary>Guards <see cref="Writer"/>. Re-entrant (same thread) by ordinary C# <c>lock</c>
+    /// semantics, so composing multiple write calls into one transaction is safe.</summary>
+    public object WriteLock { get; } = new();
+
+    /// <summary>Set once at construction if opening this catalogue found a stale
+    /// <c>phash.recipe</c> and cleared signatures catalogue-wide. Null on every launch after the
+    /// first (idempotent — the whole point of AC 6a).</summary>
+    public PhashRecipeMigration? RecipeMigration { get; }
 
     public Database(string dbPath)
     {
-        var cs = new SqliteConnectionStringBuilder
+        _dbPath = dbPath;
+        _connectionString = new SqliteConnectionStringBuilder
         {
             DataSource = dbPath,
             Mode = SqliteOpenMode.ReadWriteCreate,
-            Cache = SqliteCacheMode.Shared,
+            // Shared-cache adds table-level locking BETWEEN connections, working directly against
+            // the per-operation connection model below and against WAL's own concurrency.
         }.ToString();
-        Connection = new SqliteConnection(cs);
-        Connection.Open();
-        Exec("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA foreign_keys=ON;");
+
+        Writer = OpenConnectionCore();
         Migrate();
+        RecipeMigration = EnsurePhashRecipe(PerceptualHash.PhashRecipeVersion);
     }
 
-    void Exec(string sql)
+    SqliteConnection OpenConnectionCore()
     {
-        using var cmd = Connection.CreateCommand();
-        cmd.CommandText = sql;
+        var c = new SqliteConnection(_connectionString);
+        c.Open();
+        ApplyPragmas(c);
+        return c;
+    }
+
+    /// <summary>Pragmas are per-connection (session) state in SQLite, except <c>journal_mode</c>
+    /// which is persisted in the file itself — re-asserting it here is harmless and keeps every
+    /// connection's setup identical.</summary>
+    static void ApplyPragmas(SqliteConnection c)
+    {
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = """
+            PRAGMA journal_mode=WAL;
+            PRAGMA synchronous=NORMAL;
+            PRAGMA foreign_keys=ON;
+            PRAGMA temp_store=MEMORY;
+            PRAGMA cache_size=-20000;
+            PRAGMA mmap_size=268435456;
+            """;
         cmd.ExecuteNonQuery();
     }
+
+    /// <summary>Opens a fresh connection for one read operation. Cheap: Microsoft.Data.Sqlite
+    /// pools physical connections by connection string. Caller disposes.</summary>
+    public SqliteConnection OpenRead() => OpenConnectionCore();
 
     /// <summary>A catalogue-wide setting, or null when unset.</summary>
     public string? Meta(string key)
     {
-        using var cmd = Connection.CreateCommand();
+        using var c = OpenRead();
+        using var cmd = c.CreateCommand();
         cmd.CommandText = "SELECT value FROM meta WHERE key=$k";
         cmd.Parameters.AddWithValue("$k", key);
         return cmd.ExecuteScalar() as string;
@@ -43,36 +96,49 @@ public sealed class Database : IDisposable
     /// <summary>Writes a catalogue-wide setting; null removes it.</summary>
     public void SetMeta(string key, string? value)
     {
-        using var cmd = Connection.CreateCommand();
-        if (value is null)
+        lock (WriteLock)
         {
-            cmd.CommandText = "DELETE FROM meta WHERE key=$k";
-            cmd.Parameters.AddWithValue("$k", key);
+            using var cmd = Writer.CreateCommand();
+            if (value is null)
+            {
+                cmd.CommandText = "DELETE FROM meta WHERE key=$k";
+                cmd.Parameters.AddWithValue("$k", key);
+            }
+            else
+            {
+                cmd.CommandText = """
+                    INSERT INTO meta(key, value) VALUES($k, $v)
+                    ON CONFLICT(key) DO UPDATE SET value=excluded.value
+                    """;
+                cmd.Parameters.AddWithValue("$k", key);
+                cmd.Parameters.AddWithValue("$v", value);
+            }
+            cmd.ExecuteNonQuery();
         }
-        else
-        {
-            cmd.CommandText = """
-                INSERT INTO meta(key, value) VALUES($k, $v)
-                ON CONFLICT(key) DO UPDATE SET value=excluded.value
-                """;
-            cmd.Parameters.AddWithValue("$k", key);
-            cmd.Parameters.AddWithValue("$v", value);
-        }
-        cmd.ExecuteNonQuery();
     }
 
     void Migrate()
     {
-        Exec(Schema);
+        lock (WriteLock)
+        {
+            Exec(Schema);
 
-        // Columns added after the first release. CREATE TABLE IF NOT EXISTS is a no-op against an
-        // existing catalogue, so adding a column to Schema below reaches new databases only —
-        // every already-created one needs a guarded ALTER here too.
-        AddColumnIfMissing("images", "dupe_checked_at", "INTEGER");
-        AddColumnIfMissing("images", "dupe_checked_kinds", "INTEGER NOT NULL DEFAULT 0");
-        AddColumnIfMissing("images", "phash", "BLOB");
+            // Columns added after the first release. CREATE TABLE IF NOT EXISTS is a no-op against
+            // an existing catalogue, so adding a column to Schema below reaches new databases only —
+            // every already-created one needs a guarded ALTER here too.
+            AddColumnIfMissing("images", "dupe_checked_at", "INTEGER");
+            AddColumnIfMissing("images", "dupe_checked_kinds", "INTEGER NOT NULL DEFAULT 0");
+            AddColumnIfMissing("images", "phash", "BLOB");
 
-        RenameSimilarToVariant();
+            RenameSimilarToVariant();
+        }
+    }
+
+    void Exec(string sql)
+    {
+        using var cmd = Writer.CreateCommand();
+        cmd.CommandText = sql;
+        cmd.ExecuteNonQuery();
     }
 
     /// <summary>
@@ -92,7 +158,7 @@ public sealed class Database : IDisposable
     /// <summary>Idempotent ALTER: SQLite has no ADD COLUMN IF NOT EXISTS.</summary>
     void AddColumnIfMissing(string table, string column, string declaration)
     {
-        using (var q = Connection.CreateCommand())
+        using (var q = Writer.CreateCommand())
         {
             q.CommandText = $"SELECT COUNT(*) FROM pragma_table_info('{table}') WHERE name = $n";
             q.Parameters.AddWithValue("$n", column);
@@ -100,6 +166,104 @@ public sealed class Database : IDisposable
         }
         Exec($"ALTER TABLE {table} ADD COLUMN {column} {declaration};");
     }
+
+    const string PhashRecipeMetaKey = "phash.recipe";
+
+    /// <summary>
+    /// Structural signature invalidation (tech-spec Task 13): if the stored <c>phash.recipe</c>
+    /// differs from <see cref="PerceptualHash.PhashRecipeVersion"/>, clear every stored signature
+    /// and duplicate-checked flag catalogue-wide and record the new version. Runs once, eagerly,
+    /// at catalogue open — no image is decoded here, so this never delays app launch regardless of
+    /// catalogue size (AC 6a). The (expensive) recompute is a separate, lazy backfill phase inside
+    /// <see cref="Dedup.DuplicateService.DetectAsync"/>, driven by <c>NeedingPhash</c>/<c>SetPhash</c>.
+    /// </summary>
+    /// <remarks>
+    /// Anything that changes how a signature is derived — decode scale, resampling filter,
+    /// orientation handling, grid size — must bump <see cref="PerceptualHash.PhashRecipeVersion"/>.
+    /// The tier-1 probe skips unchanged files, so a signature this method doesn't clear is never
+    /// recomputed on its own: old-recipe and new-recipe hashes would sit in one catalogue being
+    /// compared against each other, which is silent matching degradation with no error and no
+    /// user-visible signal.
+    /// </remarks>
+    PhashRecipeMigration EnsurePhashRecipe(int targetVersion)
+    {
+        var stored = Meta(PhashRecipeMetaKey);
+        if (stored is not null && int.TryParse(stored, out var v) && v == targetVersion)
+            return new PhashRecipeMigration(false, 0, null);
+
+        lock (WriteLock)
+        {
+            long rowCount;
+            using (var count = Writer.CreateCommand())
+            {
+                count.CommandText = "SELECT COUNT(*) FROM images";
+                rowCount = (long)count.ExecuteScalar()!;
+            }
+
+            // Forward-only by design: reverting the code means restoring this file. Only taken
+            // when there is data to protect, and before the UPDATE below touches anything.
+            // VACUUM INTO produces a complete, consistent single-file copy regardless of what's
+            // currently in the WAL, unlike a raw file copy of catalog.db alone.
+            string? backupPath = null;
+            if (rowCount > 0)
+            {
+                // Only the most recent backup is ever useful (reverting means restoring the file
+                // from just before the last bump, not every bump this catalogue has ever seen) —
+                // prune prior ones first, or every future recipe bump leaves another full copy of
+                // the catalogue on disk forever with nothing surfaced to the user about any of them.
+                PruneOldBackups();
+
+                // A Guid suffix, not just the timestamp: two bumps landing in the same release
+                // (or the same test) can fall in the same second, and VACUUM INTO refuses to
+                // overwrite an existing file.
+                backupPath = _dbPath +
+                    $".bak-recipe-{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}-{Guid.NewGuid():N}";
+                using var vacuum = Writer.CreateCommand();
+                vacuum.CommandText = "VACUUM INTO $path";
+                vacuum.Parameters.AddWithValue("$path", backupPath);
+                vacuum.ExecuteNonQuery();
+            }
+
+            int affected;
+            using (var cmd = Writer.CreateCommand())
+            {
+                cmd.CommandText = "UPDATE images SET phash=NULL, dupe_checked_at=NULL, dupe_checked_kinds=0";
+                affected = cmd.ExecuteNonQuery();
+            }
+
+            using (var meta = Writer.CreateCommand())
+            {
+                meta.CommandText = """
+                    INSERT INTO meta(key, value) VALUES($k, $v)
+                    ON CONFLICT(key) DO UPDATE SET value=excluded.value
+                    """;
+                meta.Parameters.AddWithValue("$k", PhashRecipeMetaKey);
+                meta.Parameters.AddWithValue("$v", targetVersion.ToString());
+                meta.ExecuteNonQuery();
+            }
+
+            return new PhashRecipeMigration(true, affected, backupPath);
+        }
+    }
+
+    /// <summary>Deletes every prior <c>.bak-recipe-*</c> file beside the catalogue. Best-effort —
+    /// a leftover old backup is disk-usage debt, not a broken migration, so a locked or
+    /// already-gone file is not worth failing catalogue open over.</summary>
+    void PruneOldBackups()
+    {
+        var dir = Path.GetDirectoryName(_dbPath);
+        if (string.IsNullOrEmpty(dir)) return;
+        var pattern = Path.GetFileName(_dbPath) + ".bak-recipe-*";
+        foreach (var old in Directory.EnumerateFiles(dir, pattern))
+        {
+            try { File.Delete(old); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+        }
+    }
+
+    /// <summary>Test-only hook: runs the same invalidate-if-different logic against an arbitrary
+    /// target version, so a sequence of recipe bumps (AC 6b: two bumps, one backfill) can be
+    /// exercised without redefining <see cref="PerceptualHash.PhashRecipeVersion"/> itself.</summary>
+    internal PhashRecipeMigration EnsurePhashRecipeForTest(int targetVersion) => EnsurePhashRecipe(targetVersion);
 
     // Kept idempotent (IF NOT EXISTS) so re-opening an existing catalog is a no-op.
     const string Schema = """
@@ -185,5 +349,5 @@ public sealed class Database : IDisposable
         );
         """;
 
-    public void Dispose() => Connection.Dispose();
+    public void Dispose() => Writer.Dispose();
 }

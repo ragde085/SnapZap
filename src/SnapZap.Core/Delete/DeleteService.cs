@@ -45,7 +45,8 @@ public sealed class DeleteService(Database db, ITrashService trash)
     public IReadOnlyList<UndoBatch> Batches()
     {
         var list = new List<UndoBatch>();
-        using var cmd = db.Connection.CreateCommand();
+        using var c = db.OpenRead();
+        using var cmd = c.CreateCommand();
         cmd.CommandText = """
             SELECT batch_id, MIN(ts_utc) AS ts, COUNT(*) AS total,
                    SUM(restored) AS restored
@@ -61,7 +62,8 @@ public sealed class DeleteService(Database db, ITrashService trash)
     public async Task<RestoreResult> RestoreAsync(string batchId, CancellationToken ct = default)
     {
         var rows = new List<(long id, string op, string original, string? loc)>();
-        using (var cmd = db.Connection.CreateCommand())
+        using (var c = db.OpenRead())
+        using (var cmd = c.CreateCommand())
         {
             cmd.CommandText = "SELECT id, op, original_path, new_location FROM undo_log WHERE batch_id=$b AND restored=0";
             cmd.Parameters.AddWithValue("$b", batchId);
@@ -119,41 +121,53 @@ public sealed class DeleteService(Database db, ITrashService trash)
     void RepathByPath(string? from, string to)
     {
         if (string.IsNullOrEmpty(from)) return;
-        using var cmd = db.Connection.CreateCommand();
-        cmd.CommandText = "UPDATE images SET path=$to WHERE path=$from";
-        cmd.Parameters.AddWithValue("$to", to);
-        cmd.Parameters.AddWithValue("$from", from);
-        cmd.ExecuteNonQuery();
+        lock (db.WriteLock)
+        {
+            using var cmd = db.Writer.CreateCommand();
+            cmd.CommandText = "UPDATE images SET path=$to WHERE path=$from";
+            cmd.Parameters.AddWithValue("$to", to);
+            cmd.Parameters.AddWithValue("$from", from);
+            cmd.ExecuteNonQuery();
+        }
     }
 
     void DeleteRow(long imageId)
     {
-        using var cmd = db.Connection.CreateCommand();
-        cmd.CommandText = "DELETE FROM images WHERE id=$id";
-        cmd.Parameters.AddWithValue("$id", imageId);
-        cmd.ExecuteNonQuery();
+        lock (db.WriteLock)
+        {
+            using var cmd = db.Writer.CreateCommand();
+            cmd.CommandText = "DELETE FROM images WHERE id=$id";
+            cmd.Parameters.AddWithValue("$id", imageId);
+            cmd.ExecuteNonQuery();
+        }
     }
 
     void LogUndo(string batch, string op, string original, string? loc)
     {
-        using var cmd = db.Connection.CreateCommand();
-        cmd.CommandText = """
-            INSERT INTO undo_log(batch_id, op, original_path, new_location, ts_utc)
-            VALUES ($b,$o,$p,$n,$t)
-            """;
-        cmd.Parameters.AddWithValue("$b", batch);
-        cmd.Parameters.AddWithValue("$o", op);
-        cmd.Parameters.AddWithValue("$p", original);
-        cmd.Parameters.AddWithValue("$n", (object?)loc ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("$t", DateTimeOffset.UtcNow.ToUnixTimeSeconds());
-        cmd.ExecuteNonQuery();
+        lock (db.WriteLock)
+        {
+            using var cmd = db.Writer.CreateCommand();
+            cmd.CommandText = """
+                INSERT INTO undo_log(batch_id, op, original_path, new_location, ts_utc)
+                VALUES ($b,$o,$p,$n,$t)
+                """;
+            cmd.Parameters.AddWithValue("$b", batch);
+            cmd.Parameters.AddWithValue("$o", op);
+            cmd.Parameters.AddWithValue("$p", original);
+            cmd.Parameters.AddWithValue("$n", (object?)loc ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("$t", DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+            cmd.ExecuteNonQuery();
+        }
     }
 
     void MarkRestored(long undoId)
     {
-        using var cmd = db.Connection.CreateCommand();
-        cmd.CommandText = "UPDATE undo_log SET restored=1 WHERE id=$id";
-        cmd.Parameters.AddWithValue("$id", undoId);
-        cmd.ExecuteNonQuery();
+        lock (db.WriteLock)
+        {
+            using var cmd = db.Writer.CreateCommand();
+            cmd.CommandText = "UPDATE undo_log SET restored=1 WHERE id=$id";
+            cmd.Parameters.AddWithValue("$id", undoId);
+            cmd.ExecuteNonQuery();
+        }
     }
 }

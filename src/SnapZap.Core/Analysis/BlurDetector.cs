@@ -28,31 +28,37 @@ public sealed class BlurDetector(SkiaImageService imaging)
     /// perceptual signature from the same buffer. Decoding is by far the most expensive thing the
     /// scan does; the previous arrangement paid for it twice per image, and the czkawka subprocess
     /// paid for it a third time in its own process.
+    ///
+    /// The Laplacian response and its sum / sum-of-squares are accumulated in one interior-only
+    /// pass, rather than materialising a full <c>w*h</c> intermediate buffer and walking it twice
+    /// (once for the mean, once for the squared deviations). Border pixels carry no response and
+    /// are never visited, exactly as they were implicitly zero in the old buffer.
+    ///
+    /// <b>The denominator is <c>w*h</c>, not the interior count <c>(w-2)*(h-2)</c>.</b> This looks
+    /// like a bug and is load-bearing: the old <c>Variance</c> divided by the full zero-initialized
+    /// buffer's length, so writing the "obvious" fused version — dividing by the interior count
+    /// this loop naturally visits — would silently re-scale every score by roughly
+    /// <c>wh/((w-2)(h-2))</c>. The blur threshold is a user-facing slider already calibrated
+    /// against the old scale; re-scaling it would move every photo's blur verdict without the user
+    /// changing anything. Verified against golden values captured before this change (AC 12).
     /// </remarks>
-    public static double? ScoreFrom(float[] gray, int w, int h) =>
-        w < 3 || h < 3 ? null : Variance(Laplacian(gray, w, h));
-
-    static float[] Laplacian(float[] g, int w, int h)
+    public static double? ScoreFrom(float[] gray, int w, int h)
     {
-        // 3×3 kernel:  0  1  0 / 1 -4  1 / 0  1  0. Interior pixels only.
-        var outp = new float[w * h];
+        if (w < 3 || h < 3) return null;
+
+        double sum = 0, sumSq = 0;
         for (int y = 1; y < h - 1; y++)
             for (int x = 1; x < w - 1; x++)
             {
                 int i = y * w + x;
-                outp[i] = g[i - w] + g[i + w] + g[i - 1] + g[i + 1] - 4f * g[i];
+                // 3×3 kernel:  0  1  0 / 1 -4  1 / 0  1  0.
+                float lap = gray[i - w] + gray[i + w] + gray[i - 1] + gray[i + 1] - 4f * gray[i];
+                sum += lap;
+                sumSq += (double)lap * lap;
             }
-        return outp;
-    }
 
-    static double Variance(float[] v)
-    {
-        // Only interior pixels carry a response; include all, mean is ~0 for the borders.
-        double mean = 0;
-        for (int i = 0; i < v.Length; i++) mean += v[i];
-        mean /= v.Length;
-        double acc = 0;
-        for (int i = 0; i < v.Length; i++) { var d = v[i] - mean; acc += d * d; }
-        return acc / v.Length;
+        long n = (long)w * h;
+        double mean = sum / n;
+        return sumSq / n - mean * mean;
     }
 }

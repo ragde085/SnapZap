@@ -94,10 +94,13 @@ public class AppStateTests : IDisposable
     {
         public void Remove(long id)
         {
-            using var cmd = catalog.Db.Connection.CreateCommand();
-            cmd.CommandText = "DELETE FROM images WHERE id=$id";
-            cmd.Parameters.AddWithValue("$id", id);
-            cmd.ExecuteNonQuery();
+            lock (catalog.Db.WriteLock)
+            {
+                using var cmd = catalog.Db.Writer.CreateCommand();
+                cmd.CommandText = "DELETE FROM images WHERE id=$id";
+                cmd.Parameters.AddWithValue("$id", id);
+                cmd.ExecuteNonQuery();
+            }
         }
     }
 

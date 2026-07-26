@@ -5,8 +5,6 @@ namespace SnapZap.Core.Data;
 /// <summary>Reads/writes duplicate groups and their members.</summary>
 public sealed class DupeRepository(Database db)
 {
-    readonly SqliteConnection _c = db.Connection;
-
     /// <summary>Remove all groups of a given kind (a fresh detection run replaces them).</summary>
     /// <param name="root">
     /// Only drop groups lying entirely under this folder; null clears the kind outright.
@@ -24,53 +22,63 @@ public sealed class DupeRepository(Database db)
     /// </remarks>
     public void ClearKind(DupeKind kind, string? root = null)
     {
-        using var cmd = _c.CreateCommand();
-        // dupe_members cascades on group delete.
-        cmd.CommandText = root is null
-            ? "DELETE FROM dupe_groups WHERE kind=$k"
-            : $"""
-               DELETE FROM dupe_groups
-                WHERE kind=$k
-                  AND NOT EXISTS (SELECT 1 FROM dupe_members m
-                                    JOIN images i ON i.id = m.image_id
-                                   WHERE m.group_id = dupe_groups.id
-                                     AND NOT {PathScope.Sql})
-               """;
-        cmd.Parameters.AddWithValue("$k", kind.ToString().ToLowerInvariant());
-        PathScope.Bind(cmd, root);
-        cmd.ExecuteNonQuery();
+        lock (db.WriteLock)
+        {
+            using var cmd = db.Writer.CreateCommand();
+            // dupe_members cascades on group delete.
+            cmd.CommandText = root is null
+                ? "DELETE FROM dupe_groups WHERE kind=$k"
+                : $"""
+                   DELETE FROM dupe_groups
+                    WHERE kind=$k
+                      AND NOT EXISTS (SELECT 1 FROM dupe_members m
+                                        JOIN images i ON i.id = m.image_id
+                                       WHERE m.group_id = dupe_groups.id
+                                         AND NOT {PathScope.Sql})
+                   """;
+            cmd.Parameters.AddWithValue("$k", kind.ToString().ToLowerInvariant());
+            PathScope.Bind(cmd, root);
+            cmd.ExecuteNonQuery();
+        }
     }
 
     /// <summary>Delete one group by id. Members cascade.</summary>
     public void DeleteGroup(long groupId)
     {
-        using var cmd = _c.CreateCommand();
-        cmd.CommandText = "DELETE FROM dupe_groups WHERE id=$id";
-        cmd.Parameters.AddWithValue("$id", groupId);
-        cmd.ExecuteNonQuery();
+        lock (db.WriteLock)
+        {
+            using var cmd = db.Writer.CreateCommand();
+            cmd.CommandText = "DELETE FROM dupe_groups WHERE id=$id";
+            cmd.Parameters.AddWithValue("$id", groupId);
+            cmd.ExecuteNonQuery();
+        }
     }
 
     /// <summary>Insert one group with its members. The first keeper is flagged; caller decides.</summary>
     public long AddGroup(DupeKind kind, string? similarity, IReadOnlyList<(long imageId, bool keeper)> members)
     {
-        using var g = _c.CreateCommand();
-        g.CommandText = "INSERT INTO dupe_groups(kind, similarity) VALUES ($k,$s) RETURNING id";
-        g.Parameters.AddWithValue("$k", kind.ToString().ToLowerInvariant());
-        g.Parameters.AddWithValue("$s", (object?)similarity ?? DBNull.Value);
-        var groupId = (long)g.ExecuteScalar()!;
-
-        using var m = _c.CreateCommand();
-        m.CommandText = "INSERT INTO dupe_members(group_id, image_id, is_keeper) VALUES ($g,$i,$keep)";
-        var pi = m.Parameters.Add("$i", SqliteType.Integer);
-        var pk = m.Parameters.Add("$keep", SqliteType.Integer);
-        m.Parameters.AddWithValue("$g", groupId);
-        foreach (var (imageId, keeper) in members)
+        lock (db.WriteLock)
         {
-            pi.Value = imageId;
-            pk.Value = keeper ? 1 : 0;
-            m.ExecuteNonQuery();
+            var c = db.Writer;
+            using var g = c.CreateCommand();
+            g.CommandText = "INSERT INTO dupe_groups(kind, similarity) VALUES ($k,$s) RETURNING id";
+            g.Parameters.AddWithValue("$k", kind.ToString().ToLowerInvariant());
+            g.Parameters.AddWithValue("$s", (object?)similarity ?? DBNull.Value);
+            var groupId = (long)g.ExecuteScalar()!;
+
+            using var m = c.CreateCommand();
+            m.CommandText = "INSERT INTO dupe_members(group_id, image_id, is_keeper) VALUES ($g,$i,$keep)";
+            var pi = m.Parameters.Add("$i", SqliteType.Integer);
+            var pk = m.Parameters.Add("$keep", SqliteType.Integer);
+            m.Parameters.AddWithValue("$g", groupId);
+            foreach (var (imageId, keeper) in members)
+            {
+                pi.Value = imageId;
+                pk.Value = keeper ? 1 : 0;
+                m.ExecuteNonQuery();
+            }
+            return groupId;
         }
-        return groupId;
     }
 
     /// <summary>
@@ -80,29 +88,34 @@ public sealed class DupeRepository(Database db)
     /// </summary>
     public void SetKeeper(long groupId, long keeperImageId)
     {
-        using var tx = _c.BeginTransaction();
-
-        using (var clear = _c.CreateCommand())
+        lock (db.WriteLock)
         {
-            clear.CommandText = "UPDATE dupe_members SET is_keeper=0 WHERE group_id=$g";
-            clear.Parameters.AddWithValue("$g", groupId);
-            clear.ExecuteNonQuery();
-        }
-        using (var set = _c.CreateCommand())
-        {
-            set.CommandText = "UPDATE dupe_members SET is_keeper=1 WHERE group_id=$g AND image_id=$i";
-            set.Parameters.AddWithValue("$g", groupId);
-            set.Parameters.AddWithValue("$i", keeperImageId);
-            set.ExecuteNonQuery();
-        }
+            var c = db.Writer;
+            using var tx = c.BeginTransaction();
 
-        tx.Commit();
+            using (var clear = c.CreateCommand())
+            {
+                clear.CommandText = "UPDATE dupe_members SET is_keeper=0 WHERE group_id=$g";
+                clear.Parameters.AddWithValue("$g", groupId);
+                clear.ExecuteNonQuery();
+            }
+            using (var set = c.CreateCommand())
+            {
+                set.CommandText = "UPDATE dupe_members SET is_keeper=1 WHERE group_id=$g AND image_id=$i";
+                set.Parameters.AddWithValue("$g", groupId);
+                set.Parameters.AddWithValue("$i", keeperImageId);
+                set.ExecuteNonQuery();
+            }
+
+            tx.Commit();
+        }
     }
 
     public IReadOnlyList<DupeGroup> Groups(DupeKind? kind = null)
     {
         var groups = new List<DupeGroup>();
-        using var cmd = _c.CreateCommand();
+        using var c = db.OpenRead();
+        using var cmd = c.CreateCommand();
         cmd.CommandText = kind is null
             ? "SELECT id, kind, similarity FROM dupe_groups ORDER BY id"
             : "SELECT id, kind, similarity FROM dupe_groups WHERE kind=$k ORDER BY id";
@@ -122,7 +135,7 @@ public sealed class DupeRepository(Database db)
 
         foreach (var (id, k, sim) in meta)
         {
-            using var mc = _c.CreateCommand();
+            using var mc = c.CreateCommand();
             mc.CommandText = "SELECT image_id, is_keeper FROM dupe_members WHERE group_id=$g";
             mc.Parameters.AddWithValue("$g", id);
             var members = new List<DupeMember>();

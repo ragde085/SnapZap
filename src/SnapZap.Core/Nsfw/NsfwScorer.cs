@@ -31,7 +31,8 @@ public sealed class NsfwScorer(Database db, string modelPath)
         // thread-safe for concurrent Run on all providers, so we score sequentially; the SQLite
         // writes are naturally serialized too.
         var targets = new List<(long id, string path)>();
-        using (var cmd = db.Connection.CreateCommand())
+        using (var c = db.OpenRead())
+        using (var cmd = c.CreateCommand())
         {
             cmd.CommandText = rescoreExisting
                 ? $"SELECT id, path FROM images WHERE {PathScope.Where(root)}"
@@ -49,10 +50,20 @@ public sealed class NsfwScorer(Database db, string modelPath)
         // context that is a multi-second freeze with no progress bar moving.
         using var clf = await Task.Run(() => new OnnxNsfwClassifier(modelPath), ct);
 
-        using var update = db.Connection.CreateCommand();
-        update.CommandText = "UPDATE images SET nsfw_score=$s WHERE id=$id";
-        var ps = update.Parameters.Add("$s", SqliteType.Real);
-        var pid = update.Parameters.Add("$id", SqliteType.Integer);
+        // The prepared command is reused across the whole run, but every touch of it — including
+        // building it — happens under db.WriteLock, per Database.Writer's own contract ("never
+        // touch this without holding WriteLock"). Only ScoreFile below (the expensive part) runs
+        // unlocked, so it never blocks other writers.
+        SqliteCommand update;
+        SqliteParameter ps, pid;
+        lock (db.WriteLock)
+        {
+            update = db.Writer.CreateCommand();
+            update.CommandText = "UPDATE images SET nsfw_score=$s WHERE id=$id";
+            ps = update.Parameters.Add("$s", SqliteType.Real);
+            pid = update.Parameters.Add("$id", SqliteType.Integer);
+        }
+        using var _ = update;
 
         foreach (var (id, path) in targets)
         {
@@ -60,9 +71,12 @@ public sealed class NsfwScorer(Database db, string modelPath)
             try
             {
                 var score = await Task.Run(() => clf.ScoreFile(path), ct);
-                ps.Value = score;
-                pid.Value = id;
-                update.ExecuteNonQuery();
+                lock (db.WriteLock)
+                {
+                    ps.Value = score;
+                    pid.Value = id;
+                    update.ExecuteNonQuery();
+                }
             }
             catch { failed++; }
             done++;

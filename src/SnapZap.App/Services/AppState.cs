@@ -365,17 +365,34 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
     /// <summary>Folder hierarchy with per-step completion, rebuilt on each load.</summary>
     public FolderNode? Tree { get; private set; }
 
-    // ---- Load --------------------------------------------------------------
-    public Task LoadAsync()
-    {
-        // Only the folder the session is scoped to. The catalogue keeps every folder ever
-        // scanned as cache; loading all of it put photos from unrelated libraries in the grid
-        // and, worse, inside the reach of "select everything shown" → Delete.
-        // Recover the working folder across restarts: it is what export's mirror mode and the
-        // post-restore re-scan need, and it is already recorded in the catalogue.
-        ScannedFolder ??= catalog.ScanRoot;
+    /// <summary>Everything <see cref="LoadAsync"/> computes off-thread: pure reads and LINQ
+    /// passes over the catalogue, with no dependency on (or mutation of) other <see cref="AppState"/>
+    /// fields, so it is safe to run on a background thread.</summary>
+    sealed record LoadSnapshot(
+        IReadOnlyList<ImageView> Images,
+        Dictionary<NsfwBand, int> BandCounts,
+        Dictionary<long, DupeInfo> DupeOf,
+        IReadOnlyList<DupeGroup> DupeGroups,
+        Dictionary<long, ImageView> ById,
+        IReadOnlyList<string> Folders,
+        IReadOnlyList<int> Years,
+        int DupeExtraCount,
+        long ReclaimableBytes,
+        FolderNode? Tree);
 
-        var records = catalog.Images.Under(catalog.ScanRoot).ToList();
+    /// <summary>The cached thumbnail file's own last-write time, or 0 when there is none to stat
+    /// — see <see cref="ImageView.ThumbUrl"/>.</summary>
+    static long ThumbGenerationOf(ImageRecord r)
+    {
+        if (r.ThumbPath is null) return 0;
+        try { return new FileInfo(r.ThumbPath).LastWriteTimeUtc.Ticks; }
+        catch (IOException) { return 0; }
+        catch (UnauthorizedAccessException) { return 0; }
+    }
+
+    LoadSnapshot BuildLoadSnapshot(string? scanRoot)
+    {
+        var records = catalog.Images.Under(scanRoot).ToList();
         var present = records.Select(r => r.Id).ToHashSet();
 
         // Groups are stored as they were detected, but members get recycled afterwards. A group
@@ -400,29 +417,61 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
                 dupeOf[m.ImageId] = new DupeInfo(g.Id, g.Kind, m.ImageId == keeperId);
         }
 
-        Images = records.Select(r => new ImageView(r, dupeOf.GetValueOrDefault(r.Id))).ToList();
-        _bandCounts = Images.GroupBy(BandOf).ToDictionary(g => g.Key, g => g.Count());
-        DupeOf = dupeOf;
-        DupeGroups = groups;
-        _byId = Images.ToDictionary(i => i.Id);
+        var images = records
+            .Select(r => new ImageView(r, dupeOf.GetValueOrDefault(r.Id), ThumbGenerationOf(r)))
+            .ToList();
+        var bandCounts = images.GroupBy(BandOf).ToDictionary(g => g.Key, g => g.Count());
+        var byId = images.ToDictionary(i => i.Id);
 
-        Folders = Images.Select(i => i.Folder).Distinct()
+        var folders = images.Select(i => i.Folder).Distinct()
             .OrderBy(f => f, StringComparer.Ordinal).ToList();
-        Years = Images.Select(i => i.Year).Where(y => y is not null).Select(y => y!.Value)
+        var years = images.Select(i => i.Year).Where(y => y is not null).Select(y => y!.Value)
             .Distinct().OrderByDescending(y => y).ToList();
 
         // Only non-keepers are reclaimable, and only in kinds a bulk action would actually take.
         // Counting burst frames here would advertise space that "Select duplicate extras" is
         // deliberately never going to free, and send the user hunting for the missing gigabytes.
-        var extras = Images
+        var extras = images
             .Where(i => dupeOf.TryGetValue(i.Id, out var d) && !d.IsKeeper && d.Kind.IsBulkSelectable())
             .ToList();
-        DupeExtraCount = extras.Count;
-        ReclaimableBytes = extras.Sum(i => i.FileSize);
 
         // Built against the detectors that are on right now, not against whatever was on when the
         // rows were stamped — that difference is exactly what re-flags folders as pending.
-        Tree = FolderTreeBuilder.Build(Images, DupeOf, DedupSettings.Load(catalog.Db).CoveredKinds);
+        var tree = FolderTreeBuilder.Build(images, dupeOf, DedupSettings.Load(catalog.Db).CoveredKinds);
+
+        return new LoadSnapshot(images, bandCounts, dupeOf, groups, byId, folders, years,
+                                 extras.Count, extras.Sum(i => i.FileSize), tree);
+    }
+
+    // ---- Load --------------------------------------------------------------
+    public async Task LoadAsync()
+    {
+        // Only the folder the session is scoped to. The catalogue keeps every folder ever
+        // scanned as cache; loading all of it put photos from unrelated libraries in the grid
+        // and, worse, inside the reach of "select everything shown" → Delete.
+        // Recover the working folder across restarts: it is what export's mirror mode and the
+        // post-restore re-scan need, and it is already recorded in the catalogue.
+        ScannedFolder ??= catalog.ScanRoot;
+        var scanRoot = catalog.ScanRoot;
+
+        // The catalogue read, the group read and the dozen-odd whole-library LINQ passes all
+        // happen here, off the circuit thread — previously they ran inline and returned
+        // Task.CompletedTask despite the signature. Mutating AppState's own fields happens only
+        // after this await, back on the circuit (Blazor Server's SynchronizationContext resumes
+        // the continuation there), so subscribed components never observe a torn mix of old and
+        // new state.
+        var snapshot = await Task.Run(() => BuildLoadSnapshot(scanRoot));
+
+        Images = snapshot.Images;
+        _bandCounts = snapshot.BandCounts;
+        DupeOf = snapshot.DupeOf;
+        DupeGroups = snapshot.DupeGroups;
+        _byId = snapshot.ById;
+        Folders = snapshot.Folders;
+        Years = snapshot.Years;
+        DupeExtraCount = snapshot.DupeExtraCount;
+        ReclaimableBytes = snapshot.ReclaimableBytes;
+        Tree = snapshot.Tree;
 
         var live = Images.Select(i => i.Id).ToHashSet();
 
@@ -439,7 +488,14 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
         // LoadAsync both replaces Images and prunes/restores Selected, so the selection memo
         // must be invalidated and the (possibly pruned) selection persisted.
         NotifySelectionChanged();
-        return Task.CompletedTask;
+
+        // One-shot, process-wide: surfaces the backup path a signature-recipe migration took
+        // (AC 6a — "reported to the user", not just written to a log nobody reads). Checked on
+        // every load rather than only the first one in this circuit, since it's the first *tab*
+        // to load after the migration that should show it, and TakePendingRecipeMigrationNotice
+        // itself guarantees only one of them wins the race.
+        if (catalog.TakePendingRecipeMigrationNotice() is { } notice)
+            ShowToast(notice);
     }
 
     // ---- Filtering -----------------------------------------------------
@@ -807,7 +863,8 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
         await RunAsync("Finding duplicates", async (reportProgress, ct) =>
         {
             var progress = new Progress<DedupProgress>(p => reportProgress(p.Done, p.Total, p.Detail));
-            var report = await new DuplicateService(catalog.Db).DetectAsync(folder, progress, ct);
+            var report = await new DuplicateService(catalog.Db, catalog.Imaging, catalog.ThumbDir)
+                .DetectAsync(folder, progress, ct);
             await LoadAsync();
 
             // Counted from the loaded, scoped groups rather than the detectors' own tallies,

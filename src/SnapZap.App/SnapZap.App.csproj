@@ -11,6 +11,16 @@
   </PropertyGroup>
 
   <!--
+    ReadyToRun (pre-JITted native startup code) for the shipping win-x64 publish only — scoped to
+    that RID so it never touches the macOS dev publish, which is framework-dependent and launched
+    via a shell script (see CLAUDE.md). Do NOT add trimming alongside this: SkiaSharp and ONNX
+    Runtime's native interop break under the trimmer.
+  -->
+  <PropertyGroup Condition="'$(RuntimeIdentifier)' == 'win-x64'">
+    <PublishReadyToRun>true</PublishReadyToRun>
+  </PropertyGroup>
+
+  <!--
     The optional sidecar, installed by scripts/install-deps.{sh,bat} into <repo>/models. The app
     resolves it relative to AppContext.BaseDirectory, so without this copy a freshly installed
     model would sit in the repo while the app looked for it in bin/Debug/net10.0/models and

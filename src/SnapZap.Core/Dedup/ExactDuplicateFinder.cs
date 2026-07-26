@@ -24,7 +24,8 @@ public sealed class ExactDuplicateFinder(Database db)
 
         // Gather members of every hash that appears more than once.
         var byHash = new Dictionary<string, List<(long id, long pixels, long size, string path)>>();
-        using (var cmd = db.Connection.CreateCommand())
+        using (var c = db.OpenRead())
+        using (var cmd = c.CreateCommand())
         {
             cmd.CommandText = $"""
                 SELECT content_hash, id,
@@ -49,27 +50,32 @@ public sealed class ExactDuplicateFinder(Database db)
         }
 
         int groupCount = 0;
-        using var tx = db.Connection.BeginTransaction();
-        foreach (var (_, members) in byHash)
+        // One lock, one transaction, for every group — re-entrant, so AddGroup's own internal
+        // lock (Task 18) does not deadlock here.
+        lock (db.WriteLock)
         {
-            // Keeper = most pixels, then largest bytes, then first path.
-            //
-            // Path is the key that actually decides here, every time: these files are
-            // byte-identical by definition, so pixels and bytes always tie. It has to be a value
-            // the library itself determines — id is assigned in parallel scan-completion order, so
-            // tie-breaking on it handed a different photo the keeper flag on every fresh scan of
-            // an unchanged folder. Same reasoning as StoreGroups.Keeper; both must stay in step.
-            var keeperId = members
-                .OrderByDescending(m => m.pixels)
-                .ThenByDescending(m => m.size)
-                .ThenBy(m => m.path, StringComparer.Ordinal)
-                .First().id;
+            using var tx = db.Writer.BeginTransaction();
+            foreach (var (_, members) in byHash)
+            {
+                // Keeper = most pixels, then largest bytes, then first path.
+                //
+                // Path is the key that actually decides here, every time: these files are
+                // byte-identical by definition, so pixels and bytes always tie. It has to be a value
+                // the library itself determines — id is assigned in parallel scan-completion order, so
+                // tie-breaking on it handed a different photo the keeper flag on every fresh scan of
+                // an unchanged folder. Same reasoning as StoreGroups.Keeper; both must stay in step.
+                var keeperId = members
+                    .OrderByDescending(m => m.pixels)
+                    .ThenByDescending(m => m.size)
+                    .ThenBy(m => m.path, StringComparer.Ordinal)
+                    .First().id;
 
-            repo.AddGroup(DupeKind.Exact, similarity: "identical",
-                members.Select(m => (m.id, m.id == keeperId)).ToList());
-            groupCount++;
+                repo.AddGroup(DupeKind.Exact, similarity: "identical",
+                    members.Select(m => (m.id, m.id == keeperId)).ToList());
+                groupCount++;
+            }
+            tx.Commit();
         }
-        tx.Commit();
         return groupCount;
     }
 }
