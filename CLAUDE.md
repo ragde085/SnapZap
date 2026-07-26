@@ -150,14 +150,17 @@ All Windows-specific logic is behind `IPlatformServices` (in `Platform/IPlatform
 
 | Method | Purpose | Status |
 |---|---|---|
-| `ITrashService` | Recycle bin operations (delete → recycle → restore) | macOS impl working; Windows impl pending (#10) |
-| `ILinkService` | Hardlink creation + stat (for export hardlink mode) | macOS impl (libc `link()`) working; Windows impl pending (#11) |
-| `IInferenceProvider` | NSFW ONNX inference (CPU on macOS, optionally DirectML on Windows) | CPU impl working; DirectML pending (#11) |
-| `IAppHost` | Window host + browser launch (Photino/WebView2 on Windows) | Browser-launch impl working; Photino window pending (#9) |
+| `ITrashService` | Recycle bin operations (delete → recycle → restore) | macOS impl working; Windows impl written, never executed |
+| `ILinkService` | Hardlink creation + stat (for export hardlink mode) | macOS impl (libc `link()`) working; Windows impl written, never executed |
+| `IInferenceProvider` | NSFW ONNX inference (CPU on macOS, optionally DirectML on Windows) | CPU impl working; DirectML not started |
+| `IAppHost` | Window host + browser launch (Photino/WebView2 on Windows) | **Declared but never implemented or called** — the browser is launched inline in `Program.cs`. Wiring Photino behind it is [ROADMAP](docs/ROADMAP.md) P2.5 |
+
+There is no issue tracker on this repo; open work lives in [docs/ROADMAP.md](docs/ROADMAP.md)
+and [docs/WINDOWS-VERIFY.md](docs/WINDOWS-VERIFY.md).
 
 Development on macOS with Windows-impl stubs means:
 - **Cross-platform code paths execute fully** (scan, dedup, export, delete all work on Mac)
-- **Windows-only paths (4 above) must be verified on Windows hardware** (see `WINDOWS-VERIFY.md`)
+- **Windows-only paths (4 above) must be verified on Windows hardware** (see [docs/WINDOWS-VERIFY.md](docs/WINDOWS-VERIFY.md))
 
 ### Key invariants (safety-critical)
 
@@ -245,7 +248,9 @@ All other deps are MIT or Apache-2.0. No paid, no subscription-gated.
 
 - **Used only for similar-image detection**, not exact duplicates.
 - **Exact duplicates** come from our own SHA-256 hashes in SQLite (faster, works offline, no sidecar required).
-- **Parser** (`CzkawkaFinder.cs`) recursively finds arrays of `{path,...}` objects in the JSON output. Schema is not publicly documented; the parser is defensive and unit-tested, but **must be validated against real `czkawka_cli -C` output** before trusting similar-detection results in production.
+- **Parser** (`CzkawkaFinder.cs`) recursively finds arrays of `{path,...}` objects in the JSON output. ✅ **Validated against czkawka 12.0.0** (2026-07-25): real output is an array of groups of objects carrying `path` plus size/width/height/difference. `DedupTests.Parses_real_czkawka_12_output` locks the captured shape in. The parser stays tolerant, so a schema change should degrade rather than break.
+- **Paths must be canonicalised.** czkawka reports resolved paths while the catalog stores what the user typed. On macOS `/tmp` is a symlink, so scanning `/tmp/x` used to match nothing and report "0 similar groups" silently. `CzkawkaFinder.Canonical` resolves symlinked ancestors and both spellings are indexed.
+- **`--max-difference` is set to 10**, but czkawka 12 defaults `--hash-size` to 16, for which it recommends up to 20. We therefore under-detect relative to czkawka's own guidance — deliberate, since this feeds a tool that deletes things, but raise it if similar-detection feels too quiet.
 
 ### Gotchas
 

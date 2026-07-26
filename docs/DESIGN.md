@@ -73,11 +73,13 @@ what makes Blazor Server's per-interaction round trip a non-issue.
   (`Dedup/ExactDuplicateFinder.cs`) with no external tool. **Czkawka is used *only* for
   *similar* (perceptual) images** (`Dedup/CzkawkaFinder.cs`). Consequence: exact dedup works
   even with no Czkawka installed; only near-duplicate detection needs the sidecar.
-- **Czkawka JSON parser is validation-pending.** Czkawka's similar-images JSON schema is not
-  publicly documented and could not be captured on the dev Mac (binary not installed). The
-  parser is defensive (recursively finds arrays of `{path,...}` objects) and unit-tested
-  against assumed shapes, but must be verified against real `czkawka_cli -C` output before
-  similar-detection results are trusted.
+- **Czkawka JSON parser is validated** against czkawka 12.0.0 (2026-07-25). Real output is an
+  array of groups, each an array of objects carrying `path` plus size/width/height/difference
+  metadata we ignore — which is what the defensive parser already assumed, so it needed no
+  change. Validation did surface three integration bugs, all fixed: paths were not
+  canonicalised (czkawka resolves symlinks, the catalog does not, so groups were silently
+  dropped), an explicitly configured binary path was not authoritative, and the keeper
+  tie-break could retain a compressed copy over its original.
 
 ---
 
