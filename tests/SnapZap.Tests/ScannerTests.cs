@@ -83,6 +83,43 @@ public class ScannerTests : IDisposable
     }
 
     [Fact]
+    public async Task Scanning_a_second_folder_leaves_the_first_folders_catalog_intact()
+    {
+        // Pruning removes rows whose file is gone. It must not treat "not in the folder I just
+        // scanned" as "gone": scanning a second library used to delete the first one's rows
+        // outright, losing every hash, score and keeper decision for photos still on disk.
+        var other = Path.Combine(_work, "other");
+        WritePng(Path.Combine(_photos, "a.png"), 200, 120, SKColors.Red);
+        WritePng(Path.Combine(_photos, "b.png"), 640, 480, SKColors.Green);
+        WritePng(Path.Combine(other, "c.png"), 320, 240, SKColors.Blue);
+
+        using var db = new Database(_dbPath);
+        var scanner = new Scanner(db, new SkiaImageService(), _thumbs);
+        var repo = new ImageRepository(db);
+
+        await scanner.ScanAsync(_photos);
+        Assert.Equal(2, repo.Count());
+
+        var second = await scanner.ScanAsync(other);
+        Assert.Equal(0, second.Pruned);
+        Assert.Equal(3, repo.Count());
+
+        // Pruning still works within the folder actually scanned.
+        File.Delete(Path.Combine(_photos, "b.png"));
+        var third = await scanner.ScanAsync(_photos);
+        Assert.Equal(1, third.Pruned);
+        Assert.Equal(2, repo.Count());
+
+        // ...and a row outside the scanned folder is dropped when its file is genuinely gone,
+        // rather than lingering forever as a broken thumbnail just because the scan didn't
+        // walk that folder. The rule is "the file is missing", not "it wasn't in this scan".
+        File.Delete(Path.Combine(other, "c.png"));
+        var fourth = await scanner.ScanAsync(_photos);
+        Assert.Equal(1, fourth.Pruned);
+        Assert.Equal(1, repo.Count());
+    }
+
+    [Fact]
     public async Task Exact_duplicates_do_not_fail_on_concurrent_thumbnail_write()
     {
         // Regression: identical files share a content hash → same thumbnail path. Concurrent

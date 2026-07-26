@@ -3,19 +3,22 @@ using System.Text.Json;
 namespace SnapZap.App.Services;
 
 /// <summary>
-/// Persists the parts of a triage session worth surviving a page reload — currently the
-/// selection, which can represent a great deal of human judgement.
+/// Owns the photo selection and persists it.
 ///
-/// Written to app-data rather than browser storage so it also survives an app restart and
-/// doesn't depend on which browser opened the tab. Writes are debounced: selection changes on
-/// every click, and a library-sized selection is far too big to serialise that often.
+/// The selection lives here, in a singleton, rather than in the per-circuit <see cref="AppState"/>
+/// because SnapZap is a single-user tool over a single catalog: two windows on the same library
+/// are two views of one working set, not two independent ones. Holding a copy per circuit meant
+/// each tab persisted its own full snapshot and the later write silently replaced the earlier —
+/// one tab's triage work vanishing with no warning. With one owner, every window sees and edits
+/// the same selection, and <see cref="Changed"/> keeps them in step.
 ///
-/// ⚠ Known limitation — this is a singleton while <see cref="AppState"/> is per-circuit, so
-/// with two tabs open on the same instance the saved selection is last-write-wins: each tab
-/// persists its own full snapshot and the later one replaces the earlier outright, with no
-/// merge and no warning. Acceptable for a single-user desktop tool that expects one window;
-/// supporting multiple windows properly would mean scoping the store per circuit or merging
-/// on a per-tab timestamp.
+/// Mutation is copy-on-write: readers hold a reference to an immutable snapshot and never need a
+/// lock, which matters because <c>Contains</c> is called once per card per render while another
+/// circuit may be editing. Writers swap the reference under a lock.
+///
+/// Persistence is to app-data rather than browser storage, so a session also survives an app
+/// restart and doesn't depend on which browser opened the tab. Writes are debounced: selection
+/// changes on every click and a library-sized selection is far too big to serialise that often.
 /// </summary>
 public sealed class SessionStore : IDisposable
 {
@@ -28,9 +31,13 @@ public sealed class SessionStore : IDisposable
     readonly Lock _gate = new();
     readonly TimeSpan _debounce;
 
+    volatile HashSet<long> _selected = [];
     Timer? _timer;
-    long[] _pending = [];
     bool _disposed;
+
+    /// <summary>Raised whenever the selection changes, including from another circuit. Handlers
+    /// running in a Blazor component must marshal onto their own dispatcher.</summary>
+    public event Action? Changed;
 
     public SessionStore(CatalogService catalog) : this(catalog, TimeSpan.FromSeconds(1)) { }
 
@@ -38,11 +45,32 @@ public sealed class SessionStore : IDisposable
     {
         _path = Path.Combine(catalog.AppDataDir, "session.json");
         _debounce = debounce;
+        _selected = [.. LoadPersisted()];   // seed once per process, not once per circuit
     }
 
-    /// <summary>Ids selected when the session was last saved. Callers must still discard ids
-    /// that no longer exist — the catalog may have changed while we were away.</summary>
-    public IReadOnlyList<long> LoadSelection()
+    /// <summary>The current selection. Treat as immutable — mutate via <see cref="Mutate"/>.</summary>
+    public HashSet<long> Current => _selected;
+
+    /// <summary>
+    /// Apply a change to the selection. The callback receives a private copy which becomes the
+    /// new snapshot, so concurrent readers are never exposed to a half-applied edit.
+    /// </summary>
+    public void Mutate(Action<HashSet<long>> change)
+    {
+        lock (_gate)
+        {
+            if (_disposed) return;
+            var next = new HashSet<long>(_selected);
+            change(next);
+            _selected = next;
+            QueueSave(next);
+        }
+        Changed?.Invoke();
+    }
+
+    /// <summary>Ids persisted by an earlier run. Callers must still discard ids that no longer
+    /// exist — the catalog may have changed while we were away.</summary>
+    public IReadOnlyList<long> LoadPersisted()
     {
         try
         {
@@ -53,23 +81,21 @@ public sealed class SessionStore : IDisposable
         return [];
     }
 
-    /// <summary>Queue a save. Rapid successive calls collapse into one write.</summary>
-    public void SaveSelection(IEnumerable<long> ids)
+    /// <summary>Caller already holds <see cref="_gate"/>.</summary>
+    void QueueSave(HashSet<long> ids)
     {
-        lock (_gate)
-        {
-            if (_disposed) return;
-            _pending = ids.ToArray();
-            _timer ??= new Timer(_ => Flush(), null, Timeout.Infinite, Timeout.Infinite);
-            _timer.Change(_debounce, Timeout.InfiniteTimeSpan);
-        }
+        _pending = [.. ids];
+        _timer ??= new Timer(_ => Flush(), null, Timeout.Infinite, Timeout.Infinite);
+        _timer.Change(_debounce, Timeout.InfiniteTimeSpan);
     }
+
+    long[]? _pending;   // null = nothing queued; [] is a legitimate "user cleared it"
 
     void Flush()
     {
-        long[] ids;
+        long[]? ids;
         lock (_gate) ids = _pending;
-        Write(ids);
+        if (ids is not null) Write(ids);
     }
 
     void Write(long[] ids)
@@ -86,14 +112,14 @@ public sealed class SessionStore : IDisposable
     }
 
     /// <summary>
-    /// Flushes any pending selection before shutting down. Without this, closing the app within
+    /// Flushes any pending selection before shutting down. Without this, closing the app inside
     /// the debounce window — an entirely ordinary sequence, not a crash — would silently discard
-    /// the user's last selection change even on a clean exit. A hard process kill can still lose
-    /// it; that is the inherent cost of debouncing and is accepted.
+    /// the user's last change even on a clean exit. A hard process kill can still lose it; that
+    /// is the inherent cost of debouncing and is accepted.
     /// </summary>
     public void Dispose()
     {
-        long[] pending;
+        long[]? pending;
         lock (_gate)
         {
             if (_disposed) return;
@@ -102,6 +128,9 @@ public sealed class SessionStore : IDisposable
             _timer = null;
             pending = _pending;
         }
-        Write(pending);
+        // Only write if a change was actually queued. Writing unconditionally meant that
+        // simply opening and closing the app — never touching the selection — overwrote
+        // session.json with an empty list and destroyed the saved triage.
+        if (pending is not null) Write(pending);
     }
 }

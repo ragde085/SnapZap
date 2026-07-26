@@ -2,6 +2,7 @@
 @implements IDisposable
 @inject AppState AppState
 @inject DependencyChecker Checker
+@inject SessionStore Session
 
 <header class="topbar">
     <div class="brand">Snap<em>Zap</em></div>
@@ -25,9 +26,11 @@
                         <option value="@SortKey.Blur">Sharpness</option>
                         <option value="@SortKey.Nsfw">NSFW score</option>
                     </select>
+                    @* One description, not two that disagree: the tooltip used to report the
+                       current state while the accessible name announced the opposite action. *@
                     <button class="sort-dir"
-                            title="@(AppState.SortDescending ? "Descending" : "Ascending")"
-                            aria-label="@(AppState.SortDescending ? "Sort ascending" : "Sort descending")"
+                            title="@SortDirLabel"
+                            aria-label="@SortDirLabel"
                             @onclick="() => AppState.SortDescending = !AppState.SortDescending">
                         @(AppState.SortDescending ? "↓" : "↑")
                     </button>
@@ -70,6 +73,12 @@
 
     int Shown => AppState.Filtered().Count;
 
+    /// <summary>States where the sort is now and what pressing this does — both audiences get
+    /// the same sentence, so the tooltip and the screen reader can't contradict each other.</summary>
+    string SortDirLabel => AppState.SortDescending
+        ? "Sorted descending — switch to ascending"
+        : "Sorted ascending — switch to descending";
+
     string Summary
     {
         get
@@ -97,6 +106,10 @@
     {
         AppState.Changed += StateHasChanged;
 
+        // The selection is shared by every window on this library. That event can arrive from
+        // another circuit's thread, so it must be marshalled onto this one before rendering.
+        Session.Changed += OnSelectionChangedElsewhere;
+
         // Validate the optional sidecars at launch. Only surfaced when something is actually
         // missing and the user hasn't asked to stop being reminded — a clean install with
         // everything present never sees a dialog.
@@ -117,5 +130,15 @@
 
     void OpenDupeReview() => _showDupes = true;
 
-    public void Dispose() => AppState.Changed -= StateHasChanged;
+    void OnSelectionChangedElsewhere() => InvokeAsync(() =>
+    {
+        AppState.RefreshSelection();
+        StateHasChanged();
+    });
+
+    public void Dispose()
+    {
+        AppState.Changed -= StateHasChanged;
+        Session.Changed -= OnSelectionChangedElsewhere;
+    }
 }

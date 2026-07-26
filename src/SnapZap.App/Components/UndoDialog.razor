@@ -7,7 +7,10 @@
          tabindex="-1" @ref="_dlgRef" @onkeydown="HandleKeyDown">
         <div class="dlg-box">
             <h2>History</h2>
-            <p class="dlg-sub">Every batch SnapZap has recycled. Restoring puts the files back where they came from.</p>
+            @* Not everything here was recycled — an export in Move mode relocates files rather
+               than binning them, and calling that "recycled" sends people to the wrong place
+               to look for their photos. *@
+            <p class="dlg-sub">Every batch SnapZap has recycled or moved. Restoring puts the files back where they came from.</p>
 
             <div class="undo-list">
                 @if (_batches.Count == 0)

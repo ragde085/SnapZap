@@ -21,6 +21,7 @@ window.snapzap = (function () {
   let scrollHandler = null;
   let gridKeyHandler = null;
   let globalKeyHandler = null;
+  let focusTrap = null;
   let ticking = false;
 
   let cols = 0;
@@ -105,6 +106,10 @@ window.snapzap = (function () {
         const t = e.target;
         if (t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return;
 
+        // Never re-scope the selection from behind a dialog: reaching for Cmd+A to select a
+        // destination path would silently arm the export against the whole library.
+        if (document.querySelector('.dlg, .modal, .cmp')) return;
+
         if (e.key === 'a' || e.key === 'A') {
           e.preventDefault();
           dotnetRef.invokeMethodAsync('SelectAllVisible');
@@ -130,6 +135,47 @@ window.snapzap = (function () {
 
     scrollToTop: function () {
       if (gridEl) gridEl.scrollTop = 0;
+    },
+
+    /**
+     * Keep Tab inside whichever dialog is open. Blazor renders the overlays as siblings of the
+     * app rather than in a top layer, so without this Tab walks straight out of a modal into
+     * the toolbar and grid behind it — where the controls are still operable and, in the case
+     * of Delete, destructive. Installed once; it reads the DOM per keypress rather than
+     * capturing a node, so it stays correct as dialogs open, close and re-render.
+     */
+    trapFocus: function () {
+      if (focusTrap) return;
+      const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), ' +
+                        'select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+      focusTrap = function (e) {
+        if (e.key !== 'Tab') return;
+
+        // The last one rendered is the one on top — a preview opened from a dialog sits above it.
+        const open = document.querySelectorAll('.dlg, .cmp, .modal');
+        if (!open.length) return;
+        const dialog = open[open.length - 1];
+
+        const items = Array.prototype.filter.call(
+          dialog.querySelectorAll(FOCUSABLE),
+          function (el) { return el.offsetParent !== null || el === document.activeElement; });
+        if (!items.length) { e.preventDefault(); dialog.focus(); return; }
+
+        const first = items[0];
+        const last = items[items.length - 1];
+
+        // Focus outside the dialog entirely (it escaped earlier, or the dialog just opened)
+        // gets pulled back to the appropriate end rather than left where it was.
+        if (!dialog.contains(document.activeElement)) {
+          e.preventDefault();
+          (e.shiftKey ? last : first).focus();
+          return;
+        }
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+      };
+      document.addEventListener('keydown', focusTrap, true);
     },
 
     /**

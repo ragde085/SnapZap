@@ -122,6 +122,34 @@ public class ExportTests : IDisposable
         Assert.Equal(1, restore.Restored);
         Assert.True(File.Exists(source));                              // back where it came from
         Assert.True(File.Exists(Path.Combine(_dest, "m.png")));        // undo is not itself destructive
+
+        // ...and the catalog follows the file back, rather than still describing the copy the
+        // user just undid their way out of.
+        Assert.Equal(source, Assert.Single(new ImageRepository(db).All()).Path);
+    }
+
+    [Fact]
+    public async Task Move_export_repoints_the_catalog_at_the_new_location()
+    {
+        // Move deletes the original after verifying. If the catalog keeps pointing at the old
+        // path, every row it holds becomes a lie: thumbnails and previews 404, and a later
+        // delete tries to recycle a file that isn't there. The bytes were hash-verified at the
+        // destination, so the row is still valid — it just lives somewhere else now.
+        var source = Path.Combine(_photos, "m.png");
+        WritePng(source, 100, 100, SKColors.Blue);
+        using var db = Scan();
+
+        var req = new ExportRequest
+        {
+            Destination = _dest, SourceRoot = _photos,
+            Mode = TransferMode.Move, Structure = ExportStructure.Flat,
+            KeeperIds = Ids(db, "m.png"),
+        };
+        await Engine(db).RunAsync(req);
+
+        var row = Assert.Single(new ImageRepository(db).All());
+        Assert.Equal(Path.Combine(_dest, "m.png"), row.Path);
+        Assert.True(File.Exists(row.Path));
     }
 
     [Fact]

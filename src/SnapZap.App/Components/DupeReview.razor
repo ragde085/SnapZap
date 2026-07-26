@@ -68,7 +68,7 @@
                 <div>
                     <h2>Review duplicates</h2>
                     <p class="dlg-sub">
-                        Group @(_index + 1) of @Groups.Count · @Members.Count copies · @Distinguisher
+                        Group @(_index + 1) of @Groups.Count · @Members.Count cop@(Members.Count == 1 ? "y" : "ies") · @Distinguisher
                     </p>
                 </div>
                 <div class="review-nav">
@@ -82,7 +82,7 @@
                 {
                     var isKeeper = AppState.DupeOf.TryGetValue(m.Id, out var d) && d.IsKeeper;
                     <button class="review-card @(isKeeper ? "keeper" : "")"
-                            aria-pressed="@isKeeper"
+                            aria-pressed="@(isKeeper ? "true" : "false")"
                             @onclick="() => Keep(m.Id)">
                         <span class="review-shot">
                             <img src="@m.ThumbUrl" alt="@m.FileName" loading="lazy" />

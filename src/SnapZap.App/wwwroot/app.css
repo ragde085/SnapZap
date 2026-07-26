@@ -14,9 +14,12 @@
   --line: #382a1c;
   --line-soft: #2a1f15;
 
-  --ink: #efe5d6;
-  --muted: #9c8b73;
-  --dim: #6e5f4b;
+  /* Three readable steps, not two readable ones and a decorative one. Every value clears
+     4.5:1 against --raised, the lightest ground any of them sits on — --dim carries the hint
+     text that explains what a destructive button will do, so "quiet" can't mean "unreadable". */
+  --ink: #efe5d6;    /* 13.7:1 */
+  --muted: #b3a189;  /*  6.8:1 */
+  --dim: #958065;    /*  4.5:1 */
 
   /* safelight — selection + progress only */
   --accent: #e2823f;
@@ -25,7 +28,7 @@
 
   /* semantic, separate from the accent */
   --ok: #8fa66b;
-  --danger: #c1543a;
+  --danger: #ca674f;   /* 4.5:1 — it labels the irreversible controls, so it has to be read */
   --warn: #d99b45;
 
   --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, ui-serif, serif;
@@ -838,6 +841,7 @@ main { display: flex; flex: 1; min-height: 0; }
 }
 .preflight .ok { color: var(--ok); }
 .preflight .bad { color: var(--danger); font-weight: 600; }
+.preflight .warn-line { color: var(--warn); }
 
 .dlg-actions { display: flex; gap: 10px; align-items: center; }
 .exp-result { margin-top: 14px; font-size: var(--t-xs); white-space: pre-wrap; line-height: 1.6; color: var(--muted); }

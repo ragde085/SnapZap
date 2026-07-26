@@ -5,7 +5,7 @@
 @if (AppState.LastFailures.Count > 0 || AppState.LastUnsupportedTotal > 0)
 {
     <div class="issues">
-        <button class="issues-head" aria-expanded="@_open" @onclick="() => _open = !_open">
+        <button class="issues-head" aria-expanded="@(_open ? "true" : "false")" @onclick="() => _open = !_open">
             <span class="issues-dot" aria-hidden="true"></span>
             <span>@Headline</span>
             <span class="issues-twist @(_open ? "open" : "")" aria-hidden="true">›</span>

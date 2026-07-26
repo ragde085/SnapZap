@@ -13,7 +13,7 @@
         <div class="tree" role="tree" aria-label="Scanned folders">
             <button class="tree-row @(AppState.Folder.Length == 0 ? "on" : "")"
                     role="treeitem"
-                    aria-selected="@(AppState.Folder.Length == 0)"
+                    aria-selected="@(AppState.Folder.Length == 0 ? "true" : "false")"
                     @onclick="() => Select(string.Empty)">
                 <span class="tree-twist" aria-hidden="true"></span>
                 <span class="tree-name">All folders</span>
@@ -85,8 +85,8 @@
 
                 <button class="tree-row @(selected ? "on" : "")"
                         role="treeitem"
-                        aria-selected="@selected"
-                        aria-expanded="@(node.HasChildren ? expanded : null)"
+                        aria-selected="@(selected ? "true" : "false")"
+                        aria-expanded="@(node.HasChildren ? (expanded ? "true" : "false") : null)"
                         title="@StatusTitle(node)"
                         @onclick="() => Select(node.Path)">
                     <span class="tree-name">@node.Name</span>

@@ -6,7 +6,7 @@
     <button class="@Cls(Panel.Filters)"
             title="Filters"
             aria-label="Filters"
-            aria-pressed="@(_panel == Panel.Filters)"
+            aria-pressed="@(_panel == Panel.Filters ? "true" : "false")"
             @onclick="() => Show(Panel.Filters)">
         <svg viewBox="0 0 24 24"><path d="M4 6h16M7 12h10M10 18h4" /></svg>
         @if (AppState.HasActiveFilter)
@@ -18,7 +18,7 @@
     <button class="@Cls(Panel.Folders)"
             title="Folders"
             aria-label="Folders"
-            aria-pressed="@(_panel == Panel.Folders)"
+            aria-pressed="@(_panel == Panel.Folders ? "true" : "false")"
             @onclick="() => Show(Panel.Folders)">
         <svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" /></svg>
         @if (AppState.Folder.Length > 0)
@@ -30,7 +30,7 @@
     <button class="@Cls(Panel.Select)"
             title="Selection"
             aria-label="Selection"
-            aria-pressed="@(_panel == Panel.Select)"
+            aria-pressed="@(_panel == Panel.Select ? "true" : "false")"
             @onclick="() => Show(Panel.Select)">
         <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M8 12l3 3 5-6" /></svg>
         @if (AppState.Selected.Count > 0)
@@ -42,7 +42,7 @@
     <button class="@Cls(Panel.Actions)"
             title="Actions"
             aria-label="Actions"
-            aria-pressed="@(_panel == Panel.Actions)"
+            aria-pressed="@(_panel == Panel.Actions ? "true" : "false")"
             @onclick="() => Show(Panel.Actions)">
         <svg viewBox="0 0 24 24"><path d="M4 4h10l6 6v10H4z" /><path d="M9 13h6M12 10v6" /></svg>
     </button>
@@ -52,7 +52,7 @@
     <button class="@Cls(Panel.Setup)"
             title="Setup"
             aria-label="Setup"
-            aria-pressed="@(_panel == Panel.Setup)"
+            aria-pressed="@(_panel == Panel.Setup ? "true" : "false")"
             @onclick="() => Show(Panel.Setup)">
         <svg viewBox="0 0 24 24"><path d="M12 15a3 3 0 100-6 3 3 0 000 6z" /><path d="M19.4 15a1.7 1.7 0 00.3 1.9l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.9-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1A1.7 1.7 0 008.9 19a1.7 1.7 0 00-1.9.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.9 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1A1.7 1.7 0 004.6 8.4a1.7 1.7 0 00-.3-1.9l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.9.3H9a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.9-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.9V9a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z" /></svg>
         @if (_missingCount > 0)
@@ -64,7 +64,7 @@
     <button class="@Cls(Panel.Help)"
             title="Keyboard shortcuts"
             aria-label="Keyboard shortcuts"
-            aria-pressed="@(_panel == Panel.Help)"
+            aria-pressed="@(_panel == Panel.Help ? "true" : "false")"
             @onclick="() => Show(Panel.Help)">
         <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M9.5 9a2.5 2.5 0 113.5 2.3c-.7.4-1 .9-1 1.7" /><circle cx="12" cy="17" r=".6" fill="currentColor" stroke="none" /></svg>
     </button>
@@ -148,11 +148,15 @@
                             <span class="selbytes">@AppState.FormattedSelectedBytes</span>
                         }
                     </div>
-                    <button disabled="@(AppState.DupeGroups.Count == 0)" @onclick="() => OnOpenDupeReview.InvokeAsync()">
+                    @* A disabled control that won't say why is a dead end; the title names the
+                       one thing the user has to do to enable it. *@
+                    <button disabled="@(AppState.DupeGroups.Count == 0)"
+                            title="@(AppState.DupeGroups.Count == 0 ? "No duplicate groups yet — scan a folder first." : null)"
+                            @onclick="() => OnOpenDupeReview.InvokeAsync()">
                         Review @AppState.DupeGroups.Count duplicate group@(AppState.DupeGroups.Count == 1 ? "" : "s")…
                     </button>
-                    <button class="primary" disabled="@(!CanAct)" @onclick="() => OnOpenExport.InvokeAsync()">Export selected…</button>
-                    <button class="danger" disabled="@(!CanAct)" @onclick="() => _confirmDelete = true">Delete selected…</button>
+                    <button class="primary" disabled="@(!CanAct)" title="@ActHint" @onclick="() => OnOpenExport.InvokeAsync()">Export selected…</button>
+                    <button class="danger" disabled="@(!CanAct)" title="@ActHint" @onclick="AskDelete">Delete selected…</button>
                     <button class="link" @onclick="() => OnOpenUndo.InvokeAsync()">History…</button>
                     <p class="hint">Deleting moves photos to the Recycle Bin. Nothing is erased, and every batch can be restored from History.</p>
                 </section>
@@ -187,11 +191,15 @@
 
         @if (_confirmDelete)
         {
-            <div class="confirm" role="alertdialog" aria-modal="true" aria-label="Confirm delete">
-                <p>Move <b>@AppState.Selected.Count</b> photo@(AppState.Selected.Count == 1 ? "" : "s") to the Recycle Bin? You can undo this.</p>
+            <div class="confirm" role="alertdialog" aria-modal="true" aria-label="Confirm delete"
+                 tabindex="-1" @ref="_confirmRef" @onkeydown="ConfirmKey">
+                <p>
+                    Move <b>@AppState.Selected.Count</b> photo@(AppState.Selected.Count == 1 ? "" : "s")
+                    (@AppState.FormattedSelectedBytes) to the Recycle Bin? You can undo this from History.
+                </p>
                 <div class="row">
                     <button class="danger" @onclick="Delete">Move to Recycle Bin</button>
-                    <button class="link" @onclick="() => _confirmDelete = false">Cancel</button>
+                    <button class="link" @onclick="CancelDelete">Cancel</button>
                 </div>
             </div>
         }
@@ -207,6 +215,8 @@
 
     Panel? _panel = Panel.Filters;
     bool _confirmDelete;
+    bool _needsConfirmFocus;
+    ElementReference _confirmRef;
 
     bool _checking;
 
@@ -227,6 +237,11 @@
     void OnDepsChanged() => InvokeAsync(StateHasChanged);
 
     bool CanAct => AppState.Selected.Count > 0 && !AppState.Busy;
+
+    string? ActHint =>
+        AppState.Busy ? "Wait for the current job to finish."
+        : AppState.Selected.Count == 0 ? "Select some photos first."
+        : null;
 
     string Pip => AppState.Selected.Count > 99 ? "99+" : AppState.Selected.Count.ToString();
 
@@ -253,6 +268,31 @@
         // Clicking the active icon collapses the panel, handing the space back to the photos.
         _panel = _panel == p ? null : p;
         _confirmDelete = false;
+    }
+
+    // The confirmation is a modal in everything but implementation: it must take focus so a
+    // keyboard user can answer it, and Escape must decline rather than trap them there.
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_confirmDelete && _needsConfirmFocus)
+        {
+            _needsConfirmFocus = false;
+            await _confirmRef.FocusAsync();
+        }
+    }
+
+    void AskDelete()
+    {
+        _confirmDelete = true;
+        _needsConfirmFocus = true;
+    }
+
+    void CancelDelete() => _confirmDelete = false;
+
+    Task ConfirmKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") CancelDelete();
+        return Task.CompletedTask;
     }
 
     async Task Delete()
