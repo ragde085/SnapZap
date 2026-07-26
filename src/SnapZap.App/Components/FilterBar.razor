@@ -1,17 +1,25 @@
 @implements IDisposable
 @inject AppState AppState
+@* Every button in the command row names one of these; spelled out it is the widest thing on
+   the line, and the markup is already dense. *@
+@using Scope = SnapZap.App.Services.AppState.SelectionScope
 
 @*
     The working toolbar: filters, the selection tools, and the two library-wide actions. This
     replaced an icon rail whose panels pushed the grid aside — filtering meant giving up a
     column of photos to see the sliders that decide which photos to show.
 
-    Only Filters is a menu, because sliders and a year list need a panel. Everything else is a
-    control in the bar. Anything that acts on a selection lives in SelectionBar instead, which
-    only appears once there is one.
+    The selection commands are a fixed row: the same buttons in the same positions every time,
+    greyed rather than hidden when there is nothing for them to select. Hiding them re-flowed
+    the row on every filter change and, worse, left a freshly scanned folder offering exactly
+    one way to select anything — the state a user is in when they most need to be told the
+    others exist. The two that are picked deliberately rather than constantly sit behind More,
+    which is what keeps the row inside one line at 1200px.
 
-    Escape closes the menu and returns focus to its button: the scrim catches only the mouse,
-    so without it a keyboard user could open Filters and had no way to shut it again.
+    Two menus now, and only one may be open: clicking the other switches in a single click
+    rather than needing a dismiss first. Escape closes whichever is open and returns focus to
+    its button — the scrim catches only the mouse, so without it a keyboard user could open a
+    menu and had no way to shut it again.
 *@
 @* role="group", not role="toolbar": a toolbar promises one tab stop and arrow-key movement
    between its controls, and this bar mixes a popover, commands and a note. Announcing a
@@ -19,12 +27,12 @@
 <div class="toolbar" role="group" aria-label="Filters and actions" @onkeydown="OnKeyDown">
 
     <div class="tb-group">
-        <button class="tb-btn @(_filtersOpen ? "on" : "") @(AppState.HasActiveFilter ? "marked" : "")"
+        <button class="tb-btn @(_open == Menu.Filters ? "on" : "") @(AppState.HasActiveFilter ? "marked" : "")"
                 @ref="_filtersBtn"
-                aria-expanded="@(_filtersOpen ? "true" : "false")"
+                aria-expanded="@(_open == Menu.Filters ? "true" : "false")"
                 aria-haspopup="dialog"
                 aria-controls="filters-popover"
-                @onclick="ToggleFilters">
+                @onclick="() => Toggle(Menu.Filters)">
             Filters
             @if (AppState.HasActiveFilter)
             {
@@ -33,7 +41,7 @@
             <span class="tb-caret" aria-hidden="true">▾</span>
         </button>
 
-        @if (_filtersOpen)
+        @if (_open == Menu.Filters)
         {
             <div class="popover" id="filters-popover" role="group" aria-label="Filters">
                 <label class="f">
@@ -78,6 +86,25 @@
                         }
                     </select>
                 </label>
+                @* Only meaningful once a folder is chosen — with no folder there is nothing for
+                   "subfolders" to be relative to. Collapsed by default: the answer is right for
+                   almost everyone, and it is here for the case where it is not. *@
+                @if (AppState.Folder.Length > 0)
+                {
+                    <details class="f-advanced">
+                        <summary>Advanced</summary>
+                        <label class="f checkbox">
+                            <input type="checkbox" @bind="AppState.IncludeSubfolders" /> Include subfolders
+                        </label>
+                        @* The capability the deleted "This folder" command used to provide, and
+                           the reason it is worth restoring: turned off, "All shown" selects the
+                           chosen directory and nothing beneath it. *@
+                        <span class="f-note">
+                            Off, the folder matches exactly — so <b>All shown</b> picks up this
+                            directory only, not what is under it.
+                        </span>
+                    </details>
+                }
                 @* Clearing disables this button, so focus would fall to the document and the
                    toolbar's Escape handler would never hear another key. *@
                 <button class="link" disabled="@(!AppState.HasActiveFilter)" @onclick="ClearFilters">Clear filters</button>
@@ -89,30 +116,110 @@
 
     @* Selection commands as controls in the bar, not a menu: they are one-shot verbs used
        repeatedly while triaging, and a disclosure costs a click every time. Labelled rather
-       than icon-only — "invert" and "extras" have no glyph anyone guesses, and at 1400px the
-       bar has ~600px going spare. A group label, matching the sort bar's "Sort". *@
+       than icon-only — "invert" and "extras" have no glyph anyone guesses. Labels are short
+       because the long forms do not hold one row; the full sentence is in each title, and in
+       each aria-label, because for a button with text content the content *is* the accessible
+       name and a screen reader would otherwise hear only "Flagged 128".
+
+       Unavailable is aria-disabled, not disabled. The argument for greying rather than hiding
+       is that the command still advertises itself — and a `disabled` button leaves the tab
+       order and never announces its title, so that argument would have reached only a sighted
+       user who happened to hover. The handlers guard themselves, because the click and the
+       Enter key still arrive. *@
     <span class="tb-label" id="sel-label">Select</span>
     <div class="tb-cmds" role="group" aria-labelledby="sel-label">
-        <button class="tb-btn" title="@AllShownTitle"
-                disabled="@(AppState.Filtered().Count == 0)"
-                @onclick="() => AppState.SelectAllVisible()">
+        <button class="tb-btn" @ref="_allShownBtn"
+                aria-disabled="@Aria(Off(Scope.AllShown))"
+                title="@TitleFor(Scope.AllShown)" aria-label="@TitleFor(Scope.AllShown)"
+                @onclick="() => Select(Scope.AllShown)">
             <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M8 12l3 3 5-6" /></svg>
             All shown
+            <span class="tb-count">@N(Scope.AllShown)</span>
         </button>
 
-        @* Hidden rather than greyed until a dedup run exists: greyed out it teaches nothing,
-           and "Review duplicates" beside it already explains how to get there. *@
-        @if (AppState.DupeOf.Count > 0)
-        {
-            <button class="tb-btn" title="@DupeExtrasTitle"
-                    @onclick="() => AppState.SelectDupeExtras()">
-                @* The same glyph the cards' own "extra copy" badge uses, so the button and the
-                   thing it selects are visibly one object. *@
-                <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="12" height="12" rx="1" /><path d="M8 8h13v13H8z" /></svg>
-                Duplicate extras
-                <span class="tb-count">@AppState.DupeExtraCount.ToString("N0")</span>
+        <button class="tb-btn"
+                aria-disabled="@Aria(Off(Scope.LikelyExplicit))"
+                title="@TitleFor(Scope.LikelyExplicit)" aria-label="@TitleFor(Scope.LikelyExplicit)"
+                @onclick="() => Select(Scope.LikelyExplicit)">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 21V4" /><path d="M5 4h13l-2.5 4L18 12H5z" /></svg>
+            Flagged
+            <span class="tb-count">@N(Scope.LikelyExplicit)</span>
+        </button>
+
+        <button class="tb-btn"
+                aria-disabled="@Aria(Off(Scope.DuplicateExtras))"
+                title="@TitleFor(Scope.DuplicateExtras)" aria-label="@TitleFor(Scope.DuplicateExtras)"
+                @onclick="() => Select(Scope.DuplicateExtras)">
+            @* The same glyph the cards' own "extra copy" badge uses, so the button and the
+               things it selects are visibly one object. *@
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="12" height="12" rx="1" /><path d="M8 8h13v13H8z" /></svg>
+            Extras
+            <span class="tb-count">@N(Scope.DuplicateExtras)</span>
+        </button>
+
+        @* Back in the bar rather than in the selection bar. They only mean something with a
+           selection, which is true — but it made them invisible exactly when someone is looking
+           for how to select things. Greyed in place answers both. *@
+        <button class="tb-btn"
+                aria-disabled="@Aria(InvertOff)"
+                title="@InvertTitle" aria-label="@InvertTitle"
+                @onclick="Invert">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor" stroke="none" /></svg>
+            Invert
+        </button>
+
+        <button class="tb-btn"
+                aria-disabled="@Aria(ClearOff)"
+                title="@ClearTitle" aria-label="@ClearTitle"
+                @onclick="Clear">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+            Clear
+        </button>
+
+        @* Its own positioned wrapper, so the popover anchors to this button rather than to the
+           left edge of the whole command row. *@
+        <div class="tb-group">
+            <button class="tb-btn @(_open == Menu.More ? "on" : "")" @ref="_moreBtn"
+                    aria-expanded="@(_open == Menu.More ? "true" : "false")"
+                    aria-haspopup="dialog"
+                    aria-controls="more-popover"
+                    aria-label="More ways to select"
+                    title="More ways to select"
+                    @onclick="() => Toggle(Menu.More)">
+                More
+                <span class="tb-caret" aria-hidden="true">▾</span>
             </button>
-        }
+
+            @* Deliberate rather than constant, which is the line this disclosure draws. Keepers
+               in particular is one click from Delete and reads almost the same as Extras at a
+               glance — keeping the two apart removes that adjacency rather than mitigating it. *@
+            @if (_open == Menu.More)
+            {
+                <div class="popover" id="more-popover" role="group" aria-label="More ways to select">
+                    <button class="tb-btn"
+                            aria-disabled="@Aria(Off(Scope.NotSure))"
+                            title="@TitleFor(Scope.NotSure)" aria-label="@TitleFor(Scope.NotSure)"
+                            @onclick="() => Select(Scope.NotSure)">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M9.6 9.4a2.5 2.5 0 1 1 3.2 2.4c-.7.25-1.2.9-1.2 1.6v.4" /><circle cx="11.6" cy="16.9" r="0.7" fill="currentColor" stroke="none" /></svg>
+                        Not sure
+                        <span class="tb-count">@N(Scope.NotSure)</span>
+                    </button>
+
+                    <button class="tb-btn"
+                            aria-disabled="@Aria(Off(Scope.DuplicateKeepers))"
+                            title="@TitleFor(Scope.DuplicateKeepers)" aria-label="@TitleFor(Scope.DuplicateKeepers)"
+                            @onclick="() => Select(Scope.DuplicateKeepers)">
+                        @* One square with one survivor in it, against Extras' two squares.
+                           Deliberately not the card's keeper tick: at 14px a tick is
+                           indistinguishable from All shown's box-tick, so the button that
+                           selects the copies you are keeping would read as "select all". *@
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2" /><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none" /></svg>
+                        Keepers
+                        <span class="tb-count">@N(Scope.DuplicateKeepers)</span>
+                    </button>
+                </div>
+            }
+        </div>
     </div>
 
     <span class="tb-sep" aria-hidden="true"></span>
@@ -138,7 +245,7 @@
 
     @* A click anywhere else dismisses the open menu. Transparent and behind the popover, so
        it never intercepts a click meant for the controls inside it. *@
-    @if (_filtersOpen)
+    @if (_open != Menu.None)
     {
         <div class="popover-scrim" aria-hidden="true" @onclick="Close"></div>
     }
@@ -148,9 +255,21 @@
     [Parameter] public EventCallback OnOpenDupeReview { get; set; }
     [Parameter] public EventCallback OnOpenUndo { get; set; }
 
-    bool _filtersOpen;
+    /// <summary>Which menu is open. One field rather than a flag each, so "open the other one"
+    /// can never leave both showing.</summary>
+    enum Menu { None, Filters, More }
+
+    Menu _open;
+
+    /// <summary>Which button to hand focus back to once the menu it opened has closed.</summary>
+    Menu? _returnFocusTo;
+
+    /// <summary>Set when Clear has just made itself unavailable — see <see cref="HandOnFocus"/>.</summary>
+    bool _returnFocusAfterClear;
+
     ElementReference _filtersBtn;
-    bool _returnFocusToFilters;
+    ElementReference _moreBtn;
+    ElementReference _allShownBtn;
 
     string Count(AppState.NsfwBand? band) =>
         (band is null ? AppState.Images.Count : AppState.CountInBand(band.Value)).ToString("N0");
@@ -159,14 +278,117 @@
         (AppState.CountInBand(AppState.NsfwBand.Likely) + AppState.CountInBand(AppState.NsfwBand.Unsure))
         .ToString("N0");
 
-    /// <summary>Reclaimable bytes belong in the label: "select 412 extras" is a different
-    /// decision from "select 412 extras and get 3.1 GB back".</summary>
-    string AllShownTitle =>
-        $"Select all {AppState.Filtered().Count:N0} photos shown ({ModKey}A)";
+    string N(Scope scope) => AppState.SelectableCount(scope).ToString("N0");
 
-    string DupeExtrasTitle => AppState.DupeExtraCount > 0
-        ? $"Select every extra copy — {AppState.FormattedReclaimable} reclaimable"
-        : "Select every extra copy";
+    /// <summary>Null rather than "false": aria-disabled="false" is a legitimate value that
+    /// announces a control as explicitly enabled, which is noise on five buttons out of six.</summary>
+    static string? Aria(bool off) => off ? "true" : null;
+
+    /// <summary>Unavailable when there is nothing for it to select, or while an operation is
+    /// running — mid-scan the counts describe a half-loaded catalogue.</summary>
+    bool Off(Scope scope) => AppState.Busy || AppState.SelectableCount(scope) == 0;
+
+    /// <summary>
+    /// Inverting nothing means "select everything shown" — which is what its own title says — so
+    /// this is unavailable only when nothing is shown at all. Greying it on an empty *selection*
+    /// disabled it exactly when it would have done the most work.
+    /// </summary>
+    bool InvertOff => AppState.Busy || AppState.Filtered().Count == 0;
+
+    bool ClearOff => AppState.Busy || AppState.Selected.Count == 0;
+
+    /// <summary>
+    /// The handler guards as well as the markup. aria-disabled keeps a button focusable and
+    /// clickable by design, so Enter on it fires this exactly as a mouse click does — a guard
+    /// that lives only in the attribute is not a guard.
+    /// </summary>
+    void Select(Scope scope)
+    {
+        if (Off(scope)) return;
+        AppState.SelectBy(scope);
+    }
+
+    void Invert()
+    {
+        if (InvertOff) return;
+        AppState.InvertVisibleSelection();
+    }
+
+    void Clear()
+    {
+        if (ClearOff) return;
+        AppState.ClearSelection();
+        _returnFocusAfterClear = true;
+    }
+
+    string InvertTitle =>
+        AppState.Busy ? BusyHint
+        : AppState.Filtered().Count > 0 ? "Select everything shown that is not selected now"
+        : NothingShownHint;
+
+    string ClearTitle =>
+        AppState.Busy ? BusyHint
+        : AppState.Selected.Count > 0 ? $"Deselect everything ({ModKey}D)"
+        // On an empty catalogue every command is unavailable for the same root reason, and
+        // "nothing is selected" is a true but useless thing to say to someone who has not
+        // scanned anything yet.
+        : AppState.Images.Count == 0 ? "Scan a folder first."
+        : "Nothing is selected.";
+
+    const string BusyHint = "Wait for the current job to finish.";
+
+    /// <summary>Two different problems with two different answers: an empty library, and a
+    /// filter that matches none of it.</summary>
+    string NothingShownHint => AppState.Images.Count == 0
+        ? "Scan a folder first."
+        : "No photos match the current filters.";
+
+    /// <summary>True when nothing in the library has ever been scored — a different situation
+    /// from "none of them landed in this band", and a different thing to go and do about it.</summary>
+    bool NothingScored =>
+        AppState.CountInBand(AppState.NsfwBand.Unchecked) == AppState.Images.Count;
+
+    /// <summary>
+    /// The whole sentence for a command: what it selects while it can, and which step is
+    /// actually missing once it cannot.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately not <see cref="DupeHint"/>. That returns null the moment any duplicate group
+    /// exists, which is exactly the state a filtered-to-zero Extras button is in — so reusing it
+    /// would leave the greyed button with no explanation at all, in the one case this feature
+    /// creates.
+    /// </remarks>
+    string TitleFor(Scope scope)
+    {
+        if (AppState.Busy) return BusyHint;
+
+        var n = AppState.SelectableCount(scope);
+        if (n > 0)
+            return scope switch
+            {
+                Scope.AllShown => $"Select all {n:N0} photos shown ({ModKey}A)",
+                Scope.LikelyExplicit => $"Select the {n:N0} photos the model called likely explicit",
+                Scope.NotSure => $"Select the {n:N0} photos the model was unsure about",
+                // Bytes belong in the sentence: "select 412 extras" is a different decision from
+                // "select 412 extras and get 3.1 GB back".
+                Scope.DuplicateExtras =>
+                    $"Select every extra copy — {AppState.FormattedSelectableBytes(scope)} reclaimable",
+                _ => $"Select the one copy being kept from each of {n:N0} duplicate groups",
+            };
+
+        if (AppState.Images.Count == 0 || AppState.Filtered().Count == 0) return NothingShownHint;
+
+        return scope switch
+        {
+            Scope.LikelyExplicit or Scope.NotSure => NothingScored
+                ? "Nothing scored yet — press Score NSFW."
+                : "No photos in this band.",
+            Scope.DuplicateExtras or Scope.DuplicateKeepers => AppState.DupeGroups.Count == 0
+                ? "Press Find duplicates to look for copies."
+                : "No duplicates match the current filters.",
+            _ => NothingShownHint,
+        };
+    }
 
     static string ModKey => OperatingSystem.IsMacOS() ? "\u2318" : "Ctrl+";
 
@@ -181,32 +403,61 @@
         (AppState.BlurMax > 0 ? 1 : 0) +
         (AppState.DupesOnly ? 1 : 0) +
         (AppState.Folder.Length > 0 ? 1 : 0) +
-        (AppState.Year.Length > 0 ? 1 : 0);
+        (AppState.Year.Length > 0 ? 1 : 0) +
+        // Only when it is off: on is the default, and a default filters nothing.
+        (AppState.IncludeSubfolders ? 0 : 1);
 
     void ClearFilters()
     {
         AppState.ClearFilters();
-        _returnFocusToFilters = true;
+        _returnFocusTo = Menu.Filters;
     }
 
-    void ToggleFilters() => _filtersOpen = !_filtersOpen;
-    void Close() => _filtersOpen = false;
+    /// <summary>Opening one menu closes the other, so switching costs one click rather than a
+    /// dismiss and then a press.</summary>
+    void Toggle(Menu menu) => _open = _open == menu ? Menu.None : menu;
+
+    void Close() => _open = Menu.None;
 
     Task OnKeyDown(KeyboardEventArgs e)
     {
-        if (e.Key != "Escape" || !_filtersOpen) return Task.CompletedTask;
-        _filtersOpen = false;
+        if (e.Key != "Escape" || _open == Menu.None) return Task.CompletedTask;
         // Back to the button that opened it, not to <body> — otherwise a keyboard user walks
         // the whole toolbar again to get anywhere.
-        _returnFocusToFilters = true;
+        _returnFocusTo = _open;
+        _open = Menu.None;
         return Task.CompletedTask;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!_returnFocusToFilters) return;
-        _returnFocusToFilters = false;
-        await _filtersBtn.FocusAsync();
+        if (_returnFocusTo is { } menu)
+        {
+            _returnFocusTo = null;
+            await (menu == Menu.Filters ? _filtersBtn : _moreBtn).FocusAsync();
+        }
+        else if (_returnFocusAfterClear)
+        {
+            _returnFocusAfterClear = false;
+            await HandOnFocus();
+        }
+    }
+
+    /// <summary>
+    /// Clear always makes itself unavailable, so the control the user just activated goes grey
+    /// under their finger. Hand focus to the nearest thing they can still press.
+    /// </summary>
+    /// <remarks>
+    /// A chain rather than a single target, because "All shown" is itself unavailable when the
+    /// filters hide everything — a state reachable with a live selection, by selecting photos
+    /// and then filtering them off screen. Landing there would put focus on a dead control,
+    /// which is the failure this exists to prevent. More is a disclosure and so is never
+    /// unavailable, which is what makes it a safe end of the chain.
+    /// </remarks>
+    async Task HandOnFocus()
+    {
+        if (Off(Scope.AllShown)) await _moreBtn.FocusAsync();
+        else await _allShownBtn.FocusAsync();
     }
 
     // AppState is mutated by siblings whose parameters into this component never change, so

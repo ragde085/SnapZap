@@ -156,6 +156,7 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
     bool _dupesOnly;
     string _folder = "";
     string _year = "";
+    bool _includeSubfolders = true;
 
     /// <summary>
     /// Which explicit-content band the grid is limited to. Named states rather than a 0–1
@@ -168,6 +169,24 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
     public bool DupesOnly { get => _dupesOnly; set => SetFilter(ref _dupesOnly, value); }
     public string Folder { get => _folder; set => SetFilter(ref _folder, value ?? ""); }
     public string Year { get => _year; set => SetFilter(ref _year, value ?? ""); }
+
+    /// <summary>
+    /// Whether the chosen folder also brings in everything beneath it. On by default, which is
+    /// how the folder facet has always behaved.
+    /// </summary>
+    /// <remarks>
+    /// This is the capability the deleted "This folder" command used to provide: it matched
+    /// <c>img.Folder == target</c> exactly while the facet matches by prefix, so for any folder
+    /// with subfolders — the normal case — the two selected different sets, and after the
+    /// command went nothing in the app could express "this directory only". Expressed as a
+    /// filter rather than a selector it composes with every other facet and with every
+    /// selection command, instead of being a second, parallel notion of folder scope.
+    /// </remarks>
+    public bool IncludeSubfolders
+    {
+        get => _includeSubfolders;
+        set => SetFilter(ref _includeSubfolders, value);
+    }
 
     // ---- Preview ------------------------------------------------------------
     bool _previewDetails;
@@ -262,19 +281,45 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
     {
         if (EqualityComparer<T>.Default.Equals(field, value)) return;
         field = value;
-        _filtered = null;
+        InvalidateFiltered();
         Notify();
+    }
+
+    /// <summary>
+    /// Drop everything derived from the visible set. One place, so a new derived cache cannot be
+    /// added and then forgotten at one of the several sites that change what is visible.
+    /// </summary>
+    void InvalidateFiltered()
+    {
+        _filtered = null;
+        _selectableCounts = null;
     }
 
     // ---- Sort ---------------------------------------------------------------
     SortKey _sort = SortKey.Scanned;
     bool _sortDescending;
 
-    public SortKey Sort { get => _sort; set => SetFilter(ref _sort, value); }
-    public bool SortDescending { get => _sortDescending; set => SetFilter(ref _sortDescending, value); }
+    public SortKey Sort { get => _sort; set => SetSort(ref _sort, value); }
+    public bool SortDescending { get => _sortDescending; set => SetSort(ref _sortDescending, value); }
+
+    /// <summary>
+    /// Re-sort without recounting. Order changes cannot change which photos match, so the
+    /// selection counts are still correct — and they are not free: the blur slider is bound
+    /// <c>@bind:event="oninput"</c>, so a single drag runs the filter path dozens of times, and
+    /// rebuilding five tallies over the whole visible set on each one is exactly the per-render
+    /// cost the count cache exists to avoid.
+    /// </summary>
+    void SetSort<T>(ref T field, T value)
+    {
+        if (EqualityComparer<T>.Default.Equals(field, value)) return;
+        field = value;
+        _filtered = null;          // deliberately NOT _selectableCounts
+        Notify();
+    }
 
     public bool HasActiveFilter =>
-        _nsfw != NsfwFilter.Any || _blurMax > 0 || _dupesOnly || _folder.Length > 0 || _year.Length > 0;
+        _nsfw != NsfwFilter.Any || _blurMax > 0 || _dupesOnly || _folder.Length > 0
+        || _year.Length > 0 || !_includeSubfolders;
 
     public void ClearFilters()
     {
@@ -283,7 +328,8 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
         _dupesOnly = false;
         _folder = "";
         _year = "";
-        _filtered = null;
+        _includeSubfolders = true;
+        InvalidateFiltered();
         Notify();
     }
 
@@ -358,7 +404,7 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
             _folder = "";
         if (_year.Length > 0 && !Years.Any(y => y.ToString() == _year)) _year = "";
 
-        _filtered = null;
+        InvalidateFiltered();
         // LoadAsync both replaces Images and prunes/restores Selected, so the selection memo
         // must be invalidated and the (possibly pruned) selection persisted.
         NotifySelectionChanged();
@@ -377,12 +423,17 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
         // Blurrier-than filter: lower blur score = blurrier, so show scores <= threshold.
         if (_blurMax > 0 && !(img.BlurScore is { } b && b <= _blurMax)) return false;
         if (_dupesOnly && !DupeOf.ContainsKey(img.Id)) return false;
-        // Prefix match, guarded by the separator so "/a/b" never swallows "/a/bc". Selecting a
-        // parent folder therefore includes everything beneath it; exact matching used to mean
-        // a folder holding only subfolders matched nothing at all.
-        if (_folder.Length > 0 &&
-            !(img.Folder == _folder || img.Folder.StartsWith(_folder + "/", StringComparison.Ordinal)))
-            return false;
+        // Prefix match by default, guarded by the separator so "/a/b" never swallows "/a/bc".
+        // Selecting a parent folder therefore includes everything beneath it; exact matching for
+        // everyone used to mean a folder holding only subfolders matched nothing at all.
+        // IncludeSubfolders off narrows it back to the one directory — see the property.
+        if (_folder.Length > 0)
+        {
+            var hit = _includeSubfolders
+                ? img.Folder == _folder || img.Folder.StartsWith(_folder + "/", StringComparison.Ordinal)
+                : img.Folder == _folder;
+            if (!hit) return false;
+        }
         if (_year.Length > 0 && img.Year?.ToString() != _year) return false;
         return true;
     }
@@ -449,12 +500,98 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
         return -1;
     }
 
-    public void SelectAllVisible()
+    /// <summary>A named set of photos the user can select in one action.</summary>
+    public enum SelectionScope
     {
-        var visibleNow = Filtered();
-        session.Mutate(sel => { foreach (var img in visibleNow) sel.Add(img.Id); });
+        AllShown,
+        LikelyExplicit,
+        NotSure,
+        DuplicateExtras,
+        DuplicateKeepers,
+    }
+
+    /// <summary>Allocated once: <see cref="CountBands"/> walks this per photo.</summary>
+    static readonly SelectionScope[] AllScopes = Enum.GetValues<SelectionScope>();
+
+    /// <summary>
+    /// Whether one photo belongs to a named set. Reads <see cref="BandOf"/> and the resolved
+    /// <see cref="ImageView.Dupe"/> rather than re-deriving either, so a selection command can
+    /// never disagree with the badge on the card it selects.
+    /// </summary>
+    bool InScope(SelectionScope scope, ImageView img) => scope switch
+    {
+        SelectionScope.AllShown => true,
+        SelectionScope.LikelyExplicit => BandOf(img) == NsfwBand.Likely,
+        SelectionScope.NotSure => BandOf(img) == NsfwBand.Unsure,
+        SelectionScope.DuplicateExtras => img.Dupe is { IsKeeper: false },
+        SelectionScope.DuplicateKeepers => img.Dupe is { IsKeeper: true },
+        _ => false,
+    };
+
+    /// <summary>
+    /// Replace the selection with everything visible that matches.
+    /// </summary>
+    /// <remarks>
+    /// Two rules, and both are load-bearing. Every predicate walks <see cref="Filtered"/>, so a
+    /// command can never select a photo the grid is not showing — the same property catalogue
+    /// scoping protects one layer up, and the reason it matters is that the selection is what
+    /// Delete is aimed at. And every predicate <em>replaces</em> rather than adds, so the number
+    /// on the button is the number you end up with. The two used to disagree:
+    /// <c>SelectAllVisible</c> added and was filter-aware, <c>SelectDupeExtras</c> replaced and
+    /// walked the whole scope, so with a filter on it armed Delete over photos off screen.
+    /// </remarks>
+    public void SelectBy(SelectionScope scope)
+    {
+        var matches = Filtered().Where(i => InScope(scope, i)).Select(i => i.Id).ToList();
+        session.Mutate(sel =>
+        {
+            sel.Clear();
+            foreach (var id in matches) sel.Add(id);
+        });
         NotifySelectionChanged();
     }
+
+    /// <summary>
+    /// How many visible photos a command would select. Equal by construction to what pressing it
+    /// does, because both read the same predicate over the same set.
+    /// </summary>
+    public int SelectableCount(SelectionScope scope) => Tally()[scope].Count;
+
+    /// <summary>
+    /// What those photos weigh — the number that turns "select 412 extras" into a decision.
+    /// </summary>
+    /// <remarks>
+    /// Counted over the same filtered set as <see cref="SelectableCount"/> rather than reusing
+    /// <see cref="ReclaimableBytes"/>, which is keyed on the whole scope. A button reading
+    /// "Extras (3) — 14.2 GB reclaimable" because three of four hundred extras are on screen is
+    /// the same count-and-action disagreement this whole selection layer exists to remove.
+    /// </remarks>
+    public string FormattedSelectableBytes(SelectionScope scope) => FormatBytes(Tally()[scope].Bytes);
+
+    Dictionary<SelectionScope, (int Count, long Bytes)>? _selectableCounts;
+
+    Dictionary<SelectionScope, (int Count, long Bytes)> Tally() => _selectableCounts ??= CountScopes();
+
+    /// <summary>
+    /// One pass with a tally, not one pass per scope. Cached rather than counted per call for the
+    /// same reason as <see cref="_bandCounts"/>: six buttons read these on every render while a
+    /// scan notifies once per file.
+    /// </summary>
+    Dictionary<SelectionScope, (int Count, long Bytes)> CountScopes()
+    {
+        var counts = AllScopes.ToDictionary(s => s, _ => (Count: 0, Bytes: 0L));
+        foreach (var img in Filtered())
+            foreach (var scope in AllScopes)
+                if (InScope(scope, img))
+                {
+                    var (n, bytes) = counts[scope];
+                    counts[scope] = (n + 1, bytes + img.FileSize);
+                }
+        return counts;
+    }
+
+    /// <summary>Kept as the name <c>PhotoGrid</c>'s [JSInvokable] wrapper reaches for ⌘A.</summary>
+    public void SelectAllVisible() => SelectBy(SelectionScope.AllShown);
 
     /// <summary>
     /// Resolve a group's members to the loaded view models, in a stable order.
@@ -477,22 +614,9 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
         await LoadAsync();
     }
 
-    /// <summary>Select exactly the non-keepers across all duplicate groups — the one-click
-    /// "delete extras, keep best". Replaces the selection rather than adding to it, so the
-    /// count on the button is the count you end up with.</summary>
-    public void SelectDupeExtras()
-    {
-        var dupes = DupeOf;
-        session.Mutate(sel =>
-        {
-            sel.Clear();
-            foreach (var (id, d) in dupes)
-                if (!d.IsKeeper) sel.Add(id);
-        });
-        NotifySelectionChanged();
-    }
-
-    /// <summary>Flip selection within the visible set — useful after selecting the keepers.</summary>
+    /// <summary>Flip selection within the visible set — useful after selecting the keepers.
+    /// A relative operation on an existing selection rather than a predicate, so the
+    /// replace rule in <see cref="SelectBy"/> deliberately does not apply.</summary>
     public void InvertVisibleSelection()
     {
         var visibleNow = Filtered();

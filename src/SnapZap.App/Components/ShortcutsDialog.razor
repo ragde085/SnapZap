@@ -20,6 +20,12 @@
                 <button class="primary" @onclick="Close">Close</button>
             </div>
             <p class="hint">Press <kbd>Tab</kbd> from the toolbar to reach the grid.</p>
+            @* The selection lives in a singleton store while the rest of the view model is
+               per-circuit, so two windows on the same library share one working set — and a
+               command like "Extras" replaces it rather than adding, so one window's press
+               changes what the other is about to delete. This is the only place the app
+               explains how selection behaves, so it is the place to say so. *@
+            <p class="hint">The selection is shared by every SnapZap window.</p>
         </div>
     </div>
 }
