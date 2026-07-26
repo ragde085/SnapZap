@@ -211,11 +211,6 @@ window.snapzap = (function () {
       });
     },
 
-    focusFirstCard: function () {
-      const first = cards()[0];
-      if (first) first.focus();
-    },
-
     /**
      * Arrow-key movement for the folder tree's roving tabindex. The tree renders one tab stop
      * and every other row is tabindex="-1", so without this the keyboard can reach exactly one

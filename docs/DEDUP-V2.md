@@ -78,8 +78,8 @@ out of an opaque subprocess and into code that can be unit-tested.
 
 ## 3. Kinds, and why the split is the safety-critical part
 
-`DupeKind` was `{ Exact, Similar }`. Everything not byte-identical landed in `Similar`, and
-`AppState.SelectDupeExtras()` will happily select every non-keeper in every group.
+`DupeKind` was `{ Exact, Similar }`. Everything not byte-identical landed in `Similar`, and the
+bulk "select duplicate extras" command will happily select every non-keeper in every group.
 
 That is safe for byte-identical files. It is **not** safe for a burst of five frames of the same
 scene, where the "duplicates" are five different photographs and only one of them has the kid
@@ -97,10 +97,19 @@ public enum DupeKind
 `Variant` is a rename of the old `Similar`; existing rows migrate in place (§8). `Reframe` was
 considered and dropped (§9).
 
-**The invariant this buys:** `SelectDupeExtras()` and any other bulk action filter to
-`Exact | Variant`. `Burst` groups are shown, navigable and individually selectable, and can never
-be swept up by a "select all extras" action. This is a safety invariant in the DESIGN §7 sense —
-it belongs in the same list as "nothing is hard-deleted until hash-verified".
+**The invariant this buys:** every bulk action filters to `Exact | Variant`. `Burst` groups are
+shown, navigable and individually selectable, and can never be swept up by a "select all extras"
+action. This is a safety invariant in the DESIGN §7 sense — it belongs in the same list as
+"nothing is hard-deleted until hash-verified".
+
+The rule sits on `AppState.InScope(SelectionScope.DuplicateExtras, …)` — the *predicate* the
+selection layer reads, not the command — so the count on the Extras button, the reclaimable bytes
+beside it and what pressing it actually selects all derive from one place and cannot drift apart.
+`ReclaimableBytes` applies the same `DupeKindExtensions.IsBulkSelectable()` test for the same
+reason. `SelectionCommandTests` locks both in.
+
+Note `SelectionScope.DuplicateKeepers` is deliberately *not* filtered by kind: selecting keepers
+is how the survivors get exported, and a burst's keeper is as much a survivor as any other.
 
 ---
 
@@ -281,6 +290,6 @@ complete-linkage grouper with a union-find because it looked simpler.
 5. `SimilarityGrouper` + its tests ← *the risky part, lands with tests around it*
 6. `VariantFinder`, `BurstFinder`
 7. `DuplicateService` rewrite; delete `CzkawkaFinder`
-8. UI: settings editor, kind filters, `SelectDupeExtras` gate
+8. UI: settings editor, kind filters, the bulk-selection gate in `AppState.InScope`
 9. Fixture + threshold tuning
 10. Docs: DESIGN.md §2, CLAUDE.md, README, `install-deps`

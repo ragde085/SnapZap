@@ -54,10 +54,10 @@ public sealed record ImageRecord
 /// What kind of duplicate a group represents. The split is safety-critical, not cosmetic.
 /// </summary>
 /// <remarks>
-/// Everything that was not byte-identical used to land in one <c>Similar</c> bucket, which
-/// <c>AppState.SelectDupeExtras</c> will sweep wholesale. That is correct for copies of one photo
-/// and catastrophic for a burst, where the five "duplicates" are five different photographs and
-/// only one of them is the good one. Detection could not widen until the kinds separated.
+/// Everything that was not byte-identical used to land in one <c>Similar</c> bucket, which the
+/// bulk "select duplicate extras" command will sweep wholesale. That is correct for copies of one
+/// photo and catastrophic for a burst, where the five "duplicates" are five different photographs
+/// and only one of them is the good one. Detection could not widen until the kinds separated.
 /// </remarks>
 public enum DupeKind
 {

@@ -1,12 +1,17 @@
 @implements IDisposable
 @inject AppState AppState
-@inject IJSRuntime JS
 
 @*
     What you can do with the photos you have picked, shown only once you have picked some.
     Export and Delete used to sit in a rail panel that was permanently one click away and
     permanently disabled; here they appear with the selection, next to its count and size,
     so the thing being acted on and the action are in the same sentence.
+
+    Invert and Clear used to be here too, on the argument that they only mean anything with a
+    selection. They have gone back to the toolbar: this bar is where a selection is described
+    and acted on, and the toolbar is where one is made — and putting the ways to select things
+    inside a bar that only exists once you have selected something hid them exactly when they
+    were being looked for.
 *@
 @if (AppState.Selected.Count > 0)
 {
@@ -23,9 +28,6 @@
                 @onclick="() => OnOpenExport.InvokeAsync()">Export…</button>
         <button class="danger" disabled="@(!CanAct)" title="@ActHint" @ref="_deleteBtn"
                 @onclick="AskDelete">Delete…</button>
-        <button class="link" title="Select everything shown that is not selected now"
-                @onclick="Invert">Invert</button>
-        <button class="link" @onclick="() => AppState.ClearSelection()">Clear</button>
 
         @if (_confirmDelete)
         {
@@ -100,22 +102,6 @@
         {
             _returnFocusToDelete = false;
             await _deleteBtn.FocusAsync();
-        }
-    }
-
-    /// <summary>
-    /// Inverting a full selection empties it, which takes this whole bar off screen — so the
-    /// button that was just pressed stops existing and focus falls to the document. Hand it to
-    /// the grid instead, which is what the user is looking at anyway.
-    /// </summary>
-    async Task Invert()
-    {
-        AppState.InvertVisibleSelection();
-        if (AppState.Selected.Count == 0)
-        {
-            try { await JS.InvokeVoidAsync("snapzap.focusFirstCard"); }
-            catch (JSException) { /* interop absent; focus is a nicety, not correctness */ }
-            catch (JSDisconnectedException) { /* circuit gone */ }
         }
     }
 

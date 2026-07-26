@@ -89,8 +89,13 @@ button {
   transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease),
               color var(--dur) var(--ease);
 }
-button:hover:not(:disabled) { border-color: var(--dim); background: var(--raised); }
-button:disabled { opacity: 0.45; cursor: not-allowed; }
+/* aria-disabled is styled alongside :disabled everywhere, not only where it is used today.
+   The selection commands are aria-disabled rather than disabled so they keep their place in the
+   tab order and still announce why they are unavailable — but a control that is announced as
+   unavailable and looks pressable is worse than either, and the next one to reach for the
+   pattern should not have to rediscover which four rules it silently misses. */
+button:hover:not(:disabled):not([aria-disabled="true"]) { border-color: var(--dim); background: var(--raised); }
+button:disabled, button[aria-disabled="true"] { opacity: 0.45; cursor: not-allowed; }
 
 button.primary {
   background: var(--accent);
@@ -98,13 +103,13 @@ button.primary {
   color: var(--accent-ink);
   font-weight: 600;
 }
-button.primary:hover:not(:disabled) {
+button.primary:hover:not(:disabled):not([aria-disabled="true"]) {
   background: color-mix(in srgb, var(--accent) 88%, white);
   border-color: color-mix(in srgb, var(--accent) 88%, white);
 }
 
 button.danger { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, var(--line)); }
-button.danger:hover:not(:disabled) { border-color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, var(--surface)); }
+button.danger:hover:not(:disabled):not([aria-disabled="true"]) { border-color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, var(--surface)); }
 
 button.link {
   border: none;
@@ -113,7 +118,7 @@ button.link {
   padding: 3px 2px;
   text-align: left;
 }
-button.link:hover:not(:disabled) { background: none; color: color-mix(in srgb, var(--accent) 80%, white); text-decoration: underline; }
+button.link:hover:not(:disabled):not([aria-disabled="true"]) { background: none; color: color-mix(in srgb, var(--accent) 80%, white); text-decoration: underline; }
 
 input[type="text"], select {
   font: inherit;
@@ -253,8 +258,11 @@ main { display: flex; flex: 1; min-height: 0; }
 /* A filter that is on changes what the grid contains, so the button says so even closed. */
 .tb-btn.marked { border-color: var(--accent); }
 .tb-caret { font-size: 0.6rem; color: var(--muted); }
+/* Six characters, i.e. up to "999,999", so a count crossing a digit boundary does not widen
+   its button and shift everything to the right of it. Tabular numerals for the same reason. */
 .tb-count {
-  min-width: 15px;
+  min-width: 48px;
+  text-align: center;
   padding: 0 4px;
   border-radius: 8px;
   background: var(--accent);
@@ -266,8 +274,12 @@ main { display: flex; flex: 1; min-height: 0; }
 }
 .tb-sep { width: 1px; align-self: stretch; margin: 0 4px; background: var(--line); }
 .tb-note { font-size: var(--t-xs); color: var(--dim); margin-left: 4px; white-space: nowrap; }
-/* First thing to give up when the bar runs out of room; the controls matter more than the hint. */
-@media (max-width: 1200px) { .tb-note { display: none; } }
+/* First thing to give up when the bar runs out of room; the controls matter more than the hint.
+   Measured: the controls need 1164px for one row and the note adds 276px on top, so anything
+   under 1440px wrapped it onto a second line — which is the bar running out of room, and the
+   note is what this rule already says should go first. The old 1200px threshold was calibrated
+   against the two-button command row that preceded the fixed Select group. */
+@media (max-width: 1440px) { .tb-note { display: none; } }
 
 /* Names the command group, the way the sort bar names its own control. */
 .tb-label { font-size: var(--t-xs); color: var(--muted); margin-left: 2px; }
@@ -276,13 +288,9 @@ main { display: flex; flex: 1; min-height: 0; }
   width: 14px; height: 14px; flex: none;
   fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round;
 }
-
-.tb-label { font-size: var(--t-xs); color: var(--muted); margin-left: 2px; }
-.tb-cmds { display: flex; align-items: center; gap: 5px; position: relative; z-index: 2; }
-.tb-cmds .tb-btn svg {
-  width: 14px; height: 14px; flex: none;
-  fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round;
-}
+/* The commands in the More popover are full-width rows, not a row of chips. */
+.tb-cmds .popover .tb-btn { width: 100%; justify-content: flex-start; }
+.tb-cmds .popover .tb-count { margin-left: auto; }
 
 .popover {
   position: absolute;
@@ -355,6 +363,18 @@ main { display: flex; flex: 1; min-height: 0; }
 .f.checkbox { flex-direction: row; align-items: center; gap: 7px; color: var(--ink); font-size: var(--t-sm); }
 .f select { width: 100%; }
 .f-note { font-size: var(--t-xs); color: var(--dim); line-height: 1.45; }
+
+/* Collapsed by default, the way the dependency dialog's manual steps are: the answer inside is
+   right for almost everyone, and it is here for the case where it is not. */
+.f-advanced { border-top: 1px solid var(--line-soft); padding-top: 8px; }
+.f-advanced summary {
+  font-size: var(--t-xs);
+  color: var(--muted);
+  cursor: pointer;
+}
+.f-advanced summary:hover { color: var(--ink); }
+.f-advanced > .f { margin-top: 8px; }
+.f-advanced > .f-note { display: block; margin-top: 5px; }
 
 /* Used by every panel and dialog, not just the ones that happened to sit near it. */
 .hint { font-size: var(--t-xs); color: var(--dim); margin: 2px 0 0; line-height: 1.45; }

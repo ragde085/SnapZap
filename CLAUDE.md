@@ -267,10 +267,14 @@ All other deps are MIT or Apache-2.0. No paid, no subscription-gated.
 Full rationale in [docs/DEDUP-V2.md](docs/DEDUP-V2.md). The short version:
 
 - **Three kinds, and the split is safety-critical.** `Exact` (SHA-256), `Variant` (same shot,
-  resized/re-encoded/rotated) and `Burst` (same scene seconds apart). `SelectDupeExtras` and
-  `ReclaimableBytes` filter to `DupeKindExtensions.IsBulkSelectable()` — i.e. `Exact | Variant`.
-  A burst is five *different photographs*; sweeping them into a delete would make this a shredder.
+  resized/re-encoded/rotated) and `Burst` (same scene seconds apart). `AppState.InScope` (for
+  `SelectionScope.DuplicateExtras`) and `ReclaimableBytes` filter to
+  `DupeKindExtensions.IsBulkSelectable()` — i.e. `Exact | Variant`. A burst is five *different
+  photographs*; sweeping them into a delete would make this a shredder.
   **Never re-derive that rule inline; a new kind must not become bulk-selectable by default.**
+  The gate lives on the `InScope` predicate, not on the command, so the button's count, its
+  reclaimable-bytes label and what it selects cannot disagree. `DuplicateKeepers` is intentionally
+  unfiltered — a burst's keeper is a survivor like any other.
 - **The hash** is a 272-bit gradient hash on a 17×17 square grid, stored for **all four rotations**
   (160 bytes in `images.phash`). Do *not* "optimise" it to store only the smallest of the four:
   noise flips which rotation wins, so near-identical photos canonicalise to different orbit members
