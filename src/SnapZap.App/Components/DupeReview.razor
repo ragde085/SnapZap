@@ -254,7 +254,7 @@
 
     async Task SelectExtrasAndClose()
     {
-        AppState.SelectDupeExtras();
+        AppState.SelectBy(AppState.SelectionScope.DuplicateExtras);
         await Close();
     }
 

@@ -85,7 +85,7 @@ public class AppStateTests : IDisposable
         Assert.Single(_state.DupeOf.Values, d => d.IsKeeper);    // exactly one survivor kept
 
         // And the button that acts on this can never select the whole group.
-        _state.SelectDupeExtras();
+        _state.SelectBy(AppState.SelectionScope.DuplicateExtras);
         Assert.Single(_state.Selected);
     }
 
