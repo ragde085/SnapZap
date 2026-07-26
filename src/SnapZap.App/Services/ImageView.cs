@@ -15,6 +15,21 @@ public sealed record ImageView(ImageRecord Record, DupeInfo? Dupe)
     /// view model is what made the badge disagree with the filter that selected the photo.</summary>
     public const double BlurFlagThreshold = 100;
 
+    /// <summary>
+    /// P(nsfw) at or above which a photo is called explicit. Read it through
+    /// <c>AppState.NsfwThreshold</c>, for the same reason as the blur one above: a second,
+    /// independent notion of "explicit" is what let the preview say "below threshold" about a
+    /// photo the filter had just decided was over it.
+    /// </summary>
+    public const double NsfwFlagThreshold = 0.85;
+
+    /// <summary>
+    /// Below this the model is confident enough to leave the photo alone. Between the two the
+    /// answer is "look at it yourself" — the model's output is bimodal, so this middle band is
+    /// small by design, and small is the point: it is a review queue, not a category.
+    /// </summary>
+    public const double NsfwUnsureThreshold = 0.20;
+
     public long Id => Record.Id;
     public string Path => Record.Path;
     public long FileSize => Record.FileSize;

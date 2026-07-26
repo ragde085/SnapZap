@@ -13,24 +13,31 @@ namespace SnapZap.Core.Dedup;
 /// </summary>
 public sealed class ExactDuplicateFinder(Database db)
 {
-    public int FindAndStore()
+    /// <param name="root">Restrict to photos beneath this folder; null covers the catalogue.
+    /// Two identical photos in different libraries are not a duplicate the user can act on
+    /// while only one of those libraries is on screen.</param>
+    public int FindAndStore(string? root = null)
     {
         var repo = new DupeRepository(db);
-        repo.ClearKind(DupeKind.Exact);
+        repo.ClearKind(DupeKind.Exact, root);
 
         // Gather members of every hash that appears more than once.
         var byHash = new Dictionary<string, List<(long id, long pixels, long size)>>();
         using (var cmd = db.Connection.CreateCommand())
         {
-            cmd.CommandText = """
+            cmd.CommandText = $"""
                 SELECT content_hash, id,
                        COALESCE(width,0) * COALESCE(height,0) AS pixels,
                        file_size
                 FROM images
-                WHERE content_hash IN (
-                    SELECT content_hash FROM images GROUP BY content_hash HAVING COUNT(*) > 1
-                )
+                WHERE {PathScope.Where(root)}
+                  AND content_hash IN (
+                    SELECT content_hash FROM images
+                    WHERE {PathScope.Where(root)}
+                    GROUP BY content_hash HAVING COUNT(*) > 1
+                  )
                 """;
+            PathScope.Bind(cmd, root);
             using var r = cmd.ExecuteReader();
             while (r.Read())
             {

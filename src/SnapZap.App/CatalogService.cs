@@ -55,14 +55,74 @@ public sealed class CatalogService : IDisposable
 
     public ImageRepository Images => new(Db);
 
+    const string ScanRootKey = "scan_root";
+
+    /// <summary>
+    /// The folder the session is scoped to: everything the app shows, counts and acts on lives
+    /// under it. Null means unscoped, which only happens before the first scan of a fresh
+    /// catalogue.
+    /// </summary>
+    /// <remarks>
+    /// The catalogue itself keeps every folder ever scanned, because that cache is what makes
+    /// re-scanning a large library near-instant (DESIGN §5). The scope is what stops that cache
+    /// leaking into the view — without it a scan of one folder left the grid, the tree and the
+    /// counts spanning every folder the user had ever opened, and "select everything shown"
+    /// aimed the delete at all of them.
+    /// </remarks>
+    public string? ScanRoot
+    {
+        get => Db.Meta(ScanRootKey);
+        private set => Db.SetMeta(ScanRootKey, value);
+    }
+
     public Task<ScanResult> ScanAsync(string folder, IProgress<ScanProgress>? progress, CancellationToken ct)
     {
         if (!Directory.Exists(folder))
             throw new DirectoryNotFoundException(folder);
         LastScannedFolder = folder;
+        // Scanning a folder is what chooses the folder you are working on.
+        ScanRoot = folder;
         var scanner = new Scanner(Db, Imaging, ThumbDir);
         return scanner.ScanAsync(folder, progress, ct);
     }
+
+    /// <summary>
+    /// Empty the catalogue and the thumbnail cache, returning the app to a fresh install as far
+    /// as analysis goes. Photos on disk are never touched, and the undo log survives so
+    /// anything already in the Recycle Bin can still be restored.
+    /// </summary>
+    public void Forget()
+    {
+        Images.DeleteAll();
+        ScanRoot = null;
+        LastScannedFolder = null;
+
+        // Best-effort: a thumbnail that will not delete is wasted disk, not a broken catalogue,
+        // and the rows that referenced it are already gone.
+        foreach (var file in ThumbFiles())
+        {
+            try { File.Delete(file); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+        }
+    }
+
+    /// <summary>Bytes currently held by the catalogue database and the thumbnail cache.</summary>
+    public (int Photos, long DbBytes, long ThumbBytes) Footprint()
+    {
+        var db = Path.Combine(_appData, "catalog.db");
+        long thumbs = 0;
+        foreach (var f in ThumbFiles())
+        {
+            try { thumbs += new FileInfo(f).Length; } catch (IOException) { /* vanished mid-walk */ }
+        }
+        return (Images.TotalCount(), File.Exists(db) ? new FileInfo(db).Length : 0, thumbs);
+    }
+
+    /// <summary>Every cached thumbnail. Recursive: they are sharded into 256 subdirectories by
+    /// hash prefix, so a top-level enumeration finds none of them and reports an empty cache.</summary>
+    IEnumerable<string> ThumbFiles() =>
+        Directory.Exists(ThumbDir)
+            ? Directory.EnumerateFiles(ThumbDir, "*", SearchOption.AllDirectories)
+            : [];
 
     public void Dispose()
     {

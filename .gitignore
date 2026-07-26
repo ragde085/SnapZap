@@ -55,4 +55,9 @@ CodeCoverage/
 *.VisualState.xml
 TestResult.xml
 nunit-*.xml
+# Optional sidecars, fetched by scripts/install-deps.{sh,bat}. Too large to commit and
+# reproducible from the pinned URLs + checksums in those scripts. models/preprocessor_config.json
+# is deliberately NOT ignored: it is 353 bytes, it carries the constants a wrong guess would
+# silently corrupt scores with, and its committed bytes are what the installer writes.
 models/*.onnx
+/tools/

@@ -1,13 +1,18 @@
 #!/usr/bin/env bash
-# Export the Falconsai/nsfw_image_detection ViT to ONNX for SnapZap.
+# Build the NSFW ONNX model yourself, from the Falconsai/nsfw_image_detection ViT weights.
 #
-# The model is NOT committed to the repo (~350 MB) and cannot be fetched in CI. Run this once
-# on a machine with Python to produce models/nsfw.onnx + preprocessor_config.json, which the
-# app loads as a sidecar. Apache-2.0 licensed, fully offline after download.
+# YOU PROBABLY DON'T NEED THIS. `scripts/install-deps.sh` downloads a checksum-verified,
+# ready-made ONNX conversion of the same model in one step and needs no Python. Use this
+# script only if you want to produce the .onnx from the original PyTorch weights yourself
+# rather than trust a prebuilt conversion.
+#
+# Requires Python 3 and downloads ~2 GB of build-time dependencies (torch, transformers)
+# into a throwaway venv. The exported model is identical in shape to the prebuilt one:
+# [1,3,224,224] pixel_values -> [1,2] logits, index 1 = nsfw.
 #
 # Exports directly with torch.onnx (no dependency on optimum's shifting CLI).
 #
-# Usage:  scripts/get-nsfw-model.sh [OUT_DIR]
+# Usage:  scripts/export-nsfw-model.sh [OUT_DIR]
 #   OUT_DIR defaults to <repo>/models regardless of where you run this from.
 set -euo pipefail
 

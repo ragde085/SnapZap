@@ -77,7 +77,7 @@
     int LastRow => Math.Min(_rows.Count,
         FirstRow + (int)Math.Ceiling(_viewportHeight / _rowHeight) + 2 * Overscan);
 
-    // AppState is shared, mutable, and changed by sibling components (Sidebar, Card) whose
+    // AppState is shared, mutable, and changed by sibling components (FilterBar, Card) whose
     // parameters into this component never change — Blazor's diffing then skips re-rendering
     // us on their account, so we must subscribe to AppState directly rather than rely on
     // cascading re-render from a parent.

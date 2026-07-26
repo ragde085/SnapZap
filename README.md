@@ -25,13 +25,25 @@ architecture and rationale.
 
 - [.NET 10 SDK](https://dotnet.microsoft.com/download) to build. The Windows `.exe` is
   self-contained and needs nothing installed; the macOS build needs the .NET 10 runtime.
-- (Optional) `czkawka_cli` for similar-image detection — placed beside the binary or on PATH.
-- (Optional) the NSFW ONNX model for NSFW scoring — see below.
+- (Optional) `czkawka_cli` for similar-image detection.
+- (Optional) the NSFW ONNX model for NSFW scoring.
 
-Both optional pieces are validated at launch: if either is missing the app says so once,
-explains what it unlocks and exactly where to put the file, and keeps a live status list under
-**Setup** in the sidebar with a *Check again* button (no restart needed). Everything else —
-scanning, exact duplicates, blur, dates, export, delete — works without them.
+Install both optional pieces with one command:
+
+```bash
+scripts/install-deps.sh        # macOS / Linux
+scripts\install-deps.bat       # Windows
+```
+
+It downloads them from pinned URLs, checks SHA-256 before putting anything in place, and
+writes to `models/` and `tools/` in the repo — which the build copies into the app's output
+directory, so `dotnet run` picks them up with no environment variables. Re-running is cheap:
+anything already installed and intact is skipped.
+
+Both are validated at launch: if either is missing the app says so once, shows the exact
+command to install it, and keeps a live status list under **Setup** (the gear, top right) with a
+*Check again* button. Everything else — scanning, exact duplicates, blur, dates, export,
+delete — works without them.
 
 ## Run (development)
 
@@ -45,13 +57,29 @@ Then open the printed `http://localhost:<port>` URL. Environment knobs:
   beside the binary).
 - `PC_NO_BROWSER=1` — don't auto-open a browser (used by tests/headless).
 
-## Get the NSFW model (one-time, optional)
+## Optional add-ons in detail
 
-The model (~350 MB, Apache-2.0) is **not** committed. Export it once:
+| | Unlocks | Size | Source |
+|---|---|---|---|
+| `models/nsfw.onnx` + `preprocessor_config.json` | NSFW scoring | 328 MB | [Falconsai ViT](https://huggingface.co/Falconsai/nsfw_image_detection), Apache-2.0, [ONNX conversion](https://huggingface.co/onnx-community/nsfw_image_detection-ONNX) pinned to one revision |
+| `tools/czkawka_cli` | Similar-photo detection | 45 MB | [czkawka 12.0.0](https://github.com/qarmin/czkawka/releases), MIT |
+
+Neither is committed — both are too large, and both are reproducible from the pinned URLs and
+checksums in `scripts/install-deps.sh`. Useful flags:
 
 ```bash
-scripts/get-nsfw-model.sh          # writes models/nsfw.onnx + preprocessor_config.json
+scripts/install-deps.sh --model-only          # just the model
+scripts/install-deps.sh --czkawka-only        # just similar-photo detection
+scripts/install-deps.sh --force               # re-download even if present
+scripts/install-deps.sh --dest artifacts/mac  # install beside a published binary instead
 ```
+
+The `--dest` form is what you want for a published app: it writes `<dest>/models/nsfw.onnx`
+and `<dest>/czkawka_cli`, which is exactly the sidecar layout the binary looks for.
+
+If you would rather build the `.onnx` from the original PyTorch weights than trust a prebuilt
+conversion, `scripts/export-nsfw-model.sh` does that instead. It needs Python and downloads
+~2 GB of torch/transformers into a throwaway venv; the result is equivalent.
 
 Validate the model's scores against your own labeled images before trusting them:
 
@@ -105,8 +133,16 @@ models/preprocessor_config.json
 czkawka_cli.exe              (optional — enables similar-image detection)
 ```
 
-Both optional pieces degrade gracefully: without the model, NSFW scoring is disabled;
-without `czkawka_cli.exe`, only exact-duplicate detection runs.
+The optional files are deliberately **not** copied into the publish output, so the `.exe`
+stays ~130 MB whether or not you installed them locally. To ship them, point the installer at
+the publish folder:
+
+```
+scripts\install-deps.bat --dest artifacts\win-x64
+```
+
+Both degrade gracefully: without the model, NSFW scoring is disabled; without
+`czkawka_cli.exe`, only exact-duplicate detection runs.
 
 ## Tests
 
@@ -125,7 +161,8 @@ score validation (`PC_NSFW_MODEL` + `PC_NSFW_FIXTURES`).
 | `src/SnapZap.Core` | Portable logic: scan, hash, dedup, NSFW, blur/EXIF, export, delete, platform interfaces |
 | `src/SnapZap.App`  | ASP.NET Core host + Blazor Server UI (`Components`, `Services`, `wwwroot`) |
 | `tests/SnapZap.Tests` | xUnit suite |
-| `scripts/get-nsfw-model.sh` | One-time ONNX model export |
+| `scripts/install-deps.{sh,bat}` | One-command install of both optional sidecars |
+| `scripts/export-nsfw-model.sh` | Build the ONNX model from PyTorch weights yourself (rarely needed) |
 | `docs/DESIGN.md` | Architecture, decisions, safety invariants |
 | `docs/ROADMAP.md` | Current status + prioritized next steps |
 | `docs/BLAZOR-MIGRATION.md` | The SPA → Blazor Server migration (completed) |

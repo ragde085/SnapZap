@@ -1,4 +1,5 @@
 @using Microsoft.AspNetCore.Components.Web
+@inject IWebHostEnvironment Env
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -72,27 +73,47 @@
 </html>
 
 @code {
+    /// <summary>Every asset this page version-stamps. The stamp is the newest write time
+    /// across all of them, so changing any one of them busts the cache for the set. Stamping
+    /// on interop.js alone used to mean a CSS-only change shipped invisibly: browsers kept
+    /// serving the previous app.css, and the fix looked like it simply did not work.</summary>
+    static readonly string[] StampedAssets = ["app.css", "interop.js"];
+
     /// <summary>
     /// Cache-buster tied to the build, so `app.css` and `interop.js` can never be served stale
     /// after an update. A stale interop.js used to blank the photo grid.
     ///
-    /// Uses <c>AppContext.BaseDirectory</c>, never <c>Assembly.Location</c>: the latter returns
-    /// an empty string in a single-file publish — which is exactly how the Windows build ships
-    /// — and <c>new FileInfo("")</c> would throw here, in a static initialiser, on every launch.
-    /// Wrapped anyway so a version stamp can never be the thing that stops the app starting.
+    /// Recomputed per page load rather than cached in a static: it is two file stats on a
+    /// request that happens once per session, and it means editing an asset during development
+    /// takes effect on refresh instead of requiring a restart.
     /// </summary>
-    static readonly string Version = "?v=" + BuildStamp();
+    string Version => "?v=" + BuildStamp();
 
-    static string BuildStamp()
+    string BuildStamp()
     {
         var version = typeof(App).Assembly.GetName().Version?.ToString() ?? "dev";
         try
         {
-            var asset = Path.Combine(AppContext.BaseDirectory, "wwwroot", "interop.js");
-            if (File.Exists(asset))
-                return $"{version}-{File.GetLastWriteTimeUtc(asset).Ticks}";
+            // WebRootPath, not AppContext.BaseDirectory: in development wwwroot is served from
+            // the project directory and is never copied to bin/, so probing beside the binary
+            // found nothing and quietly fell back to the assembly version — which is constant,
+            // leaving development with no cache-busting at all. WebRootPath is correct in both
+            // development and a published single-file build. Assembly.Location is still avoided:
+            // it is empty under single-file publish, which is how the Windows build ships.
+            var root = Env.WebRootPath;
+            if (string.IsNullOrEmpty(root))
+                root = Path.Combine(AppContext.BaseDirectory, "wwwroot");
+
+            var newest = StampedAssets
+                .Select(a => Path.Combine(root, a))
+                .Where(File.Exists)
+                .Select(File.GetLastWriteTimeUtc)
+                .DefaultIfEmpty()
+                .Max();
+
+            if (newest != default) return $"{version}-{newest.Ticks}";
         }
-        catch { /* fall through to the assembly version alone */ }
+        catch { /* a version stamp must never be the thing that stops the app starting */ }
         return version;
     }
 }

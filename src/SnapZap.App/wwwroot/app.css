@@ -43,9 +43,8 @@
   --t-xl: 1.55rem;
 
   --radius: 3px;
-  --rail-w: 46px;
   --preview-panel-w: 268px;   /* the preview's metadata column; the nav buttons clear it */
-  --flyout-w: 232px;
+  --tree-w: 250px;            /* left pane: paths get deep, so it earns the width */
 
   --ease: cubic-bezier(0.2, 0, 0.2, 1);
   --dur: 160ms;
@@ -220,40 +219,117 @@ kbd {
 
 main { display: flex; flex: 1; min-height: 0; }
 
-/* ---------- icon rail + flyout ---------- */
+/* ---------- working toolbar ---------- */
 
-.rail {
-  width: var(--rail-w);
+/* Filters and selection commands, one row under the scan bar. They used to be an icon rail
+   whose panels took a column out of the grid; the controls that decide which photos to show
+   were displacing the photos. */
+.toolbar {
+  position: relative;
+  z-index: 40;              /* popovers open over the grid */
   flex: none;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  flex-wrap: wrap;
+}
+
+/* Above the scrim (z-index 1), so clicking another toolbar button while a menu is open
+   switches menus in one click instead of being swallowed by the dismiss layer. */
+.tb-group, .toolbar > .tb-btn { position: relative; z-index: 2; }
+
+.tb-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  font-size: var(--t-xs);
+  white-space: nowrap;
+}
+.tb-btn.on { border-color: var(--accent); color: var(--accent); }
+/* A filter that is on changes what the grid contains, so the button says so even closed. */
+.tb-btn.marked { border-color: var(--accent); }
+.tb-caret { font-size: 0.6rem; color: var(--muted); }
+.tb-count {
+  min-width: 15px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-family: var(--mono);
+  font-size: 0.6rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.tb-sep { width: 1px; align-self: stretch; margin: 0 4px; background: var(--line); }
+.tb-note { font-size: var(--t-xs); color: var(--dim); margin-left: 4px; white-space: nowrap; }
+/* First thing to give up when the bar runs out of room; the controls matter more than the hint. */
+@media (max-width: 1200px) { .tb-note { display: none; } }
+
+/* Names the command group, the way the sort bar names its own control. */
+.tb-label { font-size: var(--t-xs); color: var(--muted); margin-left: 2px; }
+.tb-cmds { display: flex; align-items: center; gap: 5px; position: relative; z-index: 2; }
+.tb-cmds .tb-btn svg {
+  width: 14px; height: 14px; flex: none;
+  fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round;
+}
+
+.tb-label { font-size: var(--t-xs); color: var(--muted); margin-left: 2px; }
+.tb-cmds { display: flex; align-items: center; gap: 5px; position: relative; z-index: 2; }
+.tb-cmds .tb-btn svg {
+  width: 14px; height: 14px; flex: none;
+  fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round;
+}
+
+.popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 2;
+  min-width: 244px;
+  padding: 13px 13px 11px;
   background: var(--raised);
-  border-right: 1px solid var(--line);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
   display: flex;
   flex-direction: column;
-  align-items: center;
-  padding: 12px 0;
-  gap: 6px;
+  gap: 9px;
+  animation: pop-in 110ms var(--ease);
 }
-.rail .spacer { flex: 1; }
+@keyframes pop-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .popover { animation: none; } }
 
-.rail button {
+.popover > button:not(.link) { width: 100%; text-align: left; }
+.popover .hint { margin: 2px 0 0; }
+
+/* Catches the click that dismisses an open menu. Behind the popover, ahead of everything
+   else, and transparent — it must never look like a modal veil. */
+.popover-scrim { position: fixed; inset: 0; z-index: 1; }
+
+/* Setup and shortcuts, at the far end of the top bar. */
+.topbar-tools { display: flex; align-items: center; gap: 2px; margin-left: auto; }
+
+.icon-btn {
   all: unset;
   cursor: pointer;
+  position: relative;
   width: 30px;
   height: 30px;
   display: grid;
   place-items: center;
   color: var(--muted);
   border-radius: var(--radius);
-  position: relative;
   transition: color var(--dur) var(--ease), background var(--dur) var(--ease);
 }
-.rail button:hover { color: var(--ink); background: var(--surface); }
-.rail button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-.rail button.active { color: var(--accent); background: var(--accent-soft); }
-.rail button svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.icon-btn:hover { color: var(--ink); background: var(--surface); }
+.icon-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.icon-btn svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
 
-/* count pip on the selection icon */
-.rail button .pip {
+.icon-btn .pip {
   position: absolute;
   top: -2px;
   right: -2px;
@@ -261,7 +337,7 @@ main { display: flex; flex: 1; min-height: 0; }
   height: 15px;
   padding: 0 3px;
   border-radius: 8px;
-  background: var(--accent);
+  background: var(--warn);
   color: var(--accent-ink);
   font-family: var(--mono);
   font-size: 0.6rem;
@@ -270,21 +346,30 @@ main { display: flex; flex: 1; min-height: 0; }
   place-items: center;
   font-variant-numeric: tabular-nums;
 }
-/* Setup uses the warning hue, so a missing sidecar never reads as a selection count. */
-.rail button .pip.warn { background: var(--warn); color: var(--accent-ink); }
 
-.flyout {
-  width: var(--flyout-w);
+/* Filter controls. These live in the toolbar's popovers now; they were defined alongside the
+   old flyout that used to hold them. */
+.f { display: flex; flex-direction: column; gap: 5px; font-size: var(--t-xs); color: var(--muted); }
+.f .f-label { display: flex; justify-content: space-between; gap: 8px; }
+.f .f-label b { color: var(--ink); font-weight: 400; font-variant-numeric: tabular-nums; }
+.f.checkbox { flex-direction: row; align-items: center; gap: 7px; color: var(--ink); font-size: var(--t-sm); }
+.f select { width: 100%; }
+.f-note { font-size: var(--t-xs); color: var(--dim); line-height: 1.45; }
+
+/* Used by every panel and dialog, not just the ones that happened to sit near it. */
+.hint { font-size: var(--t-xs); color: var(--dim); margin: 2px 0 0; line-height: 1.45; }
+
+/* ---------- left pane (folder tree) ---------- */
+
+.tree-pane {
+  width: var(--tree-w);
   flex: none;
   background: var(--surface);
   border-right: 1px solid var(--line);
   padding: 16px 14px;
   overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 22px;
 }
-.flyout h3 {
+.tree-pane h3 {
   margin: 0 0 10px;
   font-family: var(--mono);
   font-size: var(--t-xs);
@@ -293,21 +378,57 @@ main { display: flex; flex: 1; min-height: 0; }
   letter-spacing: 0.1em;
   color: var(--muted);
 }
-.flyout section { display: flex; flex-direction: column; gap: 8px; }
-/* Direct children only. A descendant selector here also caught the folder tree's chevron
-   buttons and, at higher specificity than their own rule, stretched them to full width. */
-.flyout section > button:not(.link) { width: 100%; text-align: left; }
 
-.f { display: flex; flex-direction: column; gap: 5px; font-size: var(--t-xs); color: var(--muted); }
-.f .f-label { display: flex; justify-content: space-between; gap: 8px; }
-.f .f-label b { color: var(--ink); font-weight: 400; font-variant-numeric: tabular-nums; }
-.f.checkbox { flex-direction: row; align-items: center; gap: 7px; color: var(--ink); font-size: var(--t-sm); }
-.f select { width: 100%; }
+/* ---------- selection action bar ---------- */
 
-.selcount { font-family: var(--serif); font-size: var(--t-md); color: var(--ink); }
-.selcount .selbytes { color: var(--muted); font-family: var(--mono); font-size: var(--t-xs); margin-left: 6px; }
-.selcount b { color: var(--accent); font-weight: 600; font-variant-numeric: tabular-nums; }
-.hint { font-size: var(--t-xs); color: var(--dim); margin: 2px 0 0; line-height: 1.45; }
+/* Floats over the foot of the grid rather than taking a strip of it, and only exists while
+   something is selected — so the space is the photos' the rest of the time. */
+.selbar {
+  position: absolute;
+  /* Both edges plus auto margins, not left:50% + translate. With only `left` set the bar's
+     available width is the pane minus that 50%, i.e. half of it — so it wrapped to two rows
+     on any window under ~1100px and orphaned the Clear button. */
+  left: 16px;
+  right: 16px;
+  width: max-content;
+  margin-inline: auto;
+  bottom: 18px;
+  z-index: 45;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 13px;
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.5);
+  animation: selbar-in 140ms var(--ease);
+  max-width: 100%;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+@keyframes selbar-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .selbar { animation: none; } }
+
+.selbar button { padding: 5px 13px; font-size: var(--t-xs); border-radius: 999px; }
+.selbar-count { font-size: var(--t-xs); color: var(--muted); white-space: nowrap; padding-left: 5px; }
+.selbar-count b { color: var(--ink); font-variant-numeric: tabular-nums; }
+.selbar-bytes { color: var(--dim); margin-left: 6px; font-variant-numeric: tabular-nums; }
+
+/* The confirmation is anchored to the bar it was launched from, above it so the pointer
+   does not have to leave the controls to answer. */
+.selbar .confirm {
+  position: absolute;
+  bottom: calc(100% + 9px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: min(380px, 90vw);
+}
+
+/* The bar floats over the grid, so the grid has to end above it — otherwise the last row of
+   photos sits underneath and cannot be clicked. Only while there is a selection to act on. */
+.content:has(.selbar) .grid { padding-bottom: 74px; }
 
 /* ---------- duplicate review ---------- */
 
@@ -472,9 +593,6 @@ main { display: flex; flex: 1; min-height: 0; }
 
 /* ---------- folder tree ---------- */
 
-/* Paths get deep; the tree earns more width than the other panels. */
-.flyout.wide { width: 300px; }
-
 .tree { display: flex; flex-direction: column; gap: 1px; margin-bottom: 10px; }
 .tree-branch { display: flex; flex-direction: column; gap: 1px; }
 .tree-row-wrap { display: flex; align-items: stretch; gap: 0; }
@@ -594,6 +712,47 @@ main { display: flex; flex: 1; min-height: 0; }
   word-break: break-all;
 }
 
+/* The one-command install: the primary path, so it gets the weight and the copy button. */
+.dep-cmd-label { font-size: var(--t-xs); color: var(--muted); margin-top: 4px; }
+.dep-cmd {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 5px;
+  padding: 7px 8px;
+  background: var(--surface);
+  border: 1px solid var(--line-soft);
+  border-radius: 3px;
+}
+.dep-cmd code {
+  flex: 1;
+  font-family: var(--mono);
+  font-size: var(--t-xs);
+  line-height: 1.5;
+  color: var(--ink);
+  /* Commands carry absolute paths, which have no spaces to break on. */
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+.dep-copy {
+  flex: none;
+  font-size: var(--t-xs);
+  color: var(--accent);
+  background: none;
+  border: none;
+  padding: 0 2px;
+  cursor: pointer;
+}
+.dep-copy:hover { text-decoration: underline; }
+
+.dep-manual { margin-top: 8px; }
+.dep-manual summary {
+  font-size: var(--t-xs);
+  color: var(--muted);
+  cursor: pointer;
+}
+.dep-manual summary:hover { color: var(--ink); }
+
 .dep-steps { margin: 6px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; }
 /* Steps carry absolute filesystem paths, which have no spaces to break on. */
 .dep-steps li {
@@ -612,8 +771,26 @@ main { display: flex; flex: 1; min-height: 0; }
   word-break: break-all;
 }
 .dep-steps a { color: var(--accent); }
+.dep-steps .quiet { color: var(--muted); }
 
 .dep-suppress { margin-top: 14px; }
+
+/* Catalogue footprint + the purge, inside Setup. */
+.setup-block { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line-soft); display: flex; flex-direction: column; gap: 9px; }
+.setup-block h3 {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: var(--t-xs);
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+}
+.setup-stat { font-size: var(--t-xs); color: var(--ink); line-height: 1.5; }
+.setup-stat b { color: var(--accent); font-variant-numeric: tabular-nums; }
+.setup-stat .quiet { color: var(--muted); display: block; font-variant-numeric: tabular-nums; }
+.setup-stat.quiet { color: var(--muted); }
+.setup-block > button { align-self: flex-start; }
 
 .shortcuts { display: flex; flex-direction: column; gap: 7px; }
 .shortcuts div { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; font-size: var(--t-xs); color: var(--muted); }
@@ -659,6 +836,19 @@ main { display: flex; flex: 1; min-height: 0; }
 .grid {
   flex: 1;
   overflow-y: auto;
+
+  /* Do not remove: without this the grid cannot be scrolled at all.
+     Scroll anchoring is the browser keeping whatever you were looking at visually still by
+     silently adjusting scrollTop when content above it changes size. That is the exact thing
+     PhotoGrid does on every scroll — it resizes the two spacers and swaps the rendered rows —
+     so the two form a feedback loop: wheel down → we re-window → the browser "corrects"
+     scrollTop → that fires another scroll → we re-window again → …, and the grid runs to
+     whichever end you nudged it toward. Measured on 3,930 photos: ten wheel notches from
+     20,000px, which should land at 21,200px, ended at 119,091px — the very bottom.
+     Only the scroll container needs it; excluding the children as well changes nothing.
+     Programmatic scrolls suppress anchoring, so this reproduces only with real wheel or
+     trackpad input — setting scrollTop from the console will not show it. */
+  overflow-anchor: none;
 }
 
 .grid-row {
@@ -864,8 +1054,8 @@ main { display: flex; flex: 1; min-height: 0; }
 .undo-row .meta { color: var(--muted); margin-top: 2px; }
 .undo-row.done { opacity: 0.5; }
 
-/* Inline confirm, replacing the OS-level confirm() dialog. Kept in normal flow rather
-   than absolutely positioned so the flyout's own scrolling can never clip it. */
+/* Inline confirm, replacing the OS-level confirm() dialog. Anchored by whatever launched
+   it — see .selbar .confirm for the selection bar's placement. */
 .confirm {
   background: var(--ground);
   border: 1px solid color-mix(in srgb, var(--danger) 45%, var(--line));
@@ -878,8 +1068,8 @@ main { display: flex; flex: 1; min-height: 0; }
 }
 .confirm p { margin: 0; font-family: var(--serif); font-size: var(--t-sm); line-height: 1.45; }
 .confirm p b { color: var(--accent); }
-/* Stacked, full-width: the flyout is only ~230px wide and a side-by-side row wraps the
-   destructive button's label mid-phrase. */
+/* Stacked, full-width: a side-by-side row wraps the destructive button's label mid-phrase
+   at the widths this confirmation is shown at. */
 .confirm .row { display: flex; flex-direction: column; gap: 6px; }
 .confirm .row button { width: 100%; text-align: center; }
 
@@ -888,39 +1078,78 @@ main { display: flex; flex: 1; min-height: 0; }
 .modal {
   position: fixed;
   inset: 0;
-  background: rgba(9, 6, 4, 0.9);
+  /* Fully opaque, not a veil. .frame used to carry its own background; going full-bleed
+     removed it, and at 90% a photo smaller than the window sat on a legible thumbnail grid.
+     Judging exposure and blur against a backdrop of other photos is not judging it at all. */
+  background: var(--ground);
   z-index: 65;
   display: flex;
-  padding: 26px;
   gap: 0;
   animation: fade-in 140ms var(--ease);
 }
+
+/* The photo gets the whole window. It used to sit in a column beside the metadata panel,
+   with 26px of padding around everything, which cost it a quarter of the width — a
+   3264x2448 shot reached only 77% of a 1400px window. The panel is now an overlay
+   (below) so nothing but the window bounds limits the image. */
 .modal .frame {
   position: relative;          /* containing block for the position counter */
   flex: 1;
   min-width: 0;
   display: grid;
+  /* Explicit minmax(0, 1fr) tracks, not the implicit auto ones: an auto track is sized by
+     its content, so the image's own max-height: 100% would resolve against a height the
+     image itself determines. That cycle makes the percentage behave as "none" and a tall
+     photo overflows the window instead of fitting it. */
+  grid-template: minmax(0, 1fr) / minmax(0, 1fr);
   place-items: center;
-  background: var(--ground);
-  border: 1px solid var(--line);
-  border-right: none;
-  border-radius: var(--radius) 0 0 var(--radius);
   overflow: hidden;
 }
+
+/* Yield exactly the panel's width while it is open, so the photo shrinks to fit beside it
+   rather than being partly hidden behind it. A landscape shot filling the window would
+   otherwise lose its right-hand quarter the moment the details were opened. */
+.modal.details-open .frame { margin-right: var(--preview-panel-w); }
+
+/* Fit the window, never exceed the photo's own resolution. Upscaling would make a small
+   photo look soft, and softness is one of the things this preview exists to judge —
+   a blurry-looking enlargement of a sharp 300px photo would be a lie. */
 .modal .frame img { max-width: 100%; max-height: 100%; object-fit: contain; }
 
-/* Where you are in the run, so stepping doesn't feel unbounded. Sits over the image rather
-   than taking layout height, which would shrink the photo it's annotating. */
-.modal .frame-pos {
+/* Position in the run and the select control. Sits over the image rather than taking layout
+   height, which would shrink the photo it annotates. */
+.modal .frame-bar {
   position: absolute;
-  bottom: 12px;
-  padding: 3px 9px;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  z-index: 1;
+}
+.modal .frame-pos {
+  padding: 5px 11px;
   border-radius: 999px;
   background: rgba(9, 6, 4, 0.72);
   color: var(--muted);
   font-size: var(--t-xs);
   font-variant-numeric: tabular-nums;
   pointer-events: none;
+}
+.modal .frame-select {
+  padding: 5px 14px;
+  border-radius: 999px;
+  font-size: var(--t-xs);
+  background: rgba(9, 6, 4, 0.72);
+  border: 1px solid var(--line);
+  color: var(--ink);
+}
+.modal .frame-select:hover { border-color: var(--dim); }
+.modal .frame-select.on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--ground);
 }
 
 /* Step controls, held clear of the image so they never sit on top of what's being judged. */
@@ -938,24 +1167,39 @@ main { display: flex; flex: 1; min-height: 0; }
   background: rgba(9, 6, 4, 0.72);
   border: 1px solid var(--line);
 }
-.modal .nav.prev { left: 32px; border-radius: 0 var(--radius) var(--radius) 0; }
-.modal .nav.next { right: calc(var(--preview-panel-w) + 32px); border-radius: var(--radius) 0 0 var(--radius); }
+.modal .nav.prev { left: 20px; border-radius: 0 var(--radius) var(--radius) 0; }
+.modal .nav.next { right: 20px; border-radius: var(--radius) 0 0 var(--radius); }
+/* Step out of the way of the details panel rather than under it. */
+.modal.details-open .nav.next { right: calc(var(--preview-panel-w) + 20px); }
 .modal .nav:hover:not(:disabled) { color: var(--ink); border-color: var(--dim); }
 .modal .nav:disabled { opacity: 0.28; }
 
-/* Metadata as labelled rows, not one run-on line joined by separators. */
+/* Metadata as labelled rows, not one run-on line joined by separators.
+   An overlay rather than a column: as a column it permanently narrowed the photo even when
+   nobody was reading it. Hidden by default so the preview opens at full size, and the
+   toggle is remembered for the session so anyone who wants the numbers keeps them. */
 .modal .panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
   width: var(--preview-panel-w);
-  flex: none;
+  z-index: 2;
   background: var(--raised);
-  border: 1px solid var(--line);
-  border-radius: 0 var(--radius) var(--radius) 0;
+  border-left: 1px solid var(--line);
   padding: 20px 18px;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 15px;
+  animation: panel-in 140ms var(--ease);
 }
+@keyframes panel-in { from { transform: translateX(100%); } to { transform: none; } }
+@media (prefers-reduced-motion: reduce) { .modal .panel { animation: none; } }
+
+/* Sits opposite Close, so the two window controls bracket the top of the image. */
+.modal .details-toggle { position: absolute; top: 20px; right: 20px; z-index: 3; }
+.modal.details-open .details-toggle { right: calc(var(--preview-panel-w) + 20px); }
 .modal .panel .pk {
   font-size: var(--t-xs);
   text-transform: uppercase;
@@ -968,19 +1212,45 @@ main { display: flex; flex: 1; min-height: 0; }
 .modal .panel .pv.accent { color: var(--accent); }
 .modal .panel .pv.ok { color: var(--ok); }
 .modal .panel .pv.warn { color: var(--warn); }
+.modal .panel .pv.warn.dim { color: color-mix(in srgb, var(--warn) 65%, var(--muted)); }
 .modal .panel .path { font-size: var(--t-xs); line-height: 1.5; }
-
-/* Top-left, over the image side: the metadata panel owns the top-right corner. */
-.modal .close { position: absolute; top: 34px; left: 34px; z-index: 2; }
-
-@media (max-width: 860px) {
-  .modal { flex-direction: column; }
-  .modal .frame { border-right: 1px solid var(--line); border-bottom: none; border-radius: var(--radius) var(--radius) 0 0; }
-  .modal .panel { width: auto; border-radius: 0 0 var(--radius) var(--radius); max-height: 40vh; }
+/* Supporting evidence under a verdict — deliberately quieter than the verdict itself. */
+.modal .panel .pv-sub {
+  font-size: var(--t-xs);
+  color: var(--dim);
+  margin-top: 2px;
+  font-variant-numeric: tabular-nums;
 }
 
+/* Top-left, over the image side: the details toggle owns the top-right corner. */
+.modal .close { position: absolute; top: 20px; left: 20px; z-index: 3; }
+
+@media (max-width: 860px) {
+  /* Too narrow for a side panel to leave a usable image beside it — dock it to the bottom. */
+  .modal .panel {
+    top: auto;
+    left: 0;
+    width: auto;
+    max-height: 45vh;
+    border-left: none;
+    border-top: 1px solid var(--line);
+  }
+  @keyframes panel-in { from { transform: translateY(100%); } to { transform: none; } }
+  .modal.details-open .frame { margin-right: 0; margin-bottom: 45vh; }
+  .modal.details-open .nav.next,
+  .modal.details-open .details-toggle { right: 20px; }
+}
+
+/* Below this the tree and the grid cannot both be useful side by side; the photos win and
+   the tree becomes a short band above them, still reachable without a menu. */
 @media (max-width: 760px) {
-  .flyout { position: absolute; left: var(--rail-w); top: 0; bottom: 0; z-index: 30; box-shadow: 0 0 30px rgba(0,0,0,.5); }
+  main { flex-direction: column; }
+  .tree-pane {
+    width: auto;
+    max-height: 30vh;
+    border-right: none;
+    border-bottom: 1px solid var(--line);
+  }
 }
 
 /* ---------- motion preferences ---------- */

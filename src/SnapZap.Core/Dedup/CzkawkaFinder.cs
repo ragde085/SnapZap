@@ -81,7 +81,7 @@ public sealed class CzkawkaFinder(Database db, string? explicitBinaryPath = null
             }
 
             var groups = ParseGroups(await File.ReadAllTextAsync(jsonPath, ct));
-            var stored = StoreGroups(groups);
+            var stored = StoreGroups(groups, root);
             return new CzkawkaResult(true, stored, stored == 0 ? "No similar images found." : null);
         }
         catch (OperationCanceledException) { throw; }
@@ -167,7 +167,7 @@ public sealed class CzkawkaFinder(Database db, string? explicitBinaryPath = null
         }
     }
 
-    int StoreGroups(List<List<string>> groups)
+    int StoreGroups(List<List<string>> groups, string root)
     {
         var repo = new ImageRepository(db);
         var dupes = new DupeRepository(db);
@@ -182,7 +182,9 @@ public sealed class CzkawkaFinder(Database db, string? explicitBinaryPath = null
             if (!index.ContainsKey(canonical)) index[canonical] = hit;
         }
 
-        dupes.ClearKind(DupeKind.Similar);
+        // Scoped to the folder just searched, so re-running here cannot discard the similar
+        // groups found in a different library.
+        dupes.ClearKind(DupeKind.Similar, root);
 
         int count = 0;
         using var tx = db.Connection.BeginTransaction();

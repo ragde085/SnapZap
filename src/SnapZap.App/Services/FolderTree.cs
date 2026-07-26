@@ -110,26 +110,48 @@ public static class FolderTreeBuilder
     }
 
     /// <summary>Create every missing node between the root and <paramref name="folder"/>.</summary>
+    /// <remarks>
+    /// Each node's Path is taken as a literal prefix of <paramref name="folder"/> rather than
+    /// rebuilt by joining segments. Rebuilding lost the leading separator whenever the library
+    /// spanned two filesystem roots — scan <c>/Users/me/pics</c> and <c>/Volumes/backup</c> into
+    /// one catalogue and the common prefix is "", so a node came out as <c>Users/me/pics</c>
+    /// while every photo reported <c>/Users/me/pics</c>. AppState.Matches compares the two
+    /// directly, so selecting any folder in the tree filtered the grid down to nothing.
+    /// Slicing the real string cannot drift from what the photos report.
+    /// </remarks>
     static FolderNode EnsureNode(
         Dictionary<string, FolderNode> nodes, FolderNode rootNode, string root, string folder)
     {
         if (nodes.TryGetValue(folder, out var existing)) return existing;
 
-        var relative = folder.Length > root.Length ? folder[(root.Length + 1)..] : "";
-        var segments = relative.Split('/', StringSplitOptions.RemoveEmptyEntries);
-
         var current = rootNode;
-        var path = root;
-        for (var d = 0; d < segments.Length; d++)
+        var depth = 0;
+        var i = root.Length;
+
+        while (i < folder.Length)
         {
-            path = path.Length == 0 ? segments[d] : $"{path}/{segments[d]}";
+            // Step over the separator after the root, or after the previous segment.
+            while (i < folder.Length && folder[i] == '/') i++;
+            if (i >= folder.Length) break;
+
+            var end = folder.IndexOf('/', i);
+            if (end < 0) end = folder.Length;
+
+            var path = folder[..end];
+            depth++;
             if (!nodes.TryGetValue(path, out var child))
             {
-                child = new FolderNode { Path = path, Name = segments[d], Depth = d + 1 };
+                // With no common root the top row carries the whole path, and showing it bare
+                // would read as relative — "/Volumes" not "Volumes". Keyed off the empty root
+                // rather than "does this look absolute", which is true of every ordinary scan
+                // and would label each child of the scanned folder with its full path.
+                var name = depth == 1 && root.Length == 0 ? path : folder[i..end];
+                child = new FolderNode { Path = path, Name = name, Depth = depth };
                 nodes[path] = child;
                 current.Children.Add(child);
             }
             current = child;
+            i = end;
         }
         return current;
     }

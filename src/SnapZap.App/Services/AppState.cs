@@ -151,17 +151,78 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
     // ---- Filters -----------------------------------------------------------
     // Setters invalidate the memoised filter result and notify, so bindings stay
     // a plain @bind with no @bind:after bookkeeping at every call site.
-    double _nsfwMin;
+    NsfwFilter _nsfw = NsfwFilter.Any;
     int _blurMax;
     bool _dupesOnly;
     string _folder = "";
     string _year = "";
 
-    public double NsfwMin { get => _nsfwMin; set => SetFilter(ref _nsfwMin, value); }
+    /// <summary>
+    /// Which explicit-content band the grid is limited to. Named states rather than a 0–1
+    /// slider: the model's output is bimodal, so a hundred stops between 0 and 1 offered
+    /// ninety-eight positions that select either everything or nothing, and "NSFW at least
+    /// any" was not a sentence.
+    /// </summary>
+    public NsfwFilter Nsfw { get => _nsfw; set => SetFilter(ref _nsfw, value); }
     public int BlurMax { get => _blurMax; set => SetFilter(ref _blurMax, value); }
     public bool DupesOnly { get => _dupesOnly; set => SetFilter(ref _dupesOnly, value); }
     public string Folder { get => _folder; set => SetFilter(ref _folder, value ?? ""); }
     public string Year { get => _year; set => SetFilter(ref _year, value ?? ""); }
+
+    // ---- Preview ------------------------------------------------------------
+    bool _previewDetails;
+
+    /// <summary>
+    /// Whether the preview's details panel is open. Off by default so a photo opens at the
+    /// largest size the window allows; kept here rather than in the modal so the choice
+    /// survives closing and reopening — someone reading EXIF on one photo is reading it on
+    /// the next, and re-opening the panel for every shot would be its own chore.
+    /// </summary>
+    public bool PreviewDetails
+    {
+        get => _previewDetails;
+        set { if (_previewDetails == value) return; _previewDetails = value; Notify(); }
+    }
+
+    /// <summary>
+    /// How explicit the model thinks a photo is, as something a person can act on.
+    /// </summary>
+    /// <remarks>
+    /// The raw score is a softmax output, not a calibrated probability, and DESIGN §8 records
+    /// that no NSFW-labelled fixtures exist — nothing has ever validated the model's judgement,
+    /// only that SnapZap reproduces it. A bare "0.62" invites arithmetic the number cannot
+    /// support ("twice as bad as 0.31"); a band invites the only sound response, which is to
+    /// look at the ones it flagged.
+    /// </remarks>
+    public enum NsfwBand
+    {
+        /// <summary>Never scored. Emphatically not the same as "clean".</summary>
+        Unchecked,
+        Clean,
+        Unsure,
+        Likely,
+    }
+
+    /// <summary>The score at or above which a photo counts as explicit. Follows the filter once
+    /// the user picks a stricter one, so the badge and the filter can never disagree.</summary>
+    public double NsfwThreshold => ImageView.NsfwFlagThreshold;
+
+    public NsfwBand BandOf(ImageView img) => img.NsfwScore switch
+    {
+        null => NsfwBand.Unchecked,
+        var n when n >= NsfwThreshold => NsfwBand.Likely,
+        var n when n >= ImageView.NsfwUnsureThreshold => NsfwBand.Unsure,
+        _ => NsfwBand.Clean,
+    };
+
+    /// <summary>Plain-language name for a band; the primary reading everywhere a score shows.</summary>
+    public static string BandLabel(NsfwBand band) => band switch
+    {
+        NsfwBand.Likely => "Likely explicit",
+        NsfwBand.Unsure => "Not sure",
+        NsfwBand.Clean => "Looks clean",
+        _ => "Not checked",
+    };
 
     /// <summary>
     /// The blur score at or below which a photo is badged as soft.
@@ -176,6 +237,26 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
 
     /// <summary>Whether this photo reads as soft at the threshold currently in force.</summary>
     public bool IsSoft(ImageView img) => img.BlurScore is { } b && b <= SoftThreshold;
+
+    bool MatchesNsfw(NsfwBand band) => _nsfw switch
+    {
+        NsfwFilter.Likely => band == NsfwBand.Likely,
+        NsfwFilter.Review => band is NsfwBand.Likely or NsfwBand.Unsure,
+        NsfwFilter.Clean => band == NsfwBand.Clean,
+        NsfwFilter.Unchecked => band == NsfwBand.Unchecked,
+        _ => true,
+    };
+
+    /// <summary>How many photos currently sit in each band, for the filter's own labels — a
+    /// choice that selects nothing should say so before it is chosen.</summary>
+    /// <remarks>
+    /// Cached per load, not counted per call. The summary reads it on every render and the
+    /// filter popover six times, while a scan notifies once per file — so counting live made a
+    /// 40k-photo scan do 40k passes over 40k photos on the circuit's own thread.
+    /// </remarks>
+    public int CountInBand(NsfwBand band) => _bandCounts.GetValueOrDefault(band);
+
+    Dictionary<NsfwBand, int> _bandCounts = [];
 
     void SetFilter<T>(ref T field, T value)
     {
@@ -193,11 +274,11 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
     public bool SortDescending { get => _sortDescending; set => SetFilter(ref _sortDescending, value); }
 
     public bool HasActiveFilter =>
-        _nsfwMin > 0 || _blurMax > 0 || _dupesOnly || _folder.Length > 0 || _year.Length > 0;
+        _nsfw != NsfwFilter.Any || _blurMax > 0 || _dupesOnly || _folder.Length > 0 || _year.Length > 0;
 
     public void ClearFilters()
     {
-        _nsfwMin = 0;
+        _nsfw = NsfwFilter.Any;
         _blurMax = 0;
         _dupesOnly = false;
         _folder = "";
@@ -216,7 +297,14 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
     // ---- Load --------------------------------------------------------------
     public Task LoadAsync()
     {
-        var records = catalog.Images.All().ToList();
+        // Only the folder the session is scoped to. The catalogue keeps every folder ever
+        // scanned as cache; loading all of it put photos from unrelated libraries in the grid
+        // and, worse, inside the reach of "select everything shown" → Delete.
+        // Recover the working folder across restarts: it is what export's mirror mode and the
+        // post-restore re-scan need, and it is already recorded in the catalogue.
+        ScannedFolder ??= catalog.ScanRoot;
+
+        var records = catalog.Images.Under(catalog.ScanRoot).ToList();
         var present = records.Select(r => r.Id).ToHashSet();
 
         // Groups are stored as they were detected, but members get recycled afterwards. A group
@@ -242,6 +330,7 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
         }
 
         Images = records.Select(r => new ImageView(r, dupeOf.GetValueOrDefault(r.Id))).ToList();
+        _bandCounts = Images.GroupBy(BandOf).ToDictionary(g => g.Key, g => g.Count());
         DupeOf = dupeOf;
         DupeGroups = groups;
         _byId = Images.ToDictionary(i => i.Id);
@@ -281,7 +370,10 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
 
     public bool Matches(ImageView img)
     {
-        if (_nsfwMin > 0 && !(img.NsfwScore is { } n && n >= _nsfwMin)) return false;
+        // Matches on the band, not the raw number, so what the filter selects is exactly what
+        // the badge and the preview call it. Unchecked is its own state: filtering for "looks
+        // clean" used to quietly include every photo nobody had scored yet.
+        if (_nsfw != NsfwFilter.Any && !MatchesNsfw(BandOf(img))) return false;
         // Blurrier-than filter: lower blur score = blurrier, so show scores <= threshold.
         if (_blurMax > 0 && !(img.BlurScore is { } b && b <= _blurMax)) return false;
         if (_dupesOnly && !DupeOf.ContainsKey(img.Id)) return false;
@@ -364,18 +456,6 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
         NotifySelectionChanged();
     }
 
-    public void SelectVisibleFolder()
-    {
-        var visible = Filtered();
-        var target = _folder.Length > 0 ? _folder : visible.Count > 0 ? visible[0].Folder : "";
-        session.Mutate(sel =>
-        {
-            foreach (var img in visible)
-                if (img.Folder == target) sel.Add(img.Id);
-        });
-        NotifySelectionChanged();
-    }
-
     /// <summary>
     /// Resolve a group's members to the loaded view models, in a stable order.
     ///
@@ -449,6 +529,32 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
         Notify();
     }
 
+    /// <summary>
+    /// Empty the catalogue: every photo's hash, scores, EXIF, thumbnail and duplicate grouping,
+    /// for every folder ever scanned. The photos themselves are not touched, and the undo log
+    /// survives so anything already in the Recycle Bin can still be restored from History.
+    /// </summary>
+    public async Task ForgetEverythingAsync()
+    {
+        if (Busy) return;
+
+        // Through RunAsync like every other operation: it rewrites the whole database file, so
+        // it needs the same busy state, the same render-before-work yield and the same error
+        // containment. Doing it inline reintroduced exactly the frozen-but-still-clickable
+        // window that the NSFW model load had just been fixed for.
+        await RunAsync("Emptying the catalogue", async (_, _) =>
+        {
+            await Task.Run(catalog.Forget);
+            ScannedFolder = null;
+            LastFailures = [];
+            LastUnsupported = new Dictionary<string, int>();
+            ClearFilters();
+            session.Mutate(sel => sel.Clear());
+            await LoadAsync();
+            return "Catalogue emptied. Scan a folder to start again.";
+        });
+    }
+
     public async Task ScanAsync(string folder)
     {
         if (Busy) return;
@@ -488,16 +594,22 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
         });
     }
 
-    public async Task DedupAsync(string folder)
+    /// <summary>Detect duplicates in the folder currently on screen.</summary>
+    public async Task DedupAsync()
     {
-        if (Busy) return;
+        if (Busy || ScannedFolder is not { } folder) return;
         await RunAsync("Finding duplicates", async (_, ct) =>
         {
             var report = await new DuplicateService(catalog.Db).DetectAsync(folder, ct);
             await LoadAsync();
+
+            // Counted from the loaded, scoped groups rather than the detector's own tallies,
+            // so the sentence agrees with the grid behind it.
+            var exact = DupeGroups.Count(g => g.Kind == DupeKind.Exact);
+            var similar = DupeGroups.Count(g => g.Kind == DupeKind.Similar);
             return report.CzkawkaAvailable
-                ? $"{report.ExactGroups} exact, {report.SimilarGroups} similar groups"
-                : $"{report.ExactGroups} exact groups (similar-image tool not installed)";
+                ? $"{exact} exact, {similar} similar groups"
+                : $"{exact} exact groups (similar-image tool not installed)";
         });
     }
 
@@ -508,7 +620,7 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
         {
             var progress = new Progress<NsfwProgress>(p => report(p.Done, p.Total, null));
             var result = await new NsfwScorer(catalog.Db, catalog.NsfwModelPath)
-                .ScoreAllAsync(progress, ct: ct);
+                .ScoreAllAsync(catalog.ScanRoot, progress, ct: ct);
             await LoadAsync();
             return result.ModelAvailable
                 ? $"Scored {result.Scored}" + (result.Failed > 0 ? $", {result.Failed} failed" : "")
@@ -531,6 +643,12 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
         _cts = new CancellationTokenSource();
         Notify();
 
+        // Let that render reach the browser before the work begins. Notify only queues it, and
+        // an operation whose first stretch is synchronous — NSFW loads a 328 MB model before
+        // its first await — holds the circuit long enough that the buttons it just disabled
+        // stayed clickable, so a second press queued a second run.
+        await Task.Yield();
+
         var live = true;
         void Report(int done, int total, string? _)
         {
@@ -549,7 +667,7 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
             // Everything analysed before the stop is already committed, and the tier-1 cache
             // means re-running skips it — so a cancelled scan is progress, not lost work.
             await LoadAsync();
-            Status = $"{label} stopped — {Images.Count:N0} photos catalogued so far";
+            Status = $"{label} stopped after {BusyDone:N0} of {BusyTotal:N0}";
         }
         catch (Exception ex)
         {
@@ -621,4 +739,17 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
         await LoadAsync();
         return result;
     }
+}
+
+/// <summary>The explicit-content states the grid can be limited to.</summary>
+public enum NsfwFilter
+{
+    Any,
+    /// <summary>Only what the model called explicit.</summary>
+    Likely,
+    /// <summary>Explicit plus the ones it was unsure about — the review queue.</summary>
+    Review,
+    Clean,
+    /// <summary>Never scored. Its own state, because "not asked" is not "safe".</summary>
+    Unchecked,
 }

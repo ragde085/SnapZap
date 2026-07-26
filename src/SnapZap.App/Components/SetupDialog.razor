@@ -1,0 +1,173 @@
+@implements IDisposable
+@inject DependencyChecker Checker
+@inject CatalogService Catalog
+@inject AppState AppState
+
+@*
+    The full status of the optional sidecars, reachable at any time from the gear in the top
+    bar. Distinct from DependencyDialog, which is the once-at-launch prompt and lists only
+    what is missing; this one always shows both, so "is czkawka actually being used, and
+    which copy?" has an answer even when nothing is wrong.
+*@
+@if (Show)
+{
+    <div class="dlg" role="dialog" aria-modal="true" aria-label="Setup"
+         tabindex="-1" @ref="_ref" @onkeydown="HandleKeyDown">
+        <div class="dlg-box">
+            <h2>Setup</h2>
+            <p class="dlg-sub">
+                Two optional add-ons. SnapZap scans, finds exact duplicates, exports and
+                deletes without either of them.
+            </p>
+
+            <DependencyList Items="Checker.Current" Detailed="true" />
+            <p class="hint">Drop a file in and press Check again — no restart needed.</p>
+
+            @* The catalogue spans every folder ever scanned, because that cache is what makes
+               re-scanning fast. Only the scanned folder is ever shown or acted on, but the
+               disk it occupies is real and there was previously no way to reclaim it without
+               deleting files by hand. *@
+            <section class="setup-block">
+                <h3>Catalogue</h3>
+                <div class="setup-stat">
+                    <b>@_footprint.Photos.ToString("N0")</b> photo@(_footprint.Photos == 1 ? "" : "s") analysed
+                    <span class="quiet">
+                        @AppState.FormatBytes(_footprint.DbBytes) database ·
+                        @AppState.FormatBytes(_footprint.ThumbBytes) thumbnails
+                    </span>
+                </div>
+                @if (Catalog.ScanRoot is { } root)
+                {
+                    <div class="setup-stat quiet">Showing <code class="dep-path">@root</code></div>
+                }
+
+                @if (!_confirmForget)
+                {
+                    <button class="danger" disabled="@(_footprint.Photos == 0 || AppState.Busy)"
+                            @onclick="ArmForget">Forget everything…</button>
+                }
+                else
+                {
+                    <div class="confirm" role="alertdialog" aria-modal="true" aria-label="Confirm forget"
+                         tabindex="-1" @ref="_forgetRef">
+                        <p>
+                            Discard the analysis of all <b>@_footprint.Photos.ToString("N0")</b> photos
+                            and @AppState.FormatBytes(_footprint.ThumbBytes) of thumbnails?
+                        </p>
+                        <p class="hint">
+                            No photo is deleted or moved — only hashes, scores, dates and thumbnails,
+                            all of which a scan rebuilds. Anything already in the Recycle Bin stays
+                            restorable from History.
+                        </p>
+                        <div class="row">
+                            <button class="danger" @onclick="Forget">Forget everything</button>
+                            <button class="link" @onclick="DeclineForget">Cancel</button>
+                        </div>
+                    </div>
+                }
+            </section>
+
+            <div class="dlg-actions">
+                <button class="primary" @onclick="Recheck">@(_checking ? "Checking…" : "Check again")</button>
+                <button class="link" @onclick="Close">Close</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool Show { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    ElementReference _ref;
+    ElementReference _forgetRef;
+    bool _checking;
+    bool _wasShown;
+    bool _needsFocus;
+    bool _confirmForget;
+    bool _needsForgetFocus;
+
+    // Measured when the dialog opens rather than per render: it stats every thumbnail, and
+    // Blazor re-renders this component on any dependency change.
+    (int Photos, long DbBytes, long ThumbBytes) _footprint;
+
+    protected override void OnInitialized() => Checker.Changed += OnChanged;
+
+    // The checker is a singleton shared across circuits, so a re-check may arrive off this
+    // circuit's synchronization context.
+    void OnChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Checker.Changed -= OnChanged;
+
+    protected override void OnParametersSet()
+    {
+        if (Show && !_wasShown)
+        {
+            _needsFocus = true;
+            _confirmForget = false;      // never reopen with a destructive prompt already armed
+            _footprint = Catalog.Footprint();
+        }
+        _wasShown = Show;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (Show && _needsFocus)
+        {
+            _needsFocus = false;
+            await _ref.FocusAsync();
+        }
+        else if (_confirmForget && _needsForgetFocus)
+        {
+            _needsForgetFocus = false;
+            await _forgetRef.FocusAsync();
+        }
+    }
+
+    void ArmForget()
+    {
+        _confirmForget = true;
+        _needsForgetFocus = true;
+    }
+
+    // Declining unmounts the element that had focus. Pull it back to the dialog, or focus
+    // lands on <body> and the dialog's own Escape handler stops hearing anything.
+    void DeclineForget()
+    {
+        _confirmForget = false;
+        _needsFocus = true;
+    }
+
+    async Task Forget()
+    {
+        _confirmForget = false;
+        await AppState.ForgetEverythingAsync();
+        _footprint = Catalog.Footprint();
+        await Close();
+    }
+
+    async Task Recheck()
+    {
+        _checking = true;
+        StateHasChanged();
+        // Give the spinner a frame; detection itself is a couple of file probes.
+        await Task.Delay(150);
+        Checker.Check();
+        _checking = false;
+    }
+
+    Task Close() => OnClose.InvokeAsync();
+
+    /// <summary>
+    /// Escape backs out one layer at a time: first the purge confirmation, then the dialog.
+    /// Deliberately the only Escape handler here — a second one on the confirmation itself ran
+    /// first and cleared the flag this one tests, so declining the purge also shut the dialog
+    /// behind it and the user lost their place instead of simply saying no.
+    /// </summary>
+    Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key != "Escape") return Task.CompletedTask;
+        if (_confirmForget) { DeclineForget(); return Task.CompletedTask; }
+        return Close();
+    }
+}

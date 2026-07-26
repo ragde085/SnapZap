@@ -80,8 +80,19 @@ resolve the runtime by absolute path (Finder gives GUI apps a minimal `PATH` tha
 
 ### Sidecar assets (optional, ship beside the binary)
 ```bash
-# Get NSFW ONNX model (~350 MB, Apache-2.0, not committed)
-scripts/get-nsfw-model.sh          # writes models/nsfw.onnx + preprocessor_config.json
+# Install both optional sidecars: NSFW ONNX model (328 MB) + czkawka_cli (45 MB).
+# Pinned URLs, SHA-256 verified, idempotent. Writes <repo>/models and <repo>/tools, which
+# SnapZap.App.csproj copies into the build output (but NOT into publish output).
+scripts/install-deps.sh            # macOS / Linux
+scripts\install-deps.bat           # Windows
+
+scripts/install-deps.sh --model-only
+scripts/install-deps.sh --czkawka-only
+scripts/install-deps.sh --force
+scripts/install-deps.sh --dest artifacts/win-x64   # for a published binary
+
+# Build the .onnx from PyTorch weights instead of downloading a conversion (needs Python)
+scripts/export-nsfw-model.sh
 
 # Validate model's scores against labeled fixtures
 PC_NSFW_MODEL="$PWD/models/nsfw.onnx" \
@@ -100,6 +111,8 @@ czkawka_cli.exe             (optional — enables similar-image detection)
 
 Graceful degradation: missing NSFW model disables NSFW scoring; missing `czkawka_cli.exe` disables near-duplicate detection. Only exact duplicates (from our SHA-256 content hash) always work.
 
+The sidecars are excluded from publish output (`CopyToPublishDirectory="Never"`), so the published `.exe` stays ~130 MB whether or not they are installed locally. Populate a publish folder with `scripts/install-deps.sh --dest artifacts/win-x64`.
+
 ---
 
 ## Project Structure
@@ -113,15 +126,19 @@ Graceful degradation: missing NSFW model disables NSFW scoring; missing `czkawka
 | `docs/ROADMAP.md` | Current status + prioritized next steps |
 | `docs/BLAZOR-MIGRATION.md` | The SPA → Blazor Server migration (completed) |
 | `docs/WINDOWS-VERIFY.md` | Checklist for four Windows-only code paths |
-| `scripts/get-nsfw-model.sh` | One-time export of NSFW ONNX model |
+| `scripts/install-deps.{sh,bat}` | One-command install of both optional sidecars (pinned + checksummed) |
+| `scripts/export-nsfw-model.sh` | Build the ONNX model from PyTorch weights instead of downloading it |
 | `artifacts/` | Publish output (built, not committed) |
-| `models/` | Sidecar assets — NSFW ONNX model + config (built, not committed) |
+| `models/` | NSFW ONNX model + preprocessor config (installed, not committed) |
+| `tools/` | `czkawka_cli` binary (installed, not committed) |
 
 ### Key subdirectories in `App/`
 
-- **Components/** — Razor components. `Pages/Home.razor` composes the whole app; `Toolbar`,
-  `Sidebar` (icon rail + flyout), `PhotoGrid`, `Card`, `Toast`, and the `ExportDialog` /
-  `UndoDialog` / `PreviewModal` / `DependencyDialog` overlays.
+- **Components/** — Razor components. `Pages/Home.razor` composes the whole app; `Toolbar`
+  (scan bar), `FilterBar` (filters + selection menus, library actions), `SelectionBar`
+  (contextual Export/Delete, only while something is selected), `FolderTreeView` (the entire
+  left pane), `PhotoGrid`, `Card`, `Toast`, and the `ExportDialog` / `UndoDialog` /
+  `PreviewModal` / `DependencyDialog` / `SetupDialog` / `ShortcutsDialog` overlays.
 - **Services/** — `AppState` (scoped per circuit: view state + operations, replaces the old
   `app.js` state object), `ImageView` (record wrapping `ImageRecord` for display),
   `DependencyChecker` (validates the optional sidecars, singleton).
@@ -210,6 +227,11 @@ Two things to know before touching the grid:
    layout — it reports zero capacity and renders no rows at all. `PhotoGrid` instead windows
    rows itself using geometry measured in `interop.js` (`SetViewport` / `SetScroll`), which is
    deterministic. Verified at 4,000 photos with ~120 cards in the DOM.
+3. **`.grid` must keep `overflow-anchor: none`.** Scroll anchoring — the browser adjusting
+   `scrollTop` to keep content visually still when things above it resize — feeds back into
+   the windowing, which resizes spacers on every scroll. The loop runs the grid to one end or
+   the other on a single wheel gesture. It only reproduces with real wheel/trackpad input;
+   programmatic scrolls suppress anchoring, so setting `scrollTop` from the console looks fine.
 
 ### Optional sidecar validation
 

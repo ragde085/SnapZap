@@ -1,4 +1,5 @@
 @* Shared status rows, used both by the launch prompt and the Setup panel. *@
+@inject IJSRuntime JS
 
 @foreach (var d in Items)
 {
@@ -24,19 +25,57 @@
 
                 @if (Detailed)
                 {
-                    <ol class="dep-steps">
-                        <li>
-                            <a href="@d.DownloadUrl" target="_blank" rel="noopener noreferrer">@d.DownloadLabel</a>
-                        </li>
-                        <li>
-                            Put <code>@d.FileName</code> in
-                            <code class="dep-path">@d.InstallTo</code>
-                        </li>
-                        @if (d.ExtraStep is { } step)
+                    @* One command first: it downloads, checksums and installs to the right
+                       folder. The manual route stays available but is folded away, because
+                       reading three steps to place a file by hand is the fallback. *@
+                    @if (d.Command is { } cmd)
+                    {
+                        <div class="dep-cmd-label">Run this once, from the SnapZap folder:</div>
+                        <div class="dep-cmd">
+                            <code>@cmd</code>
+                            <button type="button" class="dep-copy" title="Copy command"
+                                    @onclick="() => Copy(d.Id, cmd)">
+                                @(_copied == d.Id ? "Copied" : "Copy")
+                            </button>
+                        </div>
+                        @if (d.CommandNote is { } note)
                         {
-                            <li>@step</li>
+                            <div class="dep-cmd-label">@note</div>
                         }
-                    </ol>
+                    }
+
+                    @* With no command above it there is nothing to be an alternative to, so
+                       the manual route is the only route and starts open. *@
+                    <details class="dep-manual" open="@(d.Command is null)">
+                        <summary>@(d.Command is null ? "Install it by hand" : "Or install it by hand")</summary>
+                        <ol class="dep-steps">
+                            @foreach (var dl in d.Downloads)
+                            {
+                                <li>
+                                    Download
+                                    <a href="@dl.Url" target="_blank" rel="noopener noreferrer">@dl.Label</a>
+                                    @if (dl.Size is { } size)
+                                    {
+                                        <span class="quiet"> (@size)</span>
+                                    }
+                                    @* The upstream file name is never the one the app looks
+                                       for, so the rename belongs with the link, not after it. *@
+                                    @if (dl.SaveAs != dl.Label)
+                                    {
+                                        <text> and save it as <code>@dl.SaveAs</code></text>
+                                    }
+                                </li>
+                            }
+                            <li>
+                                Put @(d.Downloads.Count > 1 ? "both files" : "it") in
+                                <code class="dep-path">@d.InstallTo</code>
+                            </li>
+                            @if (d.ExtraStep is { } step)
+                            {
+                                <li>@step</li>
+                            }
+                        </ol>
+                    </details>
                 }
             </div>
         }
@@ -48,4 +87,19 @@
 
     /// <summary>Show the full install steps. Off in compact contexts.</summary>
     [Parameter] public bool Detailed { get; set; } = true;
+
+    /// <summary>Id of the row whose command was just copied, so only that button confirms.</summary>
+    string? _copied;
+
+    async Task Copy(string id, string text)
+    {
+        // Clipboard access can be refused (insecure context, denied permission). Silently
+        // leaving the button on "Copy" is honest — the command is still selectable above it.
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", text);
+            _copied = id;
+        }
+        catch { _copied = null; }
+    }
 }

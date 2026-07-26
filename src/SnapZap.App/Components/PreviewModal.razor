@@ -2,7 +2,7 @@
 
 @if (Img is { } img)
 {
-    <div class="modal"
+    <div class="modal @(AppState.PreviewDetails ? "details-open" : "")"
          role="dialog"
          aria-modal="true"
          aria-label="Photo preview"
@@ -12,6 +12,15 @@
          @onclick="Close">
 
         <button class="close" @onclick="Close" @onclick:stopPropagation="true">Close ✕</button>
+
+        @* The panel covers part of the photo, so opening it is the user's call. Off by
+           default: the point of opening a photo full size is to see the photo. *@
+        <button class="details-toggle"
+                aria-pressed="@(AppState.PreviewDetails ? "true" : "false")"
+                title="Photo details (I)"
+                @onclick="ToggleDetails" @onclick:stopPropagation="true">
+            @(AppState.PreviewDetails ? "Hide details" : "Details")
+        </button>
 
         @* Stepping between photos is the whole point of opening one full size — comparing this
            shot against the next. Without it the only way through a folder is close, find, reopen. *@
@@ -24,12 +33,25 @@
 
         <div class="frame" @onclick:stopPropagation="true">
             <img src="@img.FullUrl" alt="@img.FileName" />
-            @if (Position >= 0)
-            {
-                <span class="frame-pos">@(Position + 1) of @Order.Count</span>
-            }
+
+            @* Selecting is the reason this screen exists, so it stays reachable whether or not
+               the details panel is open — it used to live only inside the panel. *@
+            <div class="frame-bar">
+                @if (Position >= 0)
+                {
+                    <span class="frame-pos">@(Position + 1) of @Order.Count</span>
+                }
+                <button class="frame-select @(Selected ? "on" : "")"
+                        aria-pressed="@(Selected ? "true" : "false")"
+                        title="Select or deselect this photo (X)"
+                        @onclick="ToggleSelection">
+                    @(Selected ? "✓ Selected" : "Select")
+                </button>
+            </div>
         </div>
 
+        @if (AppState.PreviewDetails)
+        {
         <div class="panel" @onclick:stopPropagation="true">
             <div>
                 <div class="pk">File</div>
@@ -54,14 +76,22 @@
                 </div>
             </div>
             <div>
-                <div class="pk">NSFW</div>
+                @* "NSFW" is jargon and every other key here is plain English. The band leads and
+                   the number supports it: three decimals implied a precision the model does not
+                   have (DESIGN §8 records ±0.005 reproduction error and no labelled fixtures at
+                   all), and "below threshold" named a threshold shown nowhere. *@
+                <div class="pk">Explicit content</div>
+                @{ var band = AppState.BandOf(img); }
+                <div class="pv @BandTone(band)">@AppState.BandLabel(band)</div>
                 @if (img.NsfwScore is { } n)
                 {
-                    <div class="pv @(n >= 0.5 ? "warn" : "")">@n.ToString("F3") @(n >= 0.5 ? "— flagged" : "— below threshold")</div>
+                    <div class="pv-sub">
+                        @n.ToString("F2") of 1.00 · flagged at @AppState.NsfwThreshold.ToString("F2")
+                    </div>
                 }
                 else
                 {
-                    <div class="pv quiet">not scored</div>
+                    <div class="pv-sub">Run Score NSFW to check this photo.</div>
                 }
             </div>
             <div>
@@ -90,10 +120,8 @@
                 }
             </div>
 
-            <button class="@(Selected ? "" : "primary")" @onclick="() => AppState.Toggle(img.Id)">
-                @(Selected ? "Deselect" : "Select this photo")
-            </button>
         </div>
+        }
     </div>
 }
 
@@ -105,7 +133,7 @@
     [Parameter] public EventCallback<ImageView> OnNavigate { get; set; }
 
     ElementReference _modalRef;
-    ImageView? _focused;
+    bool _wasOpen;
 
     bool Selected => Img is { } img && AppState.Selected.Contains(img.Id);
 
@@ -128,16 +156,12 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        // Move focus into the dialog when it opens so Escape and tabbing work immediately.
-        if (Img is not null && !ReferenceEquals(Img, _focused))
-        {
-            _focused = Img;
-            await _modalRef.FocusAsync();
-        }
-        else if (Img is null)
-        {
-            _focused = null;
-        }
+        // Only on open. Keying off the photo instead meant every ← / → step pulled focus back
+        // to the dialog, so pressing Enter on "Next" moved focus off the button under it and
+        // stepping through a folder by keyboard took a Tab between every photo.
+        var open = Img is not null;
+        if (open && !_wasOpen) await _modalRef.FocusAsync();
+        _wasOpen = open;
     }
 
     Task Close() => OnClose.InvokeAsync();
@@ -148,8 +172,25 @@
         "ArrowLeft" => Step(-1),
         "ArrowRight" => Step(1),
         "x" or "X" => ToggleSelection(),
+        "i" or "I" => ToggleDetails(),
         _ => Task.CompletedTask,
     };
+
+    static string BandTone(AppState.NsfwBand band) => band switch
+    {
+        AppState.NsfwBand.Likely => "warn",
+        // Quieter than Likely: the card badge already distinguishes the two, and a maybe
+        // shouting as loudly as a verdict is how people learn to ignore both.
+        AppState.NsfwBand.Unsure => "warn dim",
+        AppState.NsfwBand.Clean => "ok",
+        _ => "quiet",
+    };
+
+    Task ToggleDetails()
+    {
+        AppState.PreviewDetails = !AppState.PreviewDetails;
+        return Task.CompletedTask;
+    }
 
     Task ToggleSelection()
     {
