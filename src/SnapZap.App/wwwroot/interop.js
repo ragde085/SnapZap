@@ -206,6 +206,57 @@ window.snapzap = (function () {
     focusFirstCard: function () {
       const first = cards()[0];
       if (first) first.focus();
+    },
+
+    /**
+     * Wire the reconnection overlay's buttons.
+     *
+     * These cannot be Blazor event handlers: the circuit is precisely what is missing when the
+     * overlay is up, so the only code that can still run is plain browser JS. Called at load
+     * rather than from a component, for the same reason.
+     */
+    initReconnect: function () {
+      const modal = document.getElementById('components-reconnect-modal');
+      if (!modal) return;
+
+      const retry = modal.querySelector('.reconnect-retry');
+      const reload = modal.querySelector('.reconnect-reload');
+
+      if (reload) reload.addEventListener('click', function () { location.reload(); });
+
+      if (retry) retry.addEventListener('click', function () {
+        // `failed` and `resume-failed` are recoverable by different calls, and asking for the
+        // wrong one throws. Fall back to a reload rather than leaving a dead button.
+        try {
+          if (modal.classList.contains('components-reconnect-resume-failed') &&
+              window.Blazor && Blazor.resumeCircuit) {
+            Blazor.resumeCircuit();
+          } else if (window.Blazor && Blazor.reconnect) {
+            Blazor.reconnect();
+          } else {
+            location.reload();
+          }
+        } catch (e) {
+          location.reload();
+        }
+      });
+
+      // Escape can't dismiss this one: there is nothing behind it to go back to while the app
+      // is unreachable. Keep focus in it so the buttons are reachable when they do appear.
+      modal.addEventListener('components-reconnect-state-changed', function (e) {
+        const state = e.detail && e.detail.state;
+        if (state === 'failed' || state === 'rejected' || state === 'resume-failed') {
+          const target = modal.querySelector('.reconnect-actions button:not([style*="none"])');
+          if (target) target.focus();
+        }
+      });
     }
   };
 })();
+
+// The overlay must work without a circuit, so it is wired at load, not by a component.
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', function () { snapzap.initReconnect(); });
+} else {
+  snapzap.initReconnect();
+}
