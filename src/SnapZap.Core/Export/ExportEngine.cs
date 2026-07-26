@@ -56,6 +56,10 @@ public sealed class ExportEngine(Database db, ILinkService links, ITrashService 
         int exported = 0, skipped = 0, failed = 0, done = 0;
         var outcomes = new List<ExportItemOutcome>();
 
+        // Move relocates the original, so each run gets its own undo batch and shows up in
+        // History alongside deletes.
+        var moveBatch = $"move-{runId}";
+
         foreach (var img in keepers)
         {
             ct.ThrowIfCancellationRequested();
@@ -85,7 +89,14 @@ public sealed class ExportEngine(Database db, ILinkService links, ITrashService 
                 Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
                 Transfer(img.Path, dest, mode);
                 Verify(img, dest, mode);                     // throws on mismatch
-                if (mode == TransferMode.Move) ReleaseSource(img.Path, dest);
+                if (mode == TransferMode.Move)
+                {
+                    // Log before releasing: if the process dies between the two, an undo entry
+                    // for a file still present is harmless, whereas a released file with no
+                    // entry would be unreversible (DESIGN §7.4).
+                    LogUndo(moveBatch, "move", img.Path, dest);
+                    ReleaseSource(img.Path, dest);
+                }
 
                 RecordItem(runId, img.Id, "verified", dest, null);
                 outcomes.Add(new ExportItemOutcome(img.Id, "verified", dest, mode.ToString()));
@@ -161,8 +172,11 @@ public sealed class ExportEngine(Database db, ILinkService links, ITrashService 
 
     void ReleaseSource(string src, string dest)
     {
-        // Only reached after the destination is hash-verified. Now it is safe to remove the
-        // original to complete the 'move'. This is relocation, not the reject-deletion path.
+        // Only reached after the destination is hash-verified, and only after the move has been
+        // written to undo_log. This is relocation, not the reject-deletion path: the bytes still
+        // exist at `dest`, so the source is deleted outright rather than recycled — recycling
+        // would leave a second copy and defeat the space saving that makes anyone choose Move.
+        // Reversibility comes from the undo entry, which restores by copying back from `dest`.
         File.Delete(src);
     }
 

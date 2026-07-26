@@ -305,6 +305,12 @@ Plex is indexing.
 These hold across every mode and are not configurable.
 
 1. **Nothing is hard-deleted.** Removal means Recycle Bin, always.
+   *One deliberate exception:* export in **move** mode deletes the source outright once the
+   destination copy is hash-verified. That is relocation, not removal — the bytes still exist
+   at the destination — and recycling instead would leave a second copy, defeating the space
+   saving that is the entire reason to choose Move over Copy. It is still covered by
+   invariant 4: the move is written to `undo_log` *before* the source is released, and
+   restoring copies the file back from the destination.
 2. **No destructive action precedes verification.** Sources are released only after the
    destination copy is hash-confirmed.
 3. **No silent overwrites.** Ever, in any mode.

@@ -76,7 +76,12 @@
 
     static string Describe(UndoBatch b)
     {
-        var what = b.BatchId.StartsWith("export") ? "Recycled during export" : "Deleted";
+        var what = b.BatchId switch
+        {
+            var s when s.StartsWith("move-") => "Moved out by export",
+            var s when s.StartsWith("export-") => "Recycled during export",
+            _ => "Deleted",
+        };
         return $"{what} · {b.Total} photo{(b.Total == 1 ? "" : "s")}";
     }
 

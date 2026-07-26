@@ -60,24 +60,49 @@ public sealed class DeleteService(Database db, ITrashService trash)
 
     public async Task<RestoreResult> RestoreAsync(string batchId, CancellationToken ct = default)
     {
-        var rows = new List<(long id, string original, string? loc)>();
+        var rows = new List<(long id, string op, string original, string? loc)>();
         using (var cmd = db.Connection.CreateCommand())
         {
-            cmd.CommandText = "SELECT id, original_path, new_location FROM undo_log WHERE batch_id=$b AND restored=0";
+            cmd.CommandText = "SELECT id, op, original_path, new_location FROM undo_log WHERE batch_id=$b AND restored=0";
             cmd.Parameters.AddWithValue("$b", batchId);
             using var r = cmd.ExecuteReader();
             while (r.Read())
-                rows.Add((r.GetInt64(0), r.GetString(1), r.IsDBNull(2) ? null : r.GetString(2)));
+                rows.Add((r.GetInt64(0), r.GetString(1), r.GetString(2), r.IsDBNull(3) ? null : r.GetString(3)));
         }
 
         int restored = 0, missing = 0;
-        foreach (var (id, original, loc) in rows)
+        foreach (var (id, op, original, loc) in rows)
         {
             ct.ThrowIfCancellationRequested();
-            var ok = await trash.RestoreAsync(original, loc, ct);
+
+            // A recycled file comes back out of the trash; a moved file is still on disk at the
+            // export destination and comes back by copying.
+            var ok = op == "move"
+                ? RestoreMoved(original, loc)
+                : await trash.RestoreAsync(original, loc, ct);
+
             if (ok) { MarkRestored(id); restored++; } else missing++;
         }
         return new RestoreResult(batchId, restored, missing);
+    }
+
+    /// <summary>
+    /// Undo an export-move by copying the file back from the destination it was relocated to.
+    /// The exported copy is deliberately left in place: it was hash-verified on the way out,
+    /// and removing it here would be a destructive act performed *during an undo*.
+    /// </summary>
+    static bool RestoreMoved(string originalPath, string? destination)
+    {
+        if (string.IsNullOrEmpty(destination) || !File.Exists(destination)) return false;
+        if (File.Exists(originalPath)) return true;   // already back; treat as restored
+
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(originalPath)!);
+            File.Copy(destination, originalPath, overwrite: false);   // never a silent overwrite
+            return true;
+        }
+        catch { return false; }
     }
 
     void DeleteRow(long imageId)
