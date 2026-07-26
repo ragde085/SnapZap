@@ -54,8 +54,18 @@ public sealed class ImageRepository(Database db)
         return (long)cmd.ExecuteScalar()!;
     }
 
-    /// <summary>Delete rows whose path no longer exists on disk (pruned during a scan).</summary>
-    public int DeleteMissing(IReadOnlyCollection<string> livePaths)
+    /// <summary>
+    /// Delete rows whose file is no longer on disk: inside <paramref name="root"/> the walk just
+    /// done is the evidence, and outside it each remaining path is stat-ed.
+    /// </summary>
+    /// <remarks>
+    /// The rule is "the file is gone", and it used to be approximated by "the file wasn't in the
+    /// folder I just scanned" — so scanning a second library wiped the first, discarding every
+    /// hash, score and keeper decision for photos still sitting on disk. Checking out-of-root
+    /// rows individually costs one stat each, but only for rows the scan says nothing about,
+    /// and it means a stale row is never kept just because its folder wasn't the one scanned.
+    /// </remarks>
+    public int DeleteMissing(string root, IReadOnlyCollection<string> livePaths)
     {
         // Build a temp table of live paths and delete the complement. Cheap for large sets.
         using (var tmp = _c.CreateCommand())
@@ -71,9 +81,48 @@ public sealed class ImageRepository(Database db)
             foreach (var path in livePaths) { p.Value = path; ins.ExecuteNonQuery(); }
             tx.Commit();
         }
-        using var del = _c.CreateCommand();
-        del.CommandText = "DELETE FROM images WHERE path NOT IN (SELECT path FROM _live)";
-        return del.ExecuteNonQuery();
+
+        // Prefix-compare with substr rather than LIKE: a folder called "50%_off" or "a_b" is a
+        // legal directory name and would be read as wildcards.
+        var prefix = root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                   + Path.DirectorySeparatorChar;
+
+        // Inside the root: the enumeration is authoritative, so anything absent from it is gone.
+        int removed;
+        using (var del = _c.CreateCommand())
+        {
+            del.CommandText = """
+                DELETE FROM images
+                 WHERE substr(path, 1, length($prefix)) = $prefix
+                   AND path NOT IN (SELECT path FROM _live)
+                """;
+            del.Parameters.AddWithValue("$prefix", prefix);
+            removed = del.ExecuteNonQuery();
+        }
+
+        // Outside the root: the scan saw nothing, so ask the filesystem directly.
+        var strays = new List<string>();
+        using (var q = _c.CreateCommand())
+        {
+            q.CommandText = "SELECT path FROM images WHERE substr(path, 1, length($prefix)) <> $prefix";
+            q.Parameters.AddWithValue("$prefix", prefix);
+            using var r = q.ExecuteReader();
+            while (r.Read())
+            {
+                var path = r.GetString(0);
+                if (!File.Exists(path)) strays.Add(path);
+            }
+        }
+        if (strays.Count > 0)
+        {
+            using var tx = _c.BeginTransaction();
+            using var del = _c.CreateCommand();
+            del.CommandText = "DELETE FROM images WHERE path = $p";
+            var p = del.Parameters.Add("$p", SqliteType.Text);
+            foreach (var path in strays) { p.Value = path; removed += del.ExecuteNonQuery(); }
+            tx.Commit();
+        }
+        return removed;
     }
 
     /// <summary>Map absolute path → row id, pixel count and byte size, for correlating
@@ -87,6 +136,23 @@ public sealed class ImageRepository(Database db)
         while (r.Read())
             map[r.GetString(0)] = (r.GetInt64(1), r.GetInt64(2), r.GetInt64(3));
         return map;
+    }
+
+    /// <summary>
+    /// Point a row at a file's new location after a verified move.
+    /// </summary>
+    /// <remarks>
+    /// Only the path changes: the bytes were hash-verified at the destination, so the hash,
+    /// dimensions, scores and thumbnail all still describe this row correctly. Leaving the old
+    /// path in place instead would strand the row on a file that no longer exists.
+    /// </remarks>
+    public void Repath(long id, string newPath)
+    {
+        using var cmd = _c.CreateCommand();
+        cmd.CommandText = "UPDATE images SET path = $p WHERE id = $id";
+        cmd.Parameters.AddWithValue("$p", newPath);
+        cmd.Parameters.AddWithValue("$id", id);
+        cmd.ExecuteNonQuery();
     }
 
     public long Count()

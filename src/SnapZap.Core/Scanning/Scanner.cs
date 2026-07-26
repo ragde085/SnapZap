@@ -130,7 +130,7 @@ public sealed class Scanner(Database db, SkiaImageService imaging, string thumbD
             });
 
         int pruned;
-        lock (writeLock) pruned = repo.DeleteMissing(livePaths.ToArray());
+        lock (writeLock) pruned = repo.DeleteMissing(root, livePaths.ToArray());
 
         return new ScanResult(files.Count, analyzed, cached, failed, pruned,
                               Environment.TickCount64 - start)

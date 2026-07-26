@@ -2,9 +2,9 @@
 @inject AppState AppState
 
 <div class="card @(Selected ? "selected" : "")"
-     tabindex="0"
+     tabindex="@(IsTabStop ? 0 : -1)"
      role="checkbox"
-     aria-checked="@Selected"
+     aria-checked="@(Selected ? "true" : "false")"
      aria-label="@AriaLabel"
      data-card-index="@Index"
      @onclick="HandleClick"
@@ -58,6 +58,9 @@
 @code {
     [Parameter, EditorRequired] public ImageView Img { get; set; } = null!;
     [Parameter] public int Index { get; set; }
+
+    /// <summary>Whether this card is the grid's single tab stop. See PhotoGrid.</summary>
+    [Parameter] public bool IsTabStop { get; set; }
     [Parameter] public IReadOnlyList<long> VisibleOrder { get; set; } = [];
     [Parameter] public EventCallback<ImageView> OnPreview { get; set; }
 

@@ -81,7 +81,16 @@ public sealed class DeleteService(Database db, ITrashService trash)
                 ? RestoreMoved(original, loc)
                 : await trash.RestoreAsync(original, loc, ct);
 
-            if (ok) { MarkRestored(id); restored++; } else missing++;
+            if (ok)
+            {
+                // The export repointed the catalog at the destination when it moved the file;
+                // putting the file back has to put the row back too, or undoing a move leaves
+                // the grid describing the copy the user was trying to walk away from.
+                if (op == "move") RepathByPath(loc, original);
+                MarkRestored(id);
+                restored++;
+            }
+            else missing++;
         }
         return new RestoreResult(batchId, restored, missing);
     }
@@ -103,6 +112,18 @@ public sealed class DeleteService(Database db, ITrashService trash)
             return true;
         }
         catch { return false; }
+    }
+
+    /// <summary>Point the catalog row currently at <paramref name="from"/> back at
+    /// <paramref name="to"/>. No-op if nothing is filed under the old path.</summary>
+    void RepathByPath(string? from, string to)
+    {
+        if (string.IsNullOrEmpty(from)) return;
+        using var cmd = db.Connection.CreateCommand();
+        cmd.CommandText = "UPDATE images SET path=$to WHERE path=$from";
+        cmd.Parameters.AddWithValue("$to", to);
+        cmd.Parameters.AddWithValue("$from", from);
+        cmd.ExecuteNonQuery();
     }
 
     void DeleteRow(long imageId)

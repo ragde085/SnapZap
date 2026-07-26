@@ -19,7 +19,10 @@ public sealed record ExportRequest
 public sealed record Preflight(
     int KeeperCount,
     long TotalBytes,
-    long DestinationFreeBytes,
+    /// <summary>Free bytes at the destination, or null when the drive couldn't be queried.
+    /// Null is not zero and is not "fine" — it means the check did not happen, and the UI has
+    /// to say so rather than render a green reassurance it has no evidence for.</summary>
+    long? DestinationFreeBytes,
     bool EnoughSpace,
     bool HardlinkPossible,
     IReadOnlyList<string> SampleDestinations);

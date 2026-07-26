@@ -36,7 +36,13 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
     void NotifySelectionChanged()
     {
         _selectedBytes = null;
-        session.SaveSelection(Selected);
+        Changed?.Invoke();
+    }
+
+    /// <summary>Adopt a selection change made by another window and re-render.</summary>
+    public void RefreshSelection()
+    {
+        _selectedBytes = null;
         Changed?.Invoke();
     }
 
@@ -63,7 +69,6 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
     public string FormattedSelectedBytes => FormatBytes(SelectedBytes);
 
     long? _selectedBytes;
-    bool _selectionRestored;
 
     /// <summary>Id lookup built once per load. Rebuilding it per call made the duplicate
     /// review scan the whole library a dozen times on every render.</summary>
@@ -77,7 +82,9 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
         >= 1_000 => $"{b / 1e3:F0} KB",
         _ => $"{b} bytes",
     };
-    public HashSet<long> Selected { get; } = [];
+    /// <summary>The shared selection. Owned by <see cref="SessionStore"/> so every window on
+    /// this library sees the same working set; read-only from here.</summary>
+    public HashSet<long> Selected => session.Current;
     public long? LastClickedId { get; private set; }
 
     public string? ScannedFolder { get; private set; }
@@ -222,18 +229,10 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
 
         var live = Images.Select(i => i.Id).ToHashSet();
 
-        // First load of a circuit: adopt whatever the last session had selected. A reload in
-        // the middle of triaging a large library would otherwise throw the work away.
-        if (!_selectionRestored)
-        {
-            _selectionRestored = true;
-            foreach (var id in session.LoadSelection())
-                if (live.Contains(id)) Selected.Add(id);
-        }
-
-        // Drop selections and filter values that no longer refer to anything. The folder filter
-        // is a prefix, so it stays valid as long as some folder still sits underneath it.
-        Selected.RemoveWhere(id => !live.Contains(id));
+        // The store seeds itself from disk once per process, so a reload simply re-attaches to
+        // the live selection. All that's needed here is dropping ids the catalog no longer has.
+        if (Selected.Any(id => !live.Contains(id)))
+            session.Mutate(sel => sel.RemoveWhere(id => !live.Contains(id)));
         if (_folder.Length > 0 &&
             !Folders.Any(f => f == _folder || f.StartsWith(_folder + "/", StringComparison.Ordinal)))
             _folder = "";
@@ -304,7 +303,7 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
     // ---- Selection -------------------------------------------------------
     public void Toggle(long id)
     {
-        if (!Selected.Remove(id)) Selected.Add(id);
+        session.Mutate(sel => { if (!sel.Remove(id)) sel.Add(id); });
         LastClickedId = id;
         NotifySelectionChanged();
     }
@@ -315,7 +314,7 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
         var b = IndexOf(visibleOrder, toId);
         if (a < 0 || b < 0) { Toggle(toId); return; }
         var (lo, hi) = a < b ? (a, b) : (b, a);
-        for (var i = lo; i <= hi; i++) Selected.Add(visibleOrder[i]);
+        session.Mutate(sel => { for (var i = lo; i <= hi; i++) sel.Add(visibleOrder[i]); });
         LastClickedId = toId;
         NotifySelectionChanged();
     }
@@ -329,7 +328,8 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
 
     public void SelectAllVisible()
     {
-        foreach (var img in Filtered()) Selected.Add(img.Id);
+        var visibleNow = Filtered();
+        session.Mutate(sel => { foreach (var img in visibleNow) sel.Add(img.Id); });
         NotifySelectionChanged();
     }
 
@@ -337,8 +337,11 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
     {
         var visible = Filtered();
         var target = _folder.Length > 0 ? _folder : visible.Count > 0 ? visible[0].Folder : "";
-        foreach (var img in visible)
-            if (img.Folder == target) Selected.Add(img.Id);
+        session.Mutate(sel =>
+        {
+            foreach (var img in visible)
+                if (img.Folder == target) sel.Add(img.Id);
+        });
         NotifySelectionChanged();
     }
 
@@ -363,28 +366,36 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
         await LoadAsync();
     }
 
-    /// <summary>Select every non-keeper across all duplicate groups (not just the visible set) —
-    /// the one-click "delete extras, keep best".</summary>
+    /// <summary>Select exactly the non-keepers across all duplicate groups — the one-click
+    /// "delete extras, keep best". Replaces the selection rather than adding to it, so the
+    /// count on the button is the count you end up with.</summary>
     public void SelectDupeExtras()
     {
-        foreach (var (id, d) in DupeOf)
-            if (!d.IsKeeper) Selected.Add(id);
+        var dupes = DupeOf;
+        session.Mutate(sel =>
+        {
+            sel.Clear();
+            foreach (var (id, d) in dupes)
+                if (!d.IsKeeper) sel.Add(id);
+        });
         NotifySelectionChanged();
     }
 
     /// <summary>Flip selection within the visible set — useful after selecting the keepers.</summary>
     public void InvertVisibleSelection()
     {
-        foreach (var img in Filtered())
+        var visibleNow = Filtered();
+        session.Mutate(sel =>
         {
-            if (!Selected.Remove(img.Id)) Selected.Add(img.Id);
-        }
+            foreach (var img in visibleNow)
+                if (!sel.Remove(img.Id)) sel.Add(img.Id);
+        });
         NotifySelectionChanged();
     }
 
     public void ClearSelection()
     {
-        Selected.Clear();
+        session.Mutate(sel => sel.Clear());
         LastClickedId = null;
         NotifySelectionChanged();
     }
@@ -430,6 +441,13 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
                 }
                 if (result.UnsupportedTotal > 0)
                     msg += $" · {result.UnsupportedTotal:N0} in formats SnapZap can't read yet";
+
+                // Pruning drops catalog rows for files that have left the folder. That is the
+                // right behaviour, but it also drops their scores and keeper decisions, so it
+                // has to be said out loud rather than shown as a silently shorter grid.
+                if (result.Pruned > 0)
+                    msg += $" · {result.Pruned:N0} no longer in the folder, removed from the catalogue";
+
                 return msg;
             }
             catch (DirectoryNotFoundException)
@@ -521,8 +539,26 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
     {
         if (Busy || imageIds.Count == 0) return;
 
-        var result = await new DeleteService(catalog.Db, trash).RecycleAsync(imageIds);
-        Selected.ExceptWith(imageIds);
+        // Goes through the shared busy path like every other long operation: recycling
+        // thousands of photos used to show nothing at all and left the button double-clickable.
+        Busy = true;
+        BusyLabel = "Moving to the Recycle Bin";
+        BusyDone = 0;
+        BusyTotal = imageIds.Count;
+        Notify();
+
+        DeleteResult result;
+        try
+        {
+            result = await new DeleteService(catalog.Db, trash).RecycleAsync(imageIds);
+        }
+        finally
+        {
+            Busy = false;
+            BusyLabel = null;
+        }
+
+        session.Mutate(sel => sel.ExceptWith(imageIds));
         await LoadAsync();
 
         Status = $"Recycled {result.Recycled}" + (result.Failed > 0 ? $", {result.Failed} failed" : "");

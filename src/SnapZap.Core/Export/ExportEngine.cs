@@ -18,7 +18,9 @@ public sealed class ExportEngine(Database db, ILinkService links, ITrashService 
         var imgs = new ImageRepository(db).ByIds(req.KeeperIds);
         long total = imgs.Sum(i => i.FileSize);
 
-        long free = 0;
+        // null = we couldn't ask the drive. Kept distinct from 0 ("the disk is full"), which
+        // the old sentinel conflated — a genuinely full destination reported "enough room".
+        long? free = null;
         try { free = new DriveInfo(Path.GetPathRoot(Path.GetFullPath(req.Destination))!).AvailableFreeSpace; }
         catch { /* non-fatal: unknown free space */ }
 
@@ -30,7 +32,9 @@ public sealed class ExportEngine(Database db, ILinkService links, ITrashService 
         var samples = imgs.Take(5).Select(i => planner.DirectoryFor(i)).Distinct().Take(5).ToList();
 
         // Hardlink needs zero extra space; copy/move needs the full size on the destination.
-        bool enough = hardlink || free == 0 || free > total;
+        // Unknown free space doesn't block the export — the user may know better than we can
+        // measure — but it is reported as unverified, not as a pass.
+        bool enough = hardlink || free is null || free > total;
         return new Preflight(imgs.Count, total, free, enough, hardlink, samples);
     }
 
@@ -96,6 +100,9 @@ public sealed class ExportEngine(Database db, ILinkService links, ITrashService 
                     // entry would be unreversible (DESIGN §7.4).
                     LogUndo(moveBatch, "move", img.Path, dest);
                     ReleaseSource(img.Path, dest);
+                    // The file lives at `dest` now, so the catalog has to as well — otherwise
+                    // every row we just moved points at a path we just deleted.
+                    repo.Repath(img.Id, dest);
                 }
 
                 RecordItem(runId, img.Id, "verified", dest, null);

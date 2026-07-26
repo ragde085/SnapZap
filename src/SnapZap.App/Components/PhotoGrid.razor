@@ -24,9 +24,16 @@
             <div class="grid-row" style="grid-template-columns:repeat(@_cols,minmax(0,1fr))">
                 @foreach (var img in row.Items)
                 {
+                    @* Roving tabindex: the grid is one tab stop, not one per photo. Without
+                       this, Tab has to walk 4,000 cards to reach whatever follows the grid.
+                       Arrow keys move within it (see interop.js), which is the ARIA grid
+                       contract. The stop is the first *rendered* card, so it always exists —
+                       a stop pinned to a specific photo would vanish when windowing scrolled
+                       that photo out of the DOM, leaving the grid unreachable by keyboard. *@
                     <Card @key="img.Id"
                           Img="img"
                           Index="row.StartIndex + row.Items.IndexOf(img)"
+                          IsTabStop="r == FirstRow && ReferenceEquals(img, row.Items[0])"
                           VisibleOrder="_visibleIds"
                           OnPreview="OnPreview" />
                 }
@@ -122,6 +129,9 @@
             try
             {
                 await JS.InvokeVoidAsync("snapzap.initGrid", _gridRef, _self);
+                // Dialogs are rendered elsewhere, but this is the one component that owns a JS
+                // handle, and the trap is a document-level listener that installs once.
+                await JS.InvokeVoidAsync("snapzap.trapFocus");
             }
             catch (JSException ex)
             {
