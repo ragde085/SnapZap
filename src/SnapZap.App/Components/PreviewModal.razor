@@ -110,7 +110,7 @@
                 @if (img.Dupe is { } d)
                 {
                     <div class="pv accent">
-                        @(d.Kind == DupeKind.Similar ? "Similar" : "Exact") group #@d.GroupId<br />
+                        @d.Kind.Label() group #@d.GroupId<br />
                         @(d.IsKeeper ? "keeping this one" : "extra copy")
                     </div>
                 }

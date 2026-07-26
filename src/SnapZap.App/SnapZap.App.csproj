@@ -11,27 +11,26 @@
   </PropertyGroup>
 
   <!--
-    Optional sidecars, installed by scripts/install-deps.{sh,bat} into <repo>/models and
-    <repo>/tools. The app resolves both relative to AppContext.BaseDirectory, so without this
-    copy a freshly installed model would sit in the repo while the app looked for it in
-    bin/Debug/net10.0/models and reported "Not installed".
+    The optional sidecar, installed by scripts/install-deps.{sh,bat} into <repo>/models. The app
+    resolves it relative to AppContext.BaseDirectory, so without this copy a freshly installed
+    model would sit in the repo while the app looked for it in bin/Debug/net10.0/models and
+    reported "Not installed".
 
-    Never fails a build: the globs match nothing when the sidecars aren't installed, which is
-    the supported state — SnapZap scans, dedups, exports and deletes without either of them.
+    Never fails a build: the glob matches nothing when the model isn't installed, which is the
+    supported state — SnapZap scans, dedups, exports and deletes without it.
 
     Excluded from publish on purpose. The published output is the shipping artifact, where
     including a 328 MB model is a deliberate choice rather than a side effect of having run
-    the installer locally. To ship them, install into the publish directory directly by
-    passing the installer's "dest" option, e.g. dest artifacts/win-x64.
+    the installer locally. To ship it, install into the publish directory directly by passing
+    the installer's "dest" option, e.g. dest artifacts/win-x64.
+
+    The companion glob over <repo>/tools was dropped in dedup v2: it existed to stage
+    czkawka_cli, and similar-image detection is now in-process (docs/DEDUP-V2.md). Leaving it
+    would keep copying a 47 MB binary nothing calls into every build output.
   -->
   <ItemGroup>
     <Content Include="$(MSBuildThisFileDirectory)..\..\models\*"
              Link="models\%(Filename)%(Extension)"
-             CopyToOutputDirectory="PreserveNewest"
-             CopyToPublishDirectory="Never"
-             Visible="false" />
-    <Content Include="$(MSBuildThisFileDirectory)..\..\tools\*"
-             Link="%(Filename)%(Extension)"
              CopyToOutputDirectory="PreserveNewest"
              CopyToPublishDirectory="Never"
              Visible="false" />

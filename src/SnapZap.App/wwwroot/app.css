@@ -673,6 +673,10 @@ main { display: flex; flex: 1; min-height: 0; }
 
 .tree-dupes { flex: none; color: var(--dim); font-size: 0.85em; }
 
+/* Same glyph, receded: "checked, nothing found". It has to read as a distinct state from no
+   glyph at all ("never checked") without competing with a real duplicate count. */
+.tree-dupes.clean { opacity: 0.32; }
+
 /* Amber dot: some analysis step hasn't reached this subtree yet. */
 .tree-pending {
   flex: none;
@@ -811,6 +815,33 @@ main { display: flex; flex: 1; min-height: 0; }
 .setup-stat .quiet { color: var(--muted); display: block; font-variant-numeric: tabular-nums; }
 .setup-stat.quiet { color: var(--muted); }
 .setup-block > button { align-self: flex-start; }
+
+/* Detector toggles. The label wraps the input so the whole row is a hit target — these are
+   settings that decide what gets deleted, and a 13px checkbox is not a fair target for that. */
+.setup-check { display: flex; gap: 9px; align-items: flex-start; cursor: pointer; font-size: var(--t-xs); }
+.setup-check input { margin-top: 2px; flex: none; cursor: pointer; }
+.setup-check input:disabled { cursor: default; }
+/* Reads as one of the list, but there is nothing to click: burst detection always runs.
+   Indented to where the checkbox rows' labels start so the column still lines up. */
+.setup-check--fixed { cursor: default; padding-left: 22px; }
+.setup-check > span { display: flex; flex-direction: column; gap: 2px; line-height: 1.45; }
+.setup-check b { color: var(--ink); font-weight: 600; }
+.setup-check .quiet { color: var(--muted); }
+
+/* Indented under the toggle that reveals them, with a rule tying them to it. */
+.setup-nested {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin: -2px 0 4px 22px;
+  padding-left: 11px;
+  border-left: 1px solid var(--line-soft);
+}
+.setup-nested .hint { margin: 0; }
+
+.setup-range { display: flex; align-items: center; gap: 9px; font-size: var(--t-xs); color: var(--muted); }
+.setup-range input[type="range"] { flex: 1; min-width: 0; cursor: pointer; }
+.setup-range b { color: var(--accent); font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 .shortcuts { display: flex; flex-direction: column; gap: 7px; }
 .shortcuts div { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; font-size: var(--t-xs); color: var(--muted); }

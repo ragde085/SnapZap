@@ -13,8 +13,23 @@ namespace SnapZap.Tests;
 /// </summary>
 public class FolderTreeTests
 {
-    static ImageView Img(long id, string path) =>
-        new(new ImageRecord { Id = id, Path = path, ContentHash = "h" + id }, null);
+    /// <param name="checkedKinds">
+    /// Which detectors covered this row. Defaults to <see cref="DupeKinds.None"/> alongside a null
+    /// timestamp — the two travel together, since a stamp without a mask is exactly the state the
+    /// mask was added to rule out.
+    /// </param>
+    static ImageView Img(
+        long id, string path, long? dupeCheckedAt = null, DupeKinds checkedKinds = DupeKinds.None) =>
+        new(new ImageRecord
+        {
+            Id = id,
+            Path = path,
+            ContentHash = "h" + id,
+            DupeCheckedAt = dupeCheckedAt,
+            DupeCheckedKinds = dupeCheckedAt is null ? DupeKinds.None
+                             : checkedKinds == DupeKinds.None ? DupeKinds.Exact
+                             : checkedKinds,
+        }, null);
 
     /// <summary>The check that matters: does selecting this node show the photos in it?</summary>
     static int Matched(FolderNode node, IEnumerable<ImageView> images) =>
@@ -126,6 +141,84 @@ public class FolderTreeTests
 
         foreach (var node in Walk(root))
             Assert.Equal(node.TotalCount, Matched(node, images));
+    }
+
+    /// <summary>
+    /// "Checked for duplicates" has to roll up like every other step, and a partly-checked parent
+    /// must report as incomplete. This is the distinction InDupeGroup cannot draw: both folders
+    /// below contain zero duplicates, and only one of them has actually been looked at.
+    /// </summary>
+    [Fact]
+    public void Dupe_check_coverage_rolls_up_and_a_partly_checked_parent_stays_pending()
+    {
+        List<ImageView> images =
+        [
+            Img(1, "/lib/done/a.jpg", dupeCheckedAt: 1_700_000_000),
+            Img(2, "/lib/done/b.jpg", dupeCheckedAt: 1_700_000_000),
+            Img(3, "/lib/never/c.jpg"),
+        ];
+
+        var root = FolderTreeBuilder.Build(images, new Dictionary<long, DupeInfo>())!;
+        var byPath = Walk(root).ToDictionary(n => n.Path);
+
+        var done = byPath["/lib/done"];
+        Assert.Equal(new StepStat(2, 2), done.Deduped);
+        Assert.True(done.DupeCheckComplete);
+        Assert.DoesNotContain(done.PendingSteps(), s => s.Contains("duplicates"));
+
+        var never = byPath["/lib/never"];
+        Assert.True(never.Deduped.Untouched);
+        Assert.False(never.DupeCheckComplete);
+        Assert.Contains(never.PendingSteps(), s => s.Contains("1 not checked for duplicates"));
+
+        // The parent is 2 of 3 — complete for neither child's sake.
+        Assert.Equal(new StepStat(2, 3), root.Deduped);
+        Assert.False(root.DupeCheckComplete);
+    }
+
+    /// <summary>
+    /// The reason <c>dupe_checked_kinds</c> exists. A row stamped by an exact-only run is fully
+    /// checked while that is all that is enabled, and becomes outstanding again the moment variant
+    /// detection is switched on — without anyone re-scanning or re-running anything.
+    /// </summary>
+    [Fact]
+    public void Enabling_another_detector_makes_previously_checked_folders_pending_again()
+    {
+        List<ImageView> images =
+        [
+            Img(1, "/lib/a.jpg", dupeCheckedAt: 1_700_000_000, checkedKinds: DupeKinds.Exact),
+            Img(2, "/lib/b.jpg", dupeCheckedAt: 1_700_000_000, checkedKinds: DupeKinds.Exact),
+        ];
+        var noDupes = new Dictionary<long, DupeInfo>();
+
+        var asStamped = FolderTreeBuilder.Build(images, noDupes, DupeKinds.Exact)!;
+        Assert.True(asStamped.DupeCheckComplete);
+
+        var withVariantOn = FolderTreeBuilder.Build(images, noDupes, DupeKinds.Exact | DupeKinds.Variant)!;
+        Assert.False(withVariantOn.DupeCheckComplete);
+        Assert.Equal(new StepStat(0, 2), withVariantOn.Deduped);
+    }
+
+    /// <summary>Collapsing a passthrough chain rebuilds the node field by field, so a new
+    /// StepStat is exactly the kind of thing that gets dropped there and reads as "unchecked".</summary>
+    [Fact]
+    public void Collapsed_chains_carry_the_dupe_check_through()
+    {
+        // A photo at the root plus one two levels down, so "holiday" is a passthrough directory
+        // and actually gets folded into its only child. (Putting every photo in one leaf makes
+        // that leaf the common root, and Collapse never runs.)
+        List<ImageView> images =
+        [
+            Img(1, "/lib/a.jpg", dupeCheckedAt: 1_700_000_000),
+            Img(2, "/lib/holiday/day1/b.jpg", dupeCheckedAt: 1_700_000_000),
+        ];
+
+        var root = FolderTreeBuilder.Build(images, new Dictionary<long, DupeInfo>())!;
+
+        var folded = root.Children.Single();
+        Assert.Equal("holiday/day1", folded.Name);
+        Assert.Equal("/lib/holiday/day1", folded.Path);
+        Assert.All(Walk(root), n => Assert.True(n.DupeCheckComplete));
     }
 
     [Fact]

@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# Install SnapZap's two optional sidecars — macOS / Linux.
+# Install SnapZap's optional sidecar — macOS / Linux.
 #
-#   scripts/install-deps.sh                 install both into the repo (dev)
+#   scripts/install-deps.sh                 install into the repo (dev)
 #   scripts/install-deps.sh --dest DIR      install beside a published binary
-#   scripts/install-deps.sh --model-only    NSFW model only
-#   scripts/install-deps.sh --czkawka-only  similar-photo detection only
+#   scripts/install-deps.sh --model-only    same thing; kept so older notes still work
 #   scripts/install-deps.sh --force         re-download even if already present
 #
-# Both are optional: SnapZap scans, finds exact duplicates, exports and deletes without
-# either one. The model unlocks NSFW scoring; czkawka_cli unlocks similar-photo detection.
+# It is optional: SnapZap scans, finds duplicates, exports and deletes without it. The model
+# unlocks NSFW scoring, and nothing else. (czkawka_cli used to be installed here too;
+# similar-photo detection moved in-process — see docs/DEDUP-V2.md.)
 #
 # Every download is pinned to an exact revision and SHA-256 verified before it is put in
 # place. Nothing is installed from a checksum that does not match.
@@ -27,35 +27,35 @@ MODEL_SHA="a4316a4fb750169ac4fcabaabee1fcbd982b0ee8c0cc63fe3e944954bb9a7d9c"
 CONFIG_URL="https://huggingface.co/$MODEL_REPO/resolve/$MODEL_REV/preprocessor_config.json"
 CONFIG_SHA="ae9bb157b9629887cc74913a4e7c12c9308f374f0930e8072320e8f2e1583c5e"
 
-# czkawka: pinned to 12.0.0, the release CzkawkaFinder's JSON parser is tested against.
-CZKAWKA_VER="12.0.0"
-
 # Prints the header block above verbatim, so --help can never drift from the file's own docs.
-usage() { sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+ usage() { sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 
-DEST=""; WANT_MODEL=1; WANT_CZKAWKA=1; FORCE=0
+DEST=""; FORCE=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --dest)         DEST="${2:?--dest needs a directory}"; shift 2 ;;
-    --model-only)   WANT_CZKAWKA=0; shift ;;
-    --czkawka-only) WANT_MODEL=0; shift ;;
+    # Accepted and ignored: there is only one sidecar left, and failing on a flag that used to
+    # work would break every note, script and shell history that still passes it.
+    --model-only)   shift ;;
+    --czkawka-only)
+      echo "  ! --czkawka-only no longer does anything: similar-photo detection is built in." >&2
+      echo "    See docs/DEDUP-V2.md." >&2
+      exit 0 ;;
     --force)        FORCE=1; shift ;;
     -h|--help)      usage 0 ;;
     *)              echo "unknown option: $1" >&2; usage 1 ;;
   esac
 done
 
-# Where the app looks. With no --dest we install into the repo and let the build copy both
-# into the output directory (see SnapZap.App.csproj), so `dotnet run` picks them up with no
+# Where the app looks. With no --dest we install into the repo and let the build copy the model
+# into the output directory (see SnapZap.App.csproj), so `dotnet run` picks it up with no
 # environment variables and no manual copying.
 if [ -n "$DEST" ]; then
   mkdir -p "$DEST"
   DEST="$(cd "$DEST" && pwd)"
   MODEL_DIR="$DEST/models"
-  CZKAWKA_DIR="$DEST"
 else
   MODEL_DIR="$REPO_ROOT/models"
-  CZKAWKA_DIR="$REPO_ROOT/tools"
 fi
 
 sha256_of() {
@@ -90,53 +90,21 @@ fetch() {
   echo "  ✓ $label"
 }
 
-echo "SnapZap optional sidecars"
+echo "SnapZap optional sidecar"
 echo
 
-if [ "$WANT_MODEL" -eq 1 ]; then
-  echo "NSFW scoring model → $MODEL_DIR"
-  fetch "$MODEL_URL"  "$MODEL_DIR/nsfw.onnx"                 "$MODEL_SHA"  "nsfw.onnx (328 MB)"
-  fetch "$CONFIG_URL" "$MODEL_DIR/preprocessor_config.json"  "$CONFIG_SHA" "preprocessor_config.json"
-  echo
-fi
-
-if [ "$WANT_CZKAWKA" -eq 1 ]; then
-  echo "Similar-photo detection → $CZKAWKA_DIR"
-  case "$(uname -s)/$(uname -m)" in
-    Darwin/arm64)      ASSET=mac_czkawka_cli_arm64;      SHA=9a08888d329fe39d5b00a15bf0bbbfdc80c5f480465edc63a94a13a3b4e1f312 ;;
-    Linux/x86_64)      ASSET=linux_czkawka_cli_x86_64;   SHA=ad21a5428aee09fad88fb6d35fb1c656b9e0b8cdafee2de107618ddb5a9997ff ;;
-    Linux/aarch64|Linux/arm64) ASSET=linux_czkawka_cli_arm64; SHA=2d7a66cf626d64ae578e2ef502df5ea9e82aeab3d890853a2e15118c430d8a37 ;;
-    Darwin/x86_64)
-      # czkawka publishes no Intel-Mac binary. Everything else still works without it.
-      echo "  ! No prebuilt czkawka_cli for Intel Macs." >&2
-      echo "    Build it with:  cargo install czkawka_cli --version $CZKAWKA_VER" >&2
-      echo "    then copy the binary to $CZKAWKA_DIR/czkawka_cli" >&2
-      ASSET="" ;;
-    *)
-      echo "  ! No prebuilt czkawka_cli for $(uname -s)/$(uname -m)." >&2
-      echo "    See https://github.com/qarmin/czkawka/releases" >&2
-      ASSET="" ;;
-  esac
-
-  if [ -n "$ASSET" ]; then
-    fetch "https://github.com/qarmin/czkawka/releases/download/$CZKAWKA_VER/$ASSET" \
-          "$CZKAWKA_DIR/czkawka_cli" "$SHA" "czkawka_cli $CZKAWKA_VER"
-    chmod +x "$CZKAWKA_DIR/czkawka_cli"
-    # Gatekeeper quarantines anything downloaded; without this macOS kills it on first run.
-    if [ "$(uname -s)" = "Darwin" ]; then
-      xattr -d com.apple.quarantine "$CZKAWKA_DIR/czkawka_cli" 2>/dev/null || true
-    fi
-  fi
-  echo
-fi
+echo "NSFW scoring model → $MODEL_DIR"
+fetch "$MODEL_URL"  "$MODEL_DIR/nsfw.onnx"                 "$MODEL_SHA"  "nsfw.onnx (328 MB)"
+fetch "$CONFIG_URL" "$MODEL_DIR/preprocessor_config.json"  "$CONFIG_SHA" "preprocessor_config.json"
+echo
 
 echo "Done."
 if [ -z "$DEST" ]; then
-  echo "The build copies both into the app's output directory, so:"
+  echo "The build copies it into the app's output directory, so:"
   echo
   echo "    dotnet run --project src/SnapZap.App"
   echo
-  echo "will find them. Confirm under Setup in the app's left rail."
+  echo "will find it. Confirm under Setup in the app's left rail."
 else
   echo "Installed beside the binary in $DEST. Start the app and check Setup in the left rail."
 fi

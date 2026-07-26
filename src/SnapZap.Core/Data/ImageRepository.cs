@@ -1,4 +1,5 @@
 using Microsoft.Data.Sqlite;
+using SnapZap.Core.Dedup;
 
 namespace SnapZap.Core.Data;
 
@@ -20,22 +21,30 @@ public sealed class ImageRepository(Database db)
     }
 
     /// <summary>Insert or replace a fully analyzed image row. Returns the row id.</summary>
+    /// <remarks>
+    /// <c>dupe_checked_at</c> is reset to null on conflict rather than carried over. The scanner
+    /// only reaches this for a cache miss — the file's size or mtime moved, so its bytes may have
+    /// too — and a duplicate verdict computed against the previous content is no longer a verdict
+    /// about this file. Leaving the old timestamp would report the folder as checked while its
+    /// changed photos silently were not.
+    /// </remarks>
     public long Upsert(ImageRecord img)
     {
         using var cmd = _c.CreateCommand();
         cmd.CommandText = """
             INSERT INTO images
               (path, content_hash, file_size, mtime, width, height, format,
-               nsfw_score, blur_score, exif_taken, exif_camera, thumb_path, analyzed_at)
+               nsfw_score, blur_score, exif_taken, exif_camera, thumb_path, analyzed_at, phash)
             VALUES
-              ($path,$hash,$size,$mtime,$w,$h,$fmt,$nsfw,$blur,$taken,$camera,$thumb,$at)
+              ($path,$hash,$size,$mtime,$w,$h,$fmt,$nsfw,$blur,$taken,$camera,$thumb,$at,$phash)
             ON CONFLICT(path) DO UPDATE SET
               content_hash=excluded.content_hash, file_size=excluded.file_size,
               mtime=excluded.mtime, width=excluded.width, height=excluded.height,
               format=excluded.format, nsfw_score=excluded.nsfw_score,
               blur_score=excluded.blur_score, exif_taken=excluded.exif_taken,
               exif_camera=excluded.exif_camera, thumb_path=excluded.thumb_path,
-              analyzed_at=excluded.analyzed_at
+              analyzed_at=excluded.analyzed_at, phash=excluded.phash,
+              dupe_checked_at=NULL, dupe_checked_kinds=0
             RETURNING id;
             """;
         cmd.Parameters.AddWithValue("$path", img.Path);
@@ -51,6 +60,7 @@ public sealed class ImageRepository(Database db)
         cmd.Parameters.AddWithValue("$camera", (object?)img.ExifCamera ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$thumb", (object?)img.ThumbPath ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$at", (object?)img.AnalyzedAt ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$phash", (object?)img.Phash ?? DBNull.Value);
         return (long)cmd.ExecuteScalar()!;
     }
 
@@ -82,21 +92,18 @@ public sealed class ImageRepository(Database db)
             tx.Commit();
         }
 
-        // Prefix-compare with substr rather than LIKE: a folder called "50%_off" or "a_b" is a
-        // legal directory name and would be read as wildcards.
-        var prefix = root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
-                   + Path.DirectorySeparatorChar;
-
         // Inside the root: the enumeration is authoritative, so anything absent from it is gone.
+        // Scoping goes through PathScope so this cannot drift from what the rest of the app calls
+        // "inside the folder" — and so it gets the same index-usable range predicate.
         int removed;
         using (var del = _c.CreateCommand())
         {
-            del.CommandText = """
+            del.CommandText = $"""
                 DELETE FROM images
-                 WHERE substr(path, 1, length($prefix)) = $prefix
+                 WHERE {PathScope.Sql}
                    AND path NOT IN (SELECT path FROM _live)
                 """;
-            del.Parameters.AddWithValue("$prefix", prefix);
+            PathScope.Bind(del, root);
             removed = del.ExecuteNonQuery();
         }
 
@@ -104,8 +111,8 @@ public sealed class ImageRepository(Database db)
         var strays = new List<string>();
         using (var q = _c.CreateCommand())
         {
-            q.CommandText = "SELECT path FROM images WHERE substr(path, 1, length($prefix)) <> $prefix";
-            q.Parameters.AddWithValue("$prefix", prefix);
+            q.CommandText = $"SELECT path FROM images WHERE NOT {PathScope.Sql}";
+            PathScope.Bind(q, root);
             using var r = q.ExecuteReader();
             while (r.Read())
             {
@@ -136,6 +143,86 @@ public sealed class ImageRepository(Database db)
         while (r.Read())
             map[r.GetString(0)] = (r.GetInt64(1), r.GetInt64(2), r.GetInt64(3));
         return map;
+    }
+
+    /// <summary>
+    /// Stamp every row under <paramref name="root"/> as covered by a completed duplicate-detection
+    /// run. Returns the number of rows stamped.
+    /// </summary>
+    /// <remarks>
+    /// Called only after detection finishes, never before it starts: a run that was cancelled or
+    /// threw has told us nothing about these photos, and marking them checked would hide exactly
+    /// the folders the user needs to go back to.
+    /// </remarks>
+    public int MarkDupeChecked(string? root, DupeKinds kinds, long? whenUtc = null)
+    {
+        using var cmd = _c.CreateCommand();
+        cmd.CommandText =
+            $"UPDATE images SET dupe_checked_at=$at, dupe_checked_kinds=$kinds WHERE {PathScope.Where(root)}";
+        cmd.Parameters.AddWithValue("$at", whenUtc ?? DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+        cmd.Parameters.AddWithValue("$kinds", (int)kinds);
+        PathScope.Bind(cmd, root);
+        return cmd.ExecuteNonQuery();
+    }
+
+    /// <summary>
+    /// The columns the perceptual detectors need, for every row under <paramref name="root"/>.
+    /// </summary>
+    /// <remarks>
+    /// A narrow projection rather than <see cref="Under"/>: a detector holds the whole scope in
+    /// memory and walks it in a tight n-squared loop, so carrying paths, thumbnails and NSFW
+    /// scores through that would multiply the working set for fields it never reads.
+    /// </remarks>
+    public List<HashedImage> HashedUnder(string? root)
+    {
+        var list = new List<HashedImage>();
+        using var cmd = _c.CreateCommand();
+        cmd.CommandText = $"""
+            SELECT id, phash,
+                   COALESCE(width,0) * COALESCE(height,0) AS pixels,
+                   file_size, exif_taken, exif_camera, blur_score, path
+            FROM images
+            WHERE {PathScope.Where(root)}
+            ORDER BY id
+            """;
+        PathScope.Bind(cmd, root);
+
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+        {
+            var blob = r.IsDBNull(1) ? null : (byte[])r[1];
+            list.Add(new HashedImage(
+                Id: r.GetInt64(0),
+                Path: r.GetString(7),
+                Hash: PerceptualHash.FromBytes(blob),
+                Pixels: r.GetInt64(2),
+                Bytes: r.GetInt64(3),
+                TakenUtc: r.IsDBNull(4) ? null : r.GetInt64(4),
+                Camera: r.IsDBNull(5) ? null : r.GetString(5),
+                BlurScore: r.IsDBNull(6) ? null : r.GetDouble(6)));
+        }
+        return list;
+    }
+
+    /// <summary>Rows under <paramref name="root"/> that still need a perceptual signature.</summary>
+    public List<(long Id, string Path)> NeedingPhash(string? root)
+    {
+        var list = new List<(long, string)>();
+        using var cmd = _c.CreateCommand();
+        cmd.CommandText = $"SELECT id, path FROM images WHERE phash IS NULL AND {PathScope.Where(root)} ORDER BY id";
+        PathScope.Bind(cmd, root);
+        using var r = cmd.ExecuteReader();
+        while (r.Read()) list.Add((r.GetInt64(0), r.GetString(1)));
+        return list;
+    }
+
+    public void SetPhash(long id, byte[]? phash)
+    {
+        using var cmd = _c.CreateCommand();
+        cmd.CommandText = "UPDATE images SET phash=$p WHERE id=$id";
+        cmd.Parameters.AddWithValue("$p", (object?)phash ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$id", id);
+        cmd.ExecuteNonQuery();
     }
 
     /// <summary>
@@ -240,7 +327,8 @@ public sealed class ImageRepository(Database db)
         using var cmd = _c.CreateCommand();
         cmd.CommandText = $"""
             SELECT id, path, content_hash, file_size, mtime, width, height, format,
-                   nsfw_score, blur_score, exif_taken, exif_camera, thumb_path, analyzed_at
+                   nsfw_score, blur_score, exif_taken, exif_camera, thumb_path, analyzed_at,
+                   dupe_checked_at, dupe_checked_kinds, phash
             FROM images
             WHERE {PathScope.Where(root)}
             ORDER BY id
@@ -266,6 +354,9 @@ public sealed class ImageRepository(Database db)
                 ExifCamera = r.IsDBNull(11) ? null : r.GetString(11),
                 ThumbPath = r.IsDBNull(12) ? null : r.GetString(12),
                 AnalyzedAt = r.IsDBNull(13) ? null : r.GetInt64(13),
+                DupeCheckedAt = r.IsDBNull(14) ? null : r.GetInt64(14),
+                DupeCheckedKinds = r.IsDBNull(15) ? DupeKinds.None : (DupeKinds)r.GetInt32(15),
+                Phash = r.IsDBNull(16) ? null : (byte[])r[16],
             };
         }
     }

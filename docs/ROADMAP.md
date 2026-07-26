@@ -4,7 +4,7 @@ Living status doc for SnapZap. For architecture and rationale see
 [DESIGN.md](DESIGN.md); for the Windows hardware checklist see
 [WINDOWS-VERIFY.md](WINDOWS-VERIFY.md).
 
-Last updated: 2026-07-25 (czkawka validated; cancellation, sort, dupe review landed).
+Last updated: 2026-07-26 (dedup v2: czkawka sidecar removed, three kinds, in-process matching).
 
 ---
 
@@ -27,11 +27,11 @@ select → export (copy/move/hardlink) → delete → undo/restore.
 |---|---|
 | Scan · hash · thumbnails · two-tier cache | ✅ tested |
 | Exact dedup (from hashes) | ✅ tested |
-| Similar dedup (Czkawka sidecar) | ✅ validated against czkawka 12.0.0 |
+| Variant + burst dedup (in-process, 272-bit hash) | ✅ tested — see [DEDUP-V2.md](DEDUP-V2.md) |
 | NSFW scoring (Falconsai ONNX, CPU) | ✅ validated vs reference |
 | Blur (Laplacian) + EXIF | ✅ tested |
 | Blazor UI: grid, badges, preview, selection, filters | ✅ browser-tested |
-| Grid windowing (custom, not `<Virtualize>`) | ✅ verified at 4,000 photos |
+| Grid windowing (custom, not `<Virtualize>`) | ✅ verified at 38,668 photos |
 | Full-resolution preview (`/api/full/{id}`) | ✅ done |
 | Keyboard triage + shortcuts | ✅ browser-tested |
 | Optional-sidecar validation + Setup panel | ✅ browser-tested |

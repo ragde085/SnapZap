@@ -99,8 +99,10 @@
         }
     }
 
+    // Reads DupeKindExtensions.Label rather than spelling the kinds out, so the three kinds are
+    // named the same here, in the preview and in the folder tree's summary.
     static string DupeTitle(DupeInfo d) =>
-        $"{(d.Kind == DupeKind.Similar ? "Similar" : "Exact")} duplicate group #{d.GroupId} — {(d.IsKeeper ? "keeping this one" : "extra copy")}";
+        $"{d.Kind.Label()} duplicate group #{d.GroupId} — {(d.IsKeeper ? "keeping this one" : "extra copy")}";
 
     // Virtualize only re-renders an already-materialized item when its data changes; selection
     // is external state, so this component refreshes itself on AppState.Changed rather than

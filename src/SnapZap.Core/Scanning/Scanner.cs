@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using SnapZap.Core.Analysis;
 using SnapZap.Core.Data;
+using SnapZap.Core.Dedup;
 using SnapZap.Core.Imaging;
 
 namespace SnapZap.Core.Scanning;
@@ -183,10 +184,27 @@ public sealed class Scanner(Database db, SkiaImageService imaging, string thumbD
             catch { haveThumb = false; }
         }
 
-        // Blur + EXIF are cheap enough to compute in the same pass (one scan, four signals).
-        // NSFW is the exception — it runs as a separate, heavier pass. Both are best-effort.
+        // Blur, the perceptual signature and EXIF all ride on this pass (one scan, five signals).
+        // NSFW is the exception — it runs as a separate, heavier pass. All are best-effort.
+        //
+        // The greyscale decode is shared between blur and the signature. It used to happen inside
+        // BlurDetector.Score, and czkawka then decoded the whole library a second time in its own
+        // process to compute exactly the signature being computed here. Deriving both from one
+        // buffer is the largest single saving in this rewrite — larger than any hashing or
+        // matching optimisation.
         double? blur = null;
-        try { blur = _blur.Score(file.FullName); } catch { }
+        byte[]? phash = null;
+        try
+        {
+            if (imaging.DecodeGray(file.FullName, _blur.WorkEdge) is { } g)
+            {
+                blur = BlurDetector.ScoreFrom(g.gray, g.w, g.h);
+                var sig = PerceptualHash.FromGray(g.gray, g.w, g.h);
+                if (!sig.IsEmpty) phash = sig.ToBytes();
+            }
+        }
+        catch { /* a signal we could not compute is a null column, never a dropped row */ }
+
         ExifInfo exif;
         try { exif = ExifExtractor.Read(file.FullName); } catch { exif = new ExifInfo(null, null); }
 
@@ -200,6 +218,7 @@ public sealed class Scanner(Database db, SkiaImageService imaging, string thumbD
             Height = info.Height,
             Format = info.Format,
             BlurScore = blur,
+            Phash = phash,
             ExifTaken = exif.TakenUnixUtc,
             ExifCamera = exif.Camera,
             ThumbPath = haveThumb ? thumbPath : null,
