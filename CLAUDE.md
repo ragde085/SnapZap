@@ -286,9 +286,36 @@ All other deps are MIT or Apache-2.0. No paid, no subscription-gated.
 
 - **ONNX Runtime inference** runs in-process (no server, no cloud).
 - **Model is the Falconsai ViT** trained on ~10k labeled images (Apache-2.0).
-- **Output is a single float `[0, 1]`** (probability of NSFW). The UI provides a threshold slider.
+- **Output is a single float `[0, 1]`** (probability of NSFW), per input image.
 - **Preprocessing** (resize, normalize) is in `NsfwPreprocess.cs`; the config is in `preprocessor_config.json` (downloaded alongside the model).
 - **Model validation** (test category `NsfwModelValidation`) requires labeled fixtures to confirm the model's scores are sensible. Tests skip unless you provide them.
+
+### The NSFW flag rule (`NsfwSettings`, in `Core/Nsfw/NsfwDecision.cs`)
+
+The rule reads **two** numbers, and both halves are load-bearing. Rationale and the measurements
+are in the type's own docs; the parts you must not undo:
+
+- **Every photo is scored twice: whole frame, and as nine overlapping tiles.** The model only
+  ever sees a 224×224 thumbnail of its input, so a person occupying part of a wide photo is
+  destroyed by the resize before inference. Measured: one image scored **0.0014** whole-frame and
+  **0.9983** on the tile containing the subject. No threshold recovers that.
+- **Tiles are combined with `mean`, never `max`.** ⚠ This is the safety-critical one. A clothed
+  head-and-shoulders portrait contains one tile that is nearly all skin, which the model scores
+  ~0.99 — max-over-tiles flagged **8 of 17** photos in a real family album. The mean flagged
+  none, across 263 control images. `NsfwBandTests.An_ordinary_photo_of_a_person_is_not_flagged`
+  pins it.
+- **`TileMeanFlag` below `SafeTileMeanFloor` (0.50) is where false positives start**, and they
+  arrive fast: 0 of 17 at 0.50, 6 of 17 at 0.40. The setting allows it; the UI warns at the edge.
+- **`nsfw_tile_mean` is nullable and that is the mechanism, not an oversight.** Null means
+  "scored whole-frame only", which is how a tiled run finds rows a previous quick run left
+  behind — exactly the job `dupe_checked_kinds` does for dedup. Without it, turning the deeper
+  setting on would appear to do nothing.
+- **Thresholds and depth are user settings** (`settings.json`, via `DependencyChecker.Nsfw`),
+  presented as Cautious / Balanced / Eager with per-threshold overrides. Read them through
+  `AppState.NsfwRule` — never re-derive a comparison inline, or the badge, the filter and the
+  counts start disagreeing, which is precisely what moving the rule into Core fixed.
+- **Changing a threshold re-judges, it does not re-score.** `AppState.Reband()` exists because
+  the band counts are cached per load.
 
 ### Duplicate detection (v2 — in-process)
 

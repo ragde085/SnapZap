@@ -21,23 +21,10 @@ public sealed record ImageView(ImageRecord Record, DupeInfo? Dupe, long ThumbGen
     /// view model is what made the badge disagree with the filter that selected the photo.</summary>
     public const double BlurFlagThreshold = 100;
 
-    /// <summary>
-    /// Whole-frame P(nsfw) at or above which a photo is called explicit on that evidence alone.
-    /// Read it through <c>AppState.NsfwThreshold</c>, for the same reason as the blur one above:
-    /// a second, independent notion of "explicit" is what let the preview say "below threshold"
-    /// about a photo the filter had just decided was over it.
-    ///
-    /// <para>It is no longer the whole rule — a tiled score can flag a photo this leaves alone —
-    /// so anything deciding whether a photo is explicit must ask <see cref="NsfwDecision"/>, not
-    /// compare against this.</para>
-    /// </summary>
-    public const double NsfwFlagThreshold = NsfwDecision.WholeFlagThreshold;
-
-    /// <summary>
-    /// Below this the model is confident enough to leave the photo alone. Between here and a
-    /// flag the answer is "look at it yourself" — a review queue, not a category.
-    /// </summary>
-    public const double NsfwUnsureThreshold = NsfwDecision.UnsureThreshold;
+    // The NSFW thresholds used to live here as constants. They are settings now — read them
+    // from AppState, which holds the one configured copy. A second, independent notion of
+    // "explicit" is what let the preview say "below threshold" about a photo the filter had
+    // just decided was over it.
 
     public long Id => Record.Id;
     public string Path => Record.Path;
@@ -49,12 +36,7 @@ public sealed record ImageView(ImageRecord Record, DupeInfo? Dupe, long ThumbGen
     /// <summary>Mean score over the 3×3 tiles; null when this photo was scored whole-frame only.</summary>
     public double? NsfwTileMean => Record.NsfwTileMean;
 
-    /// <summary>
-    /// The single number to put in front of a person. Always the one the flag decision was
-    /// actually made on, so the UI can never show "0.40 of 1.00 · flagged at 0.85" next to a
-    /// photo it has just flagged.
-    /// </summary>
-    public double? NsfwDisplayScore => NsfwDecision.DisplayScore(Record.NsfwScore, Record.NsfwTileMean);
+
     public double? BlurScore => Record.BlurScore;
     public long? ExifTaken => Record.ExifTaken;
     public string? ExifCamera => Record.ExifCamera;

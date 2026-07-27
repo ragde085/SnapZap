@@ -54,6 +54,21 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
         Changed?.Invoke();
     }
 
+    /// <summary>
+    /// Re-judge every photo after the explicit-content thresholds changed.
+    /// </summary>
+    /// <remarks>
+    /// Nothing is re-scored — the scores are already in the catalogue, and it is only the
+    /// question asked of them that moved. The band counts are cached per load (see
+    /// <see cref="CountInBand"/>), so without this the filter chips would keep reporting the old
+    /// tally while the grid showed the new one.
+    /// </remarks>
+    public void Reband()
+    {
+        _bandCounts = Images.GroupBy(BandOf).ToDictionary(g => g.Key, g => g.Count());
+        Changed?.Invoke();
+    }
+
     /// <summary>Adopt a selection change made by another window and re-render.</summary>
     public void RefreshSelection()
     {
@@ -251,9 +266,17 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
         Likely,
     }
 
-    /// <summary>The score at or above which a photo counts as explicit. Follows the filter once
-    /// the user picks a stricter one, so the badge and the filter can never disagree.</summary>
-    public double NsfwThreshold => ImageView.NsfwFlagThreshold;
+    /// <summary>The configured explicit-content thresholds and depth. One copy, read by the
+    /// badge, the filter, the counts and the scorer, so they cannot disagree.</summary>
+    public NsfwSettings NsfwRule => deps.Nsfw;
+
+    /// <summary>The whole-frame score at or above which a photo counts as explicit. Not the
+    /// whole rule — see <see cref="BandOf"/>.</summary>
+    public double NsfwThreshold => NsfwRule.WholeFlag;
+
+    /// <summary>The number to show for a photo: the one its flag was decided on.</summary>
+    public double? NsfwDisplayScore(ImageView img) =>
+        NsfwRule.DisplayScore(img.NsfwScore, img.NsfwTileMean);
 
     /// <summary>
     /// Which band a photo falls in. Delegates the rule to <see cref="NsfwDecision"/> rather than
@@ -264,8 +287,9 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
     public NsfwBand BandOf(ImageView img)
     {
         if (img.NsfwScore is null) return NsfwBand.Unchecked;
-        if (NsfwDecision.IsExplicit(img.NsfwScore, img.NsfwTileMean)) return NsfwBand.Likely;
-        return NsfwDecision.IsUnsure(img.NsfwScore, img.NsfwTileMean) ? NsfwBand.Unsure : NsfwBand.Clean;
+        var rule = NsfwRule;
+        if (rule.IsExplicit(img.NsfwScore, img.NsfwTileMean)) return NsfwBand.Likely;
+        return rule.IsUnsure(img.NsfwScore, img.NsfwTileMean) ? NsfwBand.Unsure : NsfwBand.Clean;
     }
 
     /// <summary>
@@ -278,19 +302,18 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
     /// photograph of a person. Naming both numbers and both cutoffs is the only version that
     /// explains a flag the whole-frame score alone would not account for.
     /// </remarks>
-    public static string NsfwEvidence(ImageView img)
+    public string NsfwEvidence(ImageView img)
     {
         if (img.NsfwScore is not { } whole) return "Not scored yet.";
 
+        var rule = NsfwRule;
         var closer = img.NsfwTileMean;
         if (closer is null)
-            return $"{whole:F2} of 1.00 · flagged at {NsfwDecision.WholeFlagThreshold:F2} and above";
+            return $"{whole:F2} of 1.00 · flagged at {rule.WholeFlag:F2} and above";
 
-        var flaggedCloser = closer >= NsfwDecision.TileMeanFlagThreshold;
         return $"{whole:F2} looking at the whole photo, {closer:F2} looking closer"
-            + (flaggedCloser ? " — flagged on the closer look" : "")
-            + $" · flagged at {NsfwDecision.WholeFlagThreshold:F2} overall"
-            + $" or {NsfwDecision.TileMeanFlagThreshold:F2} closer";
+            + (closer >= rule.TileMeanFlag ? " — flagged on the closer look" : "")
+            + $" · flagged at {rule.WholeFlag:F2} overall or {rule.TileMeanFlag:F2} closer";
     }
 
     /// <summary>Plain-language name for a band; the primary reading everywhere a score shows.</summary>
@@ -590,7 +613,7 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
             SortKey.Blur => Nulls(items, i => i.BlurScore, desc),
             // The score the flag was decided on, not the whole-frame one: sorting by the latter
             // would bury a photo flagged on its tiles below every unflagged photo above it.
-            SortKey.Nsfw => Nulls(items, i => i.NsfwDisplayScore, desc),
+            SortKey.Nsfw => Nulls(items, NsfwDisplayScore, desc),
             _ => items,
         };
 
@@ -957,7 +980,7 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
             // Read once per run, not per photo: changing the setting mid-run would otherwise
             // leave half the folder scored one way and half the other, with nothing recording
             // which was which.
-            var depth = deps.NsfwDepth;
+            var depth = NsfwRule.Depth;
             var result = await new NsfwScorer(catalog.Db, catalog.NsfwModelPath)
                 .ScoreAllAsync(catalog.ScanRoot, progress, imageIds: scope, depth: depth, ct: ct);
             await LoadAsync();

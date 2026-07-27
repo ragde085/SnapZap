@@ -76,6 +76,13 @@ sealed class StoredSettings
     /// is too much to sit through.
     /// </summary>
     public bool NsfwThorough { get; set; } = true;
+
+    /// <summary>The flag thresholds. Stored as three numbers rather than a preset name so a
+    /// future change to what "Balanced" means cannot silently re-tune a library someone had
+    /// already settled.</summary>
+    public double NsfwWholeFlag { get; set; } = NsfwSettings.Default.WholeFlag;
+    public double NsfwTileMeanFlag { get; set; } = NsfwSettings.Default.TileMeanFlag;
+    public double NsfwUnsure { get; set; } = NsfwSettings.Default.Unsure;
 }
 
 /// <summary>
@@ -108,17 +115,28 @@ public sealed class DependencyChecker
     }
 
     /// <summary>
-    /// How hard NSFW scoring looks at each photo. See <see cref="StoredSettings.NsfwThorough"/>
-    /// for why the default is the expensive one.
+    /// Depth and thresholds for explicit-content scoring. Sanitised on the way out as well as in:
+    /// settings.json is a plain file next to the catalogue and a hand-edited 1.5 would otherwise
+    /// mean nothing is ever flagged again, with no way to tell from the UI.
     /// </summary>
-    public NsfwDepth NsfwDepth
+    public NsfwSettings Nsfw
     {
-        get => _settings.NsfwThorough ? Core.Nsfw.NsfwDepth.Tiled : Core.Nsfw.NsfwDepth.WholeFrame;
+        get => new NsfwSettings
+        {
+            Depth = _settings.NsfwThorough ? NsfwDepth.Tiled : NsfwDepth.WholeFrame,
+            WholeFlag = _settings.NsfwWholeFlag,
+            TileMeanFlag = _settings.NsfwTileMeanFlag,
+            Unsure = _settings.NsfwUnsure,
+        }.Sanitised();
         set
         {
-            var thorough = value == Core.Nsfw.NsfwDepth.Tiled;
-            if (_settings.NsfwThorough == thorough) return;
-            _settings.NsfwThorough = thorough;
+            var next = value.Sanitised();
+            if (next == Nsfw) return;
+
+            _settings.NsfwThorough = next.Depth == NsfwDepth.Tiled;
+            _settings.NsfwWholeFlag = next.WholeFlag;
+            _settings.NsfwTileMeanFlag = next.TileMeanFlag;
+            _settings.NsfwUnsure = next.Unsure;
             Save();
             Changed?.Invoke();
         }

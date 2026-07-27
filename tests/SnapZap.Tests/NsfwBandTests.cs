@@ -80,9 +80,9 @@ public class NsfwBandTests : IDisposable
     [Fact]
     public void The_displayed_score_is_the_one_that_triggered_the_flag()
     {
-        Assert.Equal(0.62, Img(0.0014, 0.62).NsfwDisplayScore);
-        Assert.Equal(0.99, Img(0.99, 0.05).NsfwDisplayScore);
-        Assert.Equal(0.3965, Img(0.3965, 0.21).NsfwDisplayScore);
+        Assert.Equal(0.62, _state.NsfwDisplayScore(Img(0.0014, 0.62)));
+        Assert.Equal(0.99, _state.NsfwDisplayScore(Img(0.99, 0.05)));
+        Assert.Equal(0.3965, _state.NsfwDisplayScore(Img(0.3965, 0.21)));
     }
 
     /// <summary>

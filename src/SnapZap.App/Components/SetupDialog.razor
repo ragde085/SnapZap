@@ -7,188 +7,301 @@
 @using SnapZap.Core.Nsfw
 
 @*
-    The full status of the optional sidecar plus the duplicate-detection settings, reachable at
-    any time from the gear in the top bar. Distinct from DependencyDialog, which is the
-    once-at-launch prompt and lists only what is missing; this one always shows everything, so
-    "is the model actually being used, and which copy?" has an answer even when nothing is wrong.
+    Everything configurable, reachable from the gear in the top bar. Distinct from
+    DependencyDialog, which is the once-at-launch prompt and lists only what is missing; this one
+    always shows everything, so "is the model actually being used, and which copy?" has an answer
+    even when nothing is wrong.
+
+    Organised as a rail of panels rather than one column of stacked sections. It had grown to
+    four unrelated subjects — an add-on's install state, two detectors' settings, and a
+    destructive catalogue purge — separated only by hairlines, so the whole thing scrolled and
+    "Forget everything" sat one flick below a checkbox. Each subject is now somewhere, and only
+    one is on screen at a time.
 *@
 @if (Show)
 {
     <div class="dlg" role="dialog" aria-modal="true" aria-label="Setup"
          tabindex="-1" @ref="_ref" @onkeydown="HandleKeyDown">
-        <div class="dlg-box">
+        <div class="dlg-box setup">
             <h2>Setup</h2>
-            <p class="dlg-sub">
-                One optional add-on. SnapZap scans, finds duplicates, exports and deletes
-                without it.
-            </p>
 
-            <DependencyList Items="Checker.Current" Detailed="true" />
-            <p class="hint">Drop a file in and press Check again — no restart needed.</p>
+            <div class="setup-layout">
+                <nav class="setup-rail" aria-label="Setup sections">
+                    @foreach (var (pane, label, badge) in Panes)
+                    {
+                        <button type="button" class="setup-rail-item @(_pane == pane ? "on" : "")"
+                                aria-current="@(_pane == pane ? "page" : null)"
+                                @onclick="() => _pane = pane">
+                            <span>@label</span>
+                            @if (badge is { } b)
+                            {
+                                <span class="setup-rail-badge">@b</span>
+                            }
+                        </button>
+                    }
+                </nav>
 
-            @* Each check costs time on a large library and each has a different tolerance for
-               being wrong, so which ones run is the user's call rather than a constant. *@
-            <section class="setup-block">
-                <h3>What "Find duplicates" checks</h3>
+                <div class="setup-panel">
+                    @switch (_pane)
+                    {
+                        case Pane.AddOns:
+                            <p class="setup-lede">
+                                One optional add-on. SnapZap scans, finds duplicates, exports and
+                                deletes without it.
+                            </p>
+                            <DependencyList Items="Checker.Current" Detailed="true" />
+                            <div class="setup-actions">
+                                <button @onclick="Recheck">@(_checking ? "Checking…" : "Check again")</button>
+                                <span class="hint">Drop a file in and press Check again — no restart needed.</span>
+                            </div>
+                            break;
 
-                <label class="setup-check">
-                    <input type="checkbox" checked disabled />
-                    <span>
-                        <b>Identical files</b>
-                        <span class="quiet">Byte-for-byte copies, by checksum. Always on — free and exact.</span>
-                    </span>
-                </label>
+                        case Pane.Explicit:
+                            <p class="setup-lede">
+                                How hard SnapZap looks, and how sure it has to be before it says
+                                a photo is explicit.
+                            </p>
 
-                <label class="setup-check">
-                    <input type="checkbox" checked="@_dedup.VariantEnabled"
-                           @onchange="e => Set(_dedup with { VariantEnabled = (bool)e.Value! })" />
-                    <span>
-                        <b>The same shot at another size</b>
-                        <span class="quiet">
-                            Resized, re-saved or converted copies of one photo. Safe to bulk-select.
-                        </span>
-                    </span>
-                </label>
+                            <div class="setup-field">
+                                <h3>How hard it looks</h3>
+                                <label class="setup-check">
+                                    <input type="checkbox" checked="@(_nsfw.Depth == NsfwDepth.Tiled)"
+                                           @onchange="e => SetNsfw(_nsfw with { Depth = (bool)e.Value! ? NsfwDepth.Tiled : NsfwDepth.WholeFrame })" />
+                                    <span>
+                                        <b>Also look closely, in nine overlapping pieces</b>
+                                        <span class="quiet">
+                                            The model only ever sees a small thumbnail of what it is
+                                            given, so a person who takes up part of a wide photo can
+                                            vanish before it looks. Ten times slower.
+                                        </span>
+                                    </span>
+                                </label>
+                                @if (_nsfw.Depth == NsfwDepth.WholeFrame)
+                                {
+                                    <p class="hint">
+                                        Off, expect misses. On one test folder this found 17 of 41;
+                                        with it on, 25.
+                                    </p>
+                                }
+                                else
+                                {
+                                    <p class="hint">
+                                        Photos scored the quick way are re-scored next time you press
+                                        <b>Score NSFW</b> — the two answers aren't comparable.
+                                    </p>
+                                }
+                            </div>
 
-                @if (_dedup.VariantEnabled)
-                {
-                    <div class="setup-nested">
-                        <label class="setup-check">
-                            <input type="checkbox" checked="@_dedup.VariantRotations"
-                                   @onchange="e => Set(_dedup with { VariantRotations = (bool)e.Value! })" />
-                            <span>Also match rotated copies <span class="quiet">(slower)</span></span>
-                        </label>
+                            <div class="setup-field">
+                                <h3>How sure it has to be</h3>
+                                <div class="seg" role="group" aria-label="Sensitivity">
+                                    @foreach (var s in Sensitivities)
+                                    {
+                                        @* Spelled out rather than bound to the bool: Blazor renders a
+                                           bool-valued arbitrary attribute as aria-pressed="" when true
+                                           and omits it when false, which is not a valid ARIA state —
+                                           the control announces nothing, and [aria-pressed="true"]
+                                           never matches, so the selected segment is unstyled too. *@
+                                        <button type="button" aria-pressed="@(_nsfw.Sensitivity == s ? "true" : "false")"
+                                                @onclick="() => SetNsfw(NsfwSettings.Of(s) with { Depth = _nsfw.Depth })">
+                                            @SensitivityLabel(s)
+                                        </button>
+                                    }
+                                    @if (_nsfw.Sensitivity == NsfwSensitivity.Custom)
+                                    {
+                                        <span class="seg-custom">Custom</span>
+                                    }
+                                </div>
+                                <p class="hint">@SensitivityBlurb(_nsfw.Sensitivity)</p>
 
-                        <label class="setup-range">
-                            <span>How different they may look</span>
-                            <input type="range" min="4" max="60" step="2" value="@_dedup.VariantMaxBits"
-                                   @onchange="e => Set(_dedup with { VariantMaxBits = ToInt(e.Value, _dedup.VariantMaxBits) })" />
-                            @* Shown with its scale, because the number is meaningless without one —
-                               and it is NOT the old czkawka --max-difference value. *@
-                            <b>@_dedup.VariantMaxBits of @PerceptualHash.Bits</b>
-                        </label>
-                        <p class="hint">
-                            Lower is stricter. Raising it finds more, and eventually starts calling
-                            two different photos the same one.
-                        </p>
-                    </div>
-                }
+                                <details class="setup-advanced" open="@(_nsfw.Sensitivity == NsfwSensitivity.Custom)">
+                                    <summary>Set the levels myself</summary>
 
-                @* No checkbox, deliberately. Burst detection is what keeps different photographs
-                   out of a bulk delete, so it runs like exact matching does: always. It used to be
-                   off by default, which did not leave bursts ungrouped — it left them grouped as
-                   "same shot" and selectable. Only the window is tunable. *@
-                <div class="setup-check setup-check--fixed">
-                    <span>
-                        <b>Bursts — the same scene, seconds apart</b>
-                        <span class="quiet">
-                            Always detected. These are different photographs, so they are grouped
-                            for review and never picked up by "Select duplicate extras".
-                        </span>
-                    </span>
+                                    <div class="setup-nested">
+                                        <label class="setup-range">
+                                            <span>Explicit, on the whole photo</span>
+                                            <input type="range" min="5" max="100" step="5" value="@Pct(_nsfw.WholeFlag)"
+                                                   @onchange="e => SetNsfw(_nsfw with { WholeFlag = FromPct(e.Value, _nsfw.WholeFlag) })" />
+                                            <b>@_nsfw.WholeFlag.ToString("F2")</b>
+                                        </label>
+
+                                        <label class="setup-range">
+                                            <span>Explicit, averaged over the nine pieces</span>
+                                            <input type="range" min="5" max="100" step="5" value="@Pct(_nsfw.TileMeanFlag)"
+                                                   disabled="@(_nsfw.Depth != NsfwDepth.Tiled)"
+                                                   @onchange="e => SetNsfw(_nsfw with { TileMeanFlag = FromPct(e.Value, _nsfw.TileMeanFlag) })" />
+                                            <b>@_nsfw.TileMeanFlag.ToString("F2")</b>
+                                        </label>
+
+                                        @* The one number here with a cliff under it, and nothing
+                                           about the number itself says so. *@
+                                        @if (_nsfw.TileMeanFlag < NsfwSettings.SafeTileMeanFloor)
+                                        {
+                                            <p class="setup-warn">
+                                                Below @NsfwSettings.SafeTileMeanFloor.ToString("F2") this starts
+                                                flagging ordinary photographs of people: one close-up of a
+                                                face is mostly skin, and the model reads skin. Measured on a
+                                                17-photo family album — none flagged at
+                                                @NsfwSettings.SafeTileMeanFloor.ToString("F2"), six at 0.40.
+                                            </p>
+                                        }
+
+                                        <label class="setup-range">
+                                            <span>Worth a second look</span>
+                                            <input type="range" min="5" max="100" step="5" value="@Pct(_nsfw.Unsure)"
+                                                   @onchange="e => SetNsfw(_nsfw with { Unsure = FromPct(e.Value, _nsfw.Unsure) })" />
+                                            <b>@_nsfw.Unsure.ToString("F2")</b>
+                                        </label>
+                                        <p class="hint">
+                                            The <b>Not sure</b> band is a queue for you to read. Set it low and
+                                            it fills with photographs of faces — the model gives an ordinary
+                                            portrait about 0.40 on skin tone alone.
+                                        </p>
+                                    </div>
+                                </details>
+
+                                <p class="hint">
+                                    Levels apply immediately to photos already scored — nothing is
+                                    re-scored, only re-judged.
+                                </p>
+                            </div>
+                            break;
+
+                        case Pane.Duplicates:
+                            @* Each check costs time on a large library and each has a different
+                               tolerance for being wrong, so which ones run is the user's call
+                               rather than a constant. *@
+                            <p class="setup-lede">What <b>Find duplicates</b> checks for.</p>
+
+                            <label class="setup-check">
+                                <input type="checkbox" checked disabled />
+                                <span>
+                                    <b>Identical files</b>
+                                    <span class="quiet">Byte-for-byte copies, by checksum. Always on — free and exact.</span>
+                                </span>
+                            </label>
+
+                            <label class="setup-check">
+                                <input type="checkbox" checked="@_dedup.VariantEnabled"
+                                       @onchange="e => Set(_dedup with { VariantEnabled = (bool)e.Value! })" />
+                                <span>
+                                    <b>The same shot at another size</b>
+                                    <span class="quiet">
+                                        Resized, re-saved or converted copies of one photo. Safe to bulk-select.
+                                    </span>
+                                </span>
+                            </label>
+
+                            @if (_dedup.VariantEnabled)
+                            {
+                                <div class="setup-nested">
+                                    <label class="setup-check">
+                                        <input type="checkbox" checked="@_dedup.VariantRotations"
+                                               @onchange="e => Set(_dedup with { VariantRotations = (bool)e.Value! })" />
+                                        <span>Also match rotated copies <span class="quiet">(slower)</span></span>
+                                    </label>
+
+                                    <label class="setup-range">
+                                        <span>How different they may look</span>
+                                        <input type="range" min="4" max="60" step="2" value="@_dedup.VariantMaxBits"
+                                               @onchange="e => Set(_dedup with { VariantMaxBits = ToInt(e.Value, _dedup.VariantMaxBits) })" />
+                                        @* Shown with its scale, because the number is meaningless without one —
+                                           and it is NOT the old czkawka --max-difference value. *@
+                                        <b>@_dedup.VariantMaxBits of @PerceptualHash.Bits</b>
+                                    </label>
+                                    <p class="hint">
+                                        Lower is stricter. Raising it finds more, and eventually starts calling
+                                        two different photos the same one.
+                                    </p>
+                                </div>
+                            }
+
+                            @* No checkbox, deliberately. Burst detection is what keeps different
+                               photographs out of a bulk delete, so it runs like exact matching
+                               does: always. It used to be off by default, which did not leave
+                               bursts ungrouped — it left them grouped as "same shot" and
+                               selectable. Only the window is tunable. *@
+                            <div class="setup-check setup-check--fixed">
+                                <span>
+                                    <b>Bursts — the same scene, seconds apart</b>
+                                    <span class="quiet">
+                                        Always detected. These are different photographs, so they are grouped
+                                        for review and never picked up by "Select duplicate extras".
+                                    </span>
+                                </span>
+                            </div>
+
+                            <div class="setup-nested">
+                                <label class="setup-range">
+                                    <span>Frames within</span>
+                                    <input type="range" min="1" max="30" step="1" value="@_dedup.BurstWindowSeconds"
+                                           @onchange="e => Set(_dedup with { BurstWindowSeconds = ToInt(e.Value, _dedup.BurstWindowSeconds) })" />
+                                    <b>@_dedup.BurstWindowSeconds s</b>
+                                </label>
+                                <p class="hint">
+                                    Needs an EXIF capture time — photos without one are skipped, so a burst
+                                    with no timestamps is not protected from bulk selection.
+                                </p>
+                            </div>
+
+                            @if (_settingsChanged)
+                            {
+                                <p class="hint">Saved. Run <b>Find duplicates</b> again to apply it.</p>
+                            }
+                            break;
+
+                        case Pane.Catalogue:
+                            @* The catalogue spans every folder ever scanned, because that cache is
+                               what makes re-scanning fast. Only the scanned folder is ever shown or
+                               acted on, but the disk it occupies is real and there was previously no
+                               way to reclaim it without deleting files by hand. *@
+                            <p class="setup-lede">
+                                What SnapZap remembers about the photos it has looked at.
+                            </p>
+
+                            <div class="setup-stat">
+                                <b>@_footprint.Photos.ToString("N0")</b> photo@(_footprint.Photos == 1 ? "" : "s") analysed
+                                <span class="quiet">
+                                    @AppState.FormatBytes(_footprint.DbBytes) database ·
+                                    @AppState.FormatBytes(_footprint.ThumbBytes) thumbnails
+                                </span>
+                            </div>
+                            @if (Catalog.ScanRoot is { } root)
+                            {
+                                <div class="setup-stat quiet">Showing <code class="dep-path">@root</code></div>
+                            }
+
+                            @if (!_confirmForget)
+                            {
+                                <button class="danger" disabled="@(_footprint.Photos == 0 || AppState.Busy)"
+                                        @onclick="ArmForget">Forget everything…</button>
+                            }
+                            else
+                            {
+                                <div class="confirm" role="alertdialog" aria-modal="true" aria-label="Confirm forget"
+                                     tabindex="-1" @ref="_forgetRef">
+                                    <p>
+                                        Discard the analysis of all <b>@_footprint.Photos.ToString("N0")</b> photos
+                                        and @AppState.FormatBytes(_footprint.ThumbBytes) of thumbnails?
+                                    </p>
+                                    <p class="hint">
+                                        No photo is deleted or moved — only hashes, scores, dates and thumbnails,
+                                        all of which a scan rebuilds. Anything already in the Recycle Bin stays
+                                        restorable from History.
+                                    </p>
+                                    <div class="row">
+                                        <button class="danger" @onclick="Forget">Forget everything</button>
+                                        <button class="link" @onclick="DeclineForget">Cancel</button>
+                                    </div>
+                                </div>
+                            }
+                            break;
+                    }
                 </div>
-
-                <div class="setup-nested">
-                    <label class="setup-range">
-                        <span>Frames within</span>
-                        <input type="range" min="1" max="30" step="1" value="@_dedup.BurstWindowSeconds"
-                               @onchange="e => Set(_dedup with { BurstWindowSeconds = ToInt(e.Value, _dedup.BurstWindowSeconds) })" />
-                        <b>@_dedup.BurstWindowSeconds s</b>
-                    </label>
-                    <p class="hint">
-                        Needs an EXIF capture time — photos without one are skipped, so a burst
-                        with no timestamps is not protected from bulk selection.
-                    </p>
-                </div>
-
-                @if (_settingsChanged)
-                {
-                    <p class="hint">Saved. Run <b>Find duplicates</b> again to apply it.</p>
-                }
-            </section>
-
-            @* The one NSFW setting worth exposing. Not a threshold slider: the thresholds are
-               calibrated together against measured data, and a slider invites moving one of them
-               in isolation, which is how the review queue fills with photographs of faces. *@
-            <section class="setup-block">
-                <h3>How "Score NSFW" looks</h3>
-
-                <label class="setup-check">
-                    <input type="checkbox" checked="@(Checker.NsfwDepth == NsfwDepth.Tiled)"
-                           @onchange="e => SetDepth((bool)e.Value! ? NsfwDepth.Tiled : NsfwDepth.WholeFrame)" />
-                    <span>
-                        <b>Also look closely, in nine overlapping pieces</b>
-                        <span class="quiet">
-                            The model sees a small thumbnail of whatever it is given, so a person
-                            who takes up only part of a wide photo can be missed entirely. Looking
-                            piece by piece catches those. Ten times slower.
-                        </span>
-                    </span>
-                </label>
-
-                @if (Checker.NsfwDepth == NsfwDepth.WholeFrame)
-                {
-                    <p class="hint">
-                        With this off, expect to miss photos where the subject isn't most of the
-                        frame. On a test folder it found 17 of 41; with it on, 25.
-                    </p>
-                }
-                else
-                {
-                    <p class="hint">
-                        Photos already scored the quick way are re-scored next time you press
-                        <b>Score NSFW</b> — the two answers aren't comparable.
-                    </p>
-                }
-            </section>
-
-            @* The catalogue spans every folder ever scanned, because that cache is what makes
-               re-scanning fast. Only the scanned folder is ever shown or acted on, but the
-               disk it occupies is real and there was previously no way to reclaim it without
-               deleting files by hand. *@
-            <section class="setup-block">
-                <h3>Catalogue</h3>
-                <div class="setup-stat">
-                    <b>@_footprint.Photos.ToString("N0")</b> photo@(_footprint.Photos == 1 ? "" : "s") analysed
-                    <span class="quiet">
-                        @AppState.FormatBytes(_footprint.DbBytes) database ·
-                        @AppState.FormatBytes(_footprint.ThumbBytes) thumbnails
-                    </span>
-                </div>
-                @if (Catalog.ScanRoot is { } root)
-                {
-                    <div class="setup-stat quiet">Showing <code class="dep-path">@root</code></div>
-                }
-
-                @if (!_confirmForget)
-                {
-                    <button class="danger" disabled="@(_footprint.Photos == 0 || AppState.Busy)"
-                            @onclick="ArmForget">Forget everything…</button>
-                }
-                else
-                {
-                    <div class="confirm" role="alertdialog" aria-modal="true" aria-label="Confirm forget"
-                         tabindex="-1" @ref="_forgetRef">
-                        <p>
-                            Discard the analysis of all <b>@_footprint.Photos.ToString("N0")</b> photos
-                            and @AppState.FormatBytes(_footprint.ThumbBytes) of thumbnails?
-                        </p>
-                        <p class="hint">
-                            No photo is deleted or moved — only hashes, scores, dates and thumbnails,
-                            all of which a scan rebuilds. Anything already in the Recycle Bin stays
-                            restorable from History.
-                        </p>
-                        <div class="row">
-                            <button class="danger" @onclick="Forget">Forget everything</button>
-                            <button class="link" @onclick="DeclineForget">Cancel</button>
-                        </div>
-                    </div>
-                }
-            </section>
+            </div>
 
             <div class="dlg-actions">
-                <button class="primary" @onclick="Recheck">@(_checking ? "Checking…" : "Check again")</button>
-                <button class="link" @onclick="Close">Close</button>
+                <button class="primary" @onclick="Close">Done</button>
             </div>
         </div>
     </div>
@@ -198,6 +311,8 @@
     [Parameter] public bool Show { get; set; }
     [Parameter] public EventCallback OnClose { get; set; }
 
+    enum Pane { AddOns, Explicit, Duplicates, Catalogue }
+
     ElementReference _ref;
     ElementReference _forgetRef;
     bool _checking;
@@ -205,13 +320,62 @@
     bool _needsFocus;
     bool _confirmForget;
     bool _needsForgetFocus;
+    Pane _pane = Pane.AddOns;
 
     // Measured when the dialog opens rather than per render: it stats every thumbnail, and
     // Blazor re-renders this component on any dependency change.
     (int Photos, long DbBytes, long ThumbBytes) _footprint;
 
     DedupSettings _dedup = new();
+    NsfwSettings _nsfw = NsfwSettings.Default;
     bool _settingsChanged;
+
+    /// <summary>The rail. The add-ons count is the only thing in here that can be wrong right
+    /// now, so it is the only one that carries a badge.</summary>
+    IEnumerable<(Pane Pane, string Label, string? Badge)> Panes
+    {
+        get
+        {
+            var missing = Checker.MissingCount;
+            yield return (Pane.AddOns, "Add-ons", missing > 0 ? missing.ToString() : null);
+            yield return (Pane.Explicit, "Explicit content", null);
+            yield return (Pane.Duplicates, "Duplicates", null);
+            yield return (Pane.Catalogue, "Catalogue", null);
+        }
+    }
+
+    static readonly NsfwSensitivity[] Sensitivities =
+        [NsfwSensitivity.Cautious, NsfwSensitivity.Balanced, NsfwSensitivity.Eager];
+
+    static string SensitivityLabel(NsfwSensitivity s) => s switch
+    {
+        NsfwSensitivity.Cautious => "Cautious",
+        NsfwSensitivity.Eager => "Eager",
+        NsfwSensitivity.Custom => "Custom",
+        _ => "Balanced",
+    };
+
+    /// <summary>
+    /// What each level costs, in the terms the user will actually notice — missed photos, or
+    /// content warnings on photos of their family. Numbers are measured, not estimated.
+    /// </summary>
+    static string SensitivityBlurb(NsfwSensitivity s) => s switch
+    {
+        NsfwSensitivity.Cautious =>
+            "Flags only what is unmistakable. Fewest false alarms, most missed.",
+        NsfwSensitivity.Eager =>
+            "Flags more, and puts more borderline photos in front of you. Still avoids the level where ordinary photos of people start getting flagged.",
+        NsfwSensitivity.Custom =>
+            "Your own levels. The measured safe floor is 0.50 averaged over the pieces.",
+        _ => "Recommended. On the folders this was measured against: 25 of 41 explicit photos flagged, and none of 263 ordinary ones.",
+    };
+
+    // Sliders post strings, and a decimal here would be parsed against the browser's locale —
+    // "0,5" on a Spanish system. Whole percent avoids the question entirely.
+    static int Pct(double v) => (int)Math.Round(v * 100);
+
+    static double FromPct(object? raw, double fallback) =>
+        int.TryParse(raw as string, out var v) ? v / 100.0 : fallback;
 
     protected override void OnInitialized() => Checker.Changed += OnChanged;
 
@@ -236,10 +400,19 @@
     }
 
     /// <summary>
-    /// Persists immediately, like the dedup toggles above. Raising Changed on the checker is what
-    /// re-renders this dialog, since the value it renders from lives on the singleton.
+    /// Saved on the checker, then read back, so the local copy is whatever was actually stored
+    /// after sanitising rather than what was asked for.
     /// </summary>
-    void SetDepth(NsfwDepth depth) => Checker.NsfwDepth = depth;
+    /// <remarks>
+    /// Thresholds re-judge the whole grid the moment they change — no re-scoring, the scores are
+    /// already there — so the grid behind this dialog has to be told.
+    /// </remarks>
+    void SetNsfw(NsfwSettings next)
+    {
+        Checker.Nsfw = next;
+        _nsfw = Checker.Nsfw;
+        AppState.Reband();
+    }
 
     /// <summary>
     /// Range inputs post strings, and a malformed one must not throw inside an event handler —
@@ -262,10 +435,15 @@
             _confirmForget = false;      // never reopen with a destructive prompt already armed
             _footprint = Catalog.Footprint();
 
+            // Open on whatever is wrong, if anything is: a missing add-on is the only reason this
+            // dialog opens by itself, and landing anywhere else would bury it.
+            _pane = Checker.MissingCount > 0 ? Pane.AddOns : _pane;
+
             // Re-read on open rather than caching per circuit: another window may have changed
             // these, and showing a stale checkbox for a setting that governs deletion is not a
             // cosmetic problem.
             _dedup = DedupSettings.Load(Catalog.Db);
+            _nsfw = Checker.Nsfw;
             _settingsChanged = false;
         }
         _wasShown = Show;

@@ -190,14 +190,15 @@ public class NsfwModelValidationTests
             "Set PC_NSFW_FIXTURES to a folder with nsfw/ and sfw/ labeled images.");
 
         using var clf = new OnnxNsfwClassifier(Model!);
+        var rule = NsfwSettings.Default;
 
         var flaggedClean = new List<string>();
         int cleanTotal = 0;
         foreach (var f in Directory.EnumerateFiles(Path.Combine(Fixtures!, "sfw")))
         {
             cleanTotal++;
-            var v = clf.ScoreFile(f, NsfwDepth.Tiled);
-            if (NsfwDecision.IsExplicit(v.Whole, v.TileMean))
+            var v = clf.ScoreFile(f, rule.Depth);
+            if (rule.IsExplicit(v.Whole, v.TileMean))
                 flaggedClean.Add($"{Path.GetFileName(f)} (whole {v.Whole:F3}, tiles {v.TileMean:F3})");
         }
 
@@ -209,9 +210,9 @@ public class NsfwModelValidationTests
         foreach (var f in Directory.EnumerateFiles(Path.Combine(Fixtures!, "nsfw")))
         {
             explicitTotal++;
-            var v = clf.ScoreFile(f, NsfwDepth.Tiled);
-            if (NsfwDecision.IsExplicit(v.Whole, v.TileMean)) caught++;
-            if (NsfwDecision.IsExplicit(v.Whole, null)) caughtWholeFrame++;
+            var v = clf.ScoreFile(f, rule.Depth);
+            if (rule.IsExplicit(v.Whole, v.TileMean)) caught++;
+            if (rule.IsExplicit(v.Whole, null)) caughtWholeFrame++;
         }
 
         Skip.If(explicitTotal == 0, "No images under fixtures/nsfw.");
