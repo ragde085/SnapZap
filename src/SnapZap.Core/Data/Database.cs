@@ -129,6 +129,7 @@ public sealed class Database : IDisposable
             AddColumnIfMissing("images", "dupe_checked_at", "INTEGER");
             AddColumnIfMissing("images", "dupe_checked_kinds", "INTEGER NOT NULL DEFAULT 0");
             AddColumnIfMissing("images", "phash", "BLOB");
+            AddColumnIfMissing("images", "nsfw_tile_mean", "REAL");
 
             RenameSimilarToVariant();
         }
@@ -277,6 +278,10 @@ public sealed class Database : IDisposable
           height        INTEGER,
           format        TEXT,
           nsfw_score    REAL,
+          -- Mean score across the 3x3 tiles (NsfwDecision.Tiles). Null means this row has only
+          -- ever been scored whole-frame, which is what lets a deeper re-run find the rows it
+          -- still owes work on — the same job dupe_checked_kinds does for duplicate detection.
+          nsfw_tile_mean REAL,
           blur_score    REAL,
           exif_taken    INTEGER,
           exif_camera   TEXT,

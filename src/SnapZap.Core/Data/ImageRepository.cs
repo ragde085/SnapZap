@@ -61,7 +61,11 @@ public sealed class ImageRepository(Database db)
                   blur_score=excluded.blur_score, exif_taken=excluded.exif_taken,
                   exif_camera=excluded.exif_camera, thumb_path=excluded.thumb_path,
                   analyzed_at=excluded.analyzed_at, phash=excluded.phash,
-                  dupe_checked_at=NULL, dupe_checked_kinds=0
+                  dupe_checked_at=NULL, dupe_checked_kinds=0,
+                  -- Not bound, so cleared explicitly: a re-analysed file carries a new
+                  -- nsfw_score of NULL from excluded, and leaving the tile mean behind would
+                  -- keep flagging the row on evidence about bytes that are no longer there.
+                  nsfw_tile_mean=NULL
                 RETURNING id;
                 """;
             BindUpsertParams(cmd, img);
@@ -102,7 +106,11 @@ public sealed class ImageRepository(Database db)
                   blur_score=excluded.blur_score, exif_taken=excluded.exif_taken,
                   exif_camera=excluded.exif_camera, thumb_path=excluded.thumb_path,
                   analyzed_at=excluded.analyzed_at, phash=excluded.phash,
-                  dupe_checked_at=NULL, dupe_checked_kinds=0
+                  dupe_checked_at=NULL, dupe_checked_kinds=0,
+                  -- Not bound, so cleared explicitly: a re-analysed file carries a new
+                  -- nsfw_score of NULL from excluded, and leaving the tile mean behind would
+                  -- keep flagging the row on evidence about bytes that are no longer there.
+                  nsfw_tile_mean=NULL
                 """;
             BindUpsertParams(cmd, records[0]);
             cmd.Prepare();
@@ -384,8 +392,8 @@ public sealed class ImageRepository(Database db)
             using var cmd = c.CreateCommand();
             cmd.CommandText = $"""
                 SELECT id, path, content_hash, file_size, mtime, width, height, format,
-                       nsfw_score, blur_score, exif_taken, exif_camera, thumb_path, analyzed_at,
-                       dupe_checked_at, dupe_checked_kinds, phash
+                       nsfw_score, nsfw_tile_mean, blur_score, exif_taken, exif_camera,
+                       thumb_path, analyzed_at, dupe_checked_at, dupe_checked_kinds, phash
                 FROM images
                 WHERE id IN ({string.Join(",", chunk.Select((_, i) => $"$id{i}"))})
                 """;
@@ -487,8 +495,8 @@ public sealed class ImageRepository(Database db)
         using var cmd = c.CreateCommand();
         cmd.CommandText = $"""
             SELECT id, path, content_hash, file_size, mtime, width, height, format,
-                   nsfw_score, blur_score, exif_taken, exif_camera, thumb_path, analyzed_at,
-                   dupe_checked_at, dupe_checked_kinds, phash
+                   nsfw_score, nsfw_tile_mean, blur_score, exif_taken, exif_camera,
+                   thumb_path, analyzed_at, dupe_checked_at, dupe_checked_kinds, phash
             FROM images
             WHERE {PathScope.Where(root)}
             ORDER BY id
@@ -511,13 +519,14 @@ public sealed class ImageRepository(Database db)
         Height = r.IsDBNull(6) ? null : r.GetInt32(6),
         Format = r.IsDBNull(7) ? null : r.GetString(7),
         NsfwScore = r.IsDBNull(8) ? null : r.GetDouble(8),
-        BlurScore = r.IsDBNull(9) ? null : r.GetDouble(9),
-        ExifTaken = r.IsDBNull(10) ? null : r.GetInt64(10),
-        ExifCamera = r.IsDBNull(11) ? null : r.GetString(11),
-        ThumbPath = r.IsDBNull(12) ? null : r.GetString(12),
-        AnalyzedAt = r.IsDBNull(13) ? null : r.GetInt64(13),
-        DupeCheckedAt = r.IsDBNull(14) ? null : r.GetInt64(14),
-        DupeCheckedKinds = r.IsDBNull(15) ? DupeKinds.None : (DupeKinds)r.GetInt32(15),
-        Phash = r.IsDBNull(16) ? null : (byte[])r[16],
+        NsfwTileMean = r.IsDBNull(9) ? null : r.GetDouble(9),
+        BlurScore = r.IsDBNull(10) ? null : r.GetDouble(10),
+        ExifTaken = r.IsDBNull(11) ? null : r.GetInt64(11),
+        ExifCamera = r.IsDBNull(12) ? null : r.GetString(12),
+        ThumbPath = r.IsDBNull(13) ? null : r.GetString(13),
+        AnalyzedAt = r.IsDBNull(14) ? null : r.GetInt64(14),
+        DupeCheckedAt = r.IsDBNull(15) ? null : r.GetInt64(15),
+        DupeCheckedKinds = r.IsDBNull(16) ? DupeKinds.None : (DupeKinds)r.GetInt32(16),
+        Phash = r.IsDBNull(17) ? null : (byte[])r[17],
     };
 }

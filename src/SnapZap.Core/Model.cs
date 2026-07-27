@@ -14,6 +14,14 @@ public sealed record ImageRecord
 
     // The four faceted signals.
     public double? NsfwScore { get; init; }
+
+    /// <summary>
+    /// Mean score across the 3×3 tiles, or null when this photo has only been scored whole-frame.
+    /// Read it through <see cref="Nsfw.NsfwDecision"/> rather than comparing it directly — on its
+    /// own it is not a probability of anything, it is one half of the flag rule.
+    /// </summary>
+    public double? NsfwTileMean { get; init; }
+
     public double? BlurScore { get; init; }
     public long? ExifTaken { get; init; }      // unix utc, null when absent
     public string? ExifCamera { get; init; }

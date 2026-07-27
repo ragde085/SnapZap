@@ -26,7 +26,7 @@ public class SelectionCommandTests : IDisposable
         Directory.CreateDirectory(_work);
         _catalog = new CatalogService(_work);
         _session = new SessionStore(_catalog, TimeSpan.FromMilliseconds(50));
-        _state = new AppState(_catalog, new MacOsTrashService(), _session);
+        _state = new AppState(_catalog, new MacOsTrashService(), _session, new DependencyChecker(_catalog));
     }
 
     /// <summary>One photo, with only the signals these tests actually steer on.</summary>
@@ -63,8 +63,8 @@ public class SelectionCommandTests : IDisposable
     {
         // Either side of both boundaries, plus the unscored case, reusing the values
         // NsfwBandTests already pins.
-        var clean = Add("clean.jpg", 0.19);
-        var unsureLow = Add("unsure-low.jpg", 0.20);
+        var clean = Add("clean.jpg", 0.44);
+        var unsureLow = Add("unsure-low.jpg", 0.45);
         var unsureHigh = Add("unsure-high.jpg", 0.84);
         var likely = Add("likely.jpg", 0.85);
         var unchecked_ = Add("unchecked.jpg");

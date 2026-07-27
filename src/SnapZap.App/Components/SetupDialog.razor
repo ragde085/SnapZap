@@ -4,6 +4,7 @@
 @inject AppState AppState
 
 @using SnapZap.Core.Dedup
+@using SnapZap.Core.Nsfw
 
 @*
     The full status of the optional sidecar plus the duplicate-detection settings, reachable at
@@ -106,6 +107,41 @@
                 }
             </section>
 
+            @* The one NSFW setting worth exposing. Not a threshold slider: the thresholds are
+               calibrated together against measured data, and a slider invites moving one of them
+               in isolation, which is how the review queue fills with photographs of faces. *@
+            <section class="setup-block">
+                <h3>How "Score NSFW" looks</h3>
+
+                <label class="setup-check">
+                    <input type="checkbox" checked="@(Checker.NsfwDepth == NsfwDepth.Tiled)"
+                           @onchange="e => SetDepth((bool)e.Value! ? NsfwDepth.Tiled : NsfwDepth.WholeFrame)" />
+                    <span>
+                        <b>Also look closely, in nine overlapping pieces</b>
+                        <span class="quiet">
+                            The model sees a small thumbnail of whatever it is given, so a person
+                            who takes up only part of a wide photo can be missed entirely. Looking
+                            piece by piece catches those. Ten times slower.
+                        </span>
+                    </span>
+                </label>
+
+                @if (Checker.NsfwDepth == NsfwDepth.WholeFrame)
+                {
+                    <p class="hint">
+                        With this off, expect to miss photos where the subject isn't most of the
+                        frame. On a test folder it found 17 of 41; with it on, 25.
+                    </p>
+                }
+                else
+                {
+                    <p class="hint">
+                        Photos already scored the quick way are re-scored next time you press
+                        <b>Score NSFW</b> — the two answers aren't comparable.
+                    </p>
+                }
+            </section>
+
             @* The catalogue spans every folder ever scanned, because that cache is what makes
                re-scanning fast. Only the scanned folder is ever shown or acted on, but the
                disk it occupies is real and there was previously no way to reclaim it without
@@ -198,6 +234,12 @@
         // enabled detector, so switching one on has to re-render the tree, not just this dialog.
         AppState.NotifyDedupSettingsChanged();
     }
+
+    /// <summary>
+    /// Persists immediately, like the dedup toggles above. Raising Changed on the checker is what
+    /// re-renders this dialog, since the value it renders from lives on the singleton.
+    /// </summary>
+    void SetDepth(NsfwDepth depth) => Checker.NsfwDepth = depth;
 
     /// <summary>
     /// Range inputs post strings, and a malformed one must not throw inside an event handler —

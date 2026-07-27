@@ -83,11 +83,9 @@
                 <div class="pk">Explicit content</div>
                 @{ var band = AppState.BandOf(img); }
                 <div class="pv @BandTone(band)">@AppState.BandLabel(band)</div>
-                @if (img.NsfwScore is { } n)
+                @if (img.NsfwScore is not null)
                 {
-                    <div class="pv-sub">
-                        @n.ToString("F2") of 1.00 · flagged at @AppState.NsfwThreshold.ToString("F2")
-                    </div>
+                    <div class="pv-sub">@AppState.NsfwEvidence(img)</div>
                 }
                 else
                 {

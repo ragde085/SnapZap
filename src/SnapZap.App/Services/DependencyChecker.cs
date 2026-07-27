@@ -1,4 +1,5 @@
 using System.Text.Json;
+using SnapZap.Core.Nsfw;
 
 namespace SnapZap.App.Services;
 
@@ -67,6 +68,14 @@ public sealed record DependencyInfo
 sealed class StoredSettings
 {
     public bool SuppressDependencyPrompt { get; set; }
+
+    /// <summary>
+    /// Whether NSFW scoring also looks at the frame in tiles. Defaults on: the whole-frame pass
+    /// alone misses anything that isn't most of the picture, and a filter that quietly misses
+    /// things is worse than a slow one. Off is for large libraries where ten inferences a photo
+    /// is too much to sit through.
+    /// </summary>
+    public bool NsfwThorough { get; set; } = true;
 }
 
 /// <summary>
@@ -95,6 +104,23 @@ public sealed class DependencyChecker
             if (_settings.SuppressDependencyPrompt == value) return;
             _settings.SuppressDependencyPrompt = value;
             Save();
+        }
+    }
+
+    /// <summary>
+    /// How hard NSFW scoring looks at each photo. See <see cref="StoredSettings.NsfwThorough"/>
+    /// for why the default is the expensive one.
+    /// </summary>
+    public NsfwDepth NsfwDepth
+    {
+        get => _settings.NsfwThorough ? Core.Nsfw.NsfwDepth.Tiled : Core.Nsfw.NsfwDepth.WholeFrame;
+        set
+        {
+            var thorough = value == Core.Nsfw.NsfwDepth.Tiled;
+            if (_settings.NsfwThorough == thorough) return;
+            _settings.NsfwThorough = thorough;
+            Save();
+            Changed?.Invoke();
         }
     }
 
