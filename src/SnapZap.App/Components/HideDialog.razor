@@ -1,0 +1,315 @@
+@implements IDisposable
+@inject AppState AppState
+
+@if (Show)
+{
+    <div class="dlg" role="dialog" aria-modal="true" aria-label="Hide selected photos in an image"
+         tabindex="-1" @ref="_dlgRef" @onkeydown="HandleKeyDown">
+        <div class="dlg-box">
+            <h2>Hide in image</h2>
+            <p class="dlg-sub">
+                @AppState.SelectedImages.Count photo@(AppState.SelectedImages.Count == 1 ? "" : "s") (@AppState.FormatBytes(SelectionBytes))
+                will be zipped and attached to the end of a carrier image — the carrier still opens
+                normally, and looks completely ordinary to anyone who doesn't know to look.
+            </p>
+
+            @if (SelectionBytes > MaxSelectionBytes)
+            {
+                <div class="preflight">
+                    <div class="bad">
+                        This selection (@AppState.FormatBytes(SelectionBytes)) is too large to hide in one image —
+                        the practical limit is @AppState.FormatBytes(MaxSelectionBytes). Select fewer photos.
+                    </div>
+                </div>
+            }
+            else
+            {
+                <label class="field">Carrier image (any ordinary photo — JPEG, PNG, etc.)
+                    <input type="text" placeholder="Full path to an image file" spellcheck="false"
+                           @bind="_carrierPath" @bind:event="oninput" @bind:after="OnCarrierPathChanged" />
+                </label>
+
+                <label class="field">Output path (the carrier + hidden data — share this file, not the original carrier)
+                    <input type="text" spellcheck="false" @bind="_outputPath" @bind:event="oninput" @bind:after="() => _outputManuallyEdited = true" />
+                </label>
+
+                <div class="field-row">
+                    <label class="field">Passphrase (optional)
+                        <input type="password" @bind="_passphrase" @bind:event="oninput" />
+                    </label>
+                    <label class="field">Confirm passphrase
+                        <input type="password" @bind="_confirmPassphrase" @bind:event="oninput" />
+                    </label>
+                </div>
+
+                @if (_carrierError.Length > 0)
+                {
+                    <div class="preflight"><div class="bad">@_carrierError</div></div>
+                }
+                else if (_carrierInfo is { } info)
+                {
+                    <div class="preflight">
+                        <div>Carrier is a @info.Format, @info.Width×@info.Height pixels.</div>
+                    </div>
+                }
+
+                @if (_passphrase.Length == 0)
+                {
+                    <div class="preflight">
+                        <div class="warn-line">
+                            No passphrase — the hidden zip will <b>not</b> be encrypted. Many common
+                            zip tools (7-Zip, WinRAR, Windows' own "Extract All") can open the
+                            attached zip directly without needing this app at all — so anyone who
+                            receives this file and knows to look can see the photos inside.
+                        </div>
+                    </div>
+                }
+                else if (_passphrase.Length < MinPassphraseLength)
+                {
+                    <div class="preflight"><div class="bad">Passphrase must be at least @MinPassphraseLength characters.</div></div>
+                }
+                else if (_confirmPassphrase != _passphrase)
+                {
+                    <div class="preflight"><div class="bad">Passphrases don't match.</div></div>
+                }
+
+                <div class="preflight">
+                    <div class="warn-line">
+                        Share the output file as-is — any tool that re-saves or re-encodes it (most
+                        messaging apps, social platforms, some cloud photo services) will strip the
+                        hidden data off the end.
+                    </div>
+                </div>
+            }
+
+            <div class="dlg-actions">
+                <button class="primary" disabled="@(!CanConfirm)" @onclick="RunHide">
+                    @(_running ? "Hiding…" : "Hide")
+                </button>
+                @if (_running)
+                {
+                    <button class="danger" disabled="@(_cts is not { IsCancellationRequested: false })" @onclick="StopHide">
+                        @(_cts is { IsCancellationRequested: false } ? "Stop" : "Stopping…")
+                    </button>
+                }
+                else if (_done)
+                {
+                    <button class="link" @onclick="Close">Done</button>
+                }
+                else
+                {
+                    <button class="link" @onclick="Close">Cancel</button>
+                }
+            </div>
+            @if (_resultText.Length > 0)
+            {
+                <div class="exp-result">@_resultText</div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool Show { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    // Zipping already-compressed JPEGs rarely shrinks them, so a rough size warning would need a
+    // margin anyway — but with no pixel-capacity limit to check against (concatenation has none),
+    // the only real ceiling left is memory: the practical cap on what this dialog holds in memory
+    // at once. Peak is realistically ~3x this value while encrypting, not 1x — PayloadCrypto.Encrypt
+    // holds the plaintext zip, a same-size ciphertext buffer, and a same-size blob it copies both
+    // into, all live simultaneously — so leave real headroom below whatever the target machine can
+    // actually spare rather than treating this number as the true ceiling.
+    const long MaxSelectionBytes = 500_000_000;
+
+    const int MinPassphraseLength = 8;
+
+    // Current OWASP Password Storage Cheat Sheet guidance for PBKDF2-HMAC-SHA256 at
+    // implementation time; Decrypt never assumes this — it reads the iteration count that was
+    // actually used out of the blob, so this can change in a future release without breaking
+    // previously-hidden images.
+    const int Pbkdf2Iterations = 600_000;
+
+    string _carrierPath = "";
+    string _outputPath = "";
+    bool _outputManuallyEdited;
+    string _passphrase = "";
+    string _confirmPassphrase = "";
+    string _carrierError = "";
+    DecodedInfo? _carrierInfo;
+
+    bool _running;
+    bool _done;
+    string _resultText = "";
+    bool _wasShown;
+    bool _needsFocus;
+    ElementReference _dlgRef;
+    CancellationTokenSource? _cts;
+
+    protected override void OnInitialized() => AppState.Changed += StateHasChanged;
+
+    public void Dispose()
+    {
+        AppState.Changed -= StateHasChanged;
+        // Closing the dialog mid-run (without pressing Stop) must not leave the background
+        // zip/encrypt/write running unobserved — RunHide's own finally still disposes the
+        // CancellationTokenSource once it unwinds.
+        _cts?.Cancel();
+    }
+
+    long SelectionBytes => AppState.SelectedImages.Sum(i => i.FileSize);
+
+    bool PassphraseValid => _passphrase.Length == 0 ||
+        (_passphrase.Length >= MinPassphraseLength && _passphrase == _confirmPassphrase);
+
+    bool CanConfirm =>
+        !_running && !_done &&
+        AppState.SelectedImages.Count > 0 &&
+        SelectionBytes <= MaxSelectionBytes &&
+        _carrierInfo is not null &&
+        PassphraseValid &&
+        Path.IsPathRooted(_outputPath.Trim()) &&
+        _outputPath.Trim().Length > 0;
+
+    Task HandleKeyDown(KeyboardEventArgs e) =>
+        e.Key == "Escape" && !_running ? Close() : Task.CompletedTask;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (Show && _needsFocus)
+        {
+            _needsFocus = false;
+            await _dlgRef.FocusAsync();
+        }
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (Show && !_wasShown)
+        {
+            _carrierPath = ""; _outputPath = ""; _outputManuallyEdited = false;
+            _passphrase = ""; _confirmPassphrase = "";
+            _carrierError = ""; _carrierInfo = null;
+            _resultText = ""; _done = false; _needsFocus = true;
+        }
+        _wasShown = Show;
+    }
+
+    void OnCarrierPathChanged()
+    {
+        _carrierError = "";
+        _carrierInfo = null;
+
+        var path = _carrierPath.Trim();
+        if (path.Length == 0) return;
+
+        if (!Path.IsPathRooted(path))
+        {
+            _carrierError = "Enter a full path, starting from the root of the drive.";
+        }
+        else if (!File.Exists(path))
+        {
+            _carrierError = "That file doesn't exist.";
+        }
+        else
+        {
+            var info = new SkiaImageService().Probe(path);
+            if (info is null)
+            {
+                _carrierError = "That file isn't a readable image.";
+            }
+            else
+            {
+                _carrierInfo = info;
+                if (!_outputManuallyEdited)
+                {
+                    var dir = Path.GetDirectoryName(path) ?? "";
+                    var name = Path.GetFileNameWithoutExtension(path);
+                    var ext = Path.GetExtension(path);
+                    // Never default the suggested output to the carrier path itself — the
+                    // same-path overwrite case is something a user types explicitly (AC8).
+                    _outputPath = Path.Combine(dir, $"{name}-hidden{ext}");
+                }
+            }
+        }
+    }
+
+    async Task RunHide()
+    {
+        if (!CanConfirm || _running) return;
+        _running = true;
+        _resultText = "Zipping…";
+        StateHasChanged();
+
+        var inFlight = true;
+        var eta = new EtaEstimator();
+        var progress = new Progress<HideProgress>(p =>
+        {
+            if (!inFlight) return;
+            var remaining = eta.Estimate(Environment.TickCount64, (int)p.BytesDone, (int)p.BytesTotal);
+            var etaSuffix = remaining is { } r ? $" · ~{EtaEstimator.Format(r)} left" : "";
+            _resultText = $"{p.Phase}{etaSuffix}";
+            InvokeAsync(StateHasChanged);
+        });
+
+        _cts = new CancellationTokenSource();
+        var ct = _cts.Token;
+        var outputPath = _outputPath.Trim();
+        var encrypt = _passphrase.Length > 0;
+        try
+        {
+            var filePaths = AppState.SelectedImages.Select(i => i.Path).ToList();
+            var zipBytes = await Task.Run(() => PayloadZipper.CreateZip(filePaths, ct), ct);
+
+            byte[] payload;
+            if (encrypt)
+            {
+                _resultText = "Deriving key…";
+                StateHasChanged();
+                payload = await Task.Run(
+                    () => PayloadCrypto.Encrypt(zipBytes, _passphrase, Pbkdf2Iterations, ct), ct);
+            }
+            else
+            {
+                payload = zipBytes;
+            }
+
+            var result = await StegoEngine.EmbedAsync(_carrierPath.Trim(), outputPath, payload, encrypt, progress, ct);
+            inFlight = false;
+
+            _resultText = $"Hidden {AppState.SelectedImages.Count} photo{(AppState.SelectedImages.Count == 1 ? "" : "s")} in {outputPath}"
+                         + $"\n{(result.Encrypted ? "Encrypted with your passphrase." : "Not encrypted — anyone can open the attached zip.")}"
+                         + "\nAny tool that re-saves or re-encodes this file will destroy the hidden data.";
+            _done = true;
+        }
+        catch (OperationCanceledException)
+        {
+            inFlight = false;
+            _resultText = "Stopped. No output file was written.";
+        }
+        catch (StegoException ex)
+        {
+            inFlight = false;
+            _resultText = ex.Message;
+        }
+        catch (Exception ex)
+        {
+            // Anything else (disk full, a selected file deleted mid-zip, permissions) — show it
+            // inline rather than letting an unhandled exception crash the circuit, matching
+            // ExportDialog's fallback.
+            inFlight = false;
+            _resultText = $"Hide stopped: {ex.Message}";
+        }
+        finally
+        {
+            _running = false;
+            _cts?.Dispose();
+            _cts = null;
+            StateHasChanged();
+        }
+    }
+
+    void StopHide() => _cts?.Cancel();
+
+    Task Close() => OnClose.InvokeAsync();
+}

@@ -146,7 +146,15 @@
     long RejectBytes => AppState.Images.Where(i => !AppState.Selected.Contains(i.Id)).Sum(i => i.FileSize);
 
     protected override void OnInitialized() => AppState.Changed += StateHasChanged;
-    public void Dispose() => AppState.Changed -= StateHasChanged;
+
+    public void Dispose()
+    {
+        AppState.Changed -= StateHasChanged;
+        // Closing the dialog mid-run (without pressing Stop) must not leave the background
+        // export running unobserved — RunExport's own finally still disposes the
+        // CancellationTokenSource once it unwinds.
+        _cts?.Cancel();
+    }
 
     Task HandleKeyDown(KeyboardEventArgs e) =>
         e.Key == "Escape" && !_running ? Close() : Task.CompletedTask;

@@ -1,0 +1,222 @@
+@implements IDisposable
+@inject AppState AppState
+@using System.Security.Cryptography
+
+@if (Show)
+{
+    <div class="dlg" role="dialog" aria-modal="true" aria-label="Extract hidden images"
+         tabindex="-1" @ref="_dlgRef" @onkeydown="HandleKeyDown">
+        <div class="dlg-box">
+            <h2>Extract hidden images</h2>
+            <p class="dlg-sub">
+                Pick any image someone gave you — it doesn't need to be part of your scanned library —
+                and, if it's encrypted, the passphrase used to hide photos inside it.
+            </p>
+
+            <label class="field">Source image
+                <input type="text" placeholder="Full path to the image that may contain hidden photos" spellcheck="false"
+                       @bind="_sourcePath" @bind:event="oninput" @bind:after="() => _sourceError = ValidateSource()" />
+            </label>
+
+            <label class="field">Output folder (recovered photos are written here)
+                <input type="text" placeholder="Full path to a folder — created if it doesn't exist" spellcheck="false"
+                       @bind="_outputFolder" @bind:event="oninput" />
+            </label>
+
+            <label class="field">Passphrase (leave blank if the sender said it wasn't encrypted)
+                <input type="password" @bind="_passphrase" @bind:event="oninput" />
+            </label>
+
+            @if (_sourceError.Length > 0)
+            {
+                <div class="preflight"><div class="bad">@_sourceError</div></div>
+            }
+
+            <div class="dlg-actions">
+                <button class="primary" disabled="@(!CanConfirm)" @onclick="RunExtract">
+                    @(_running ? "Extracting…" : "Extract")
+                </button>
+                @if (_running)
+                {
+                    <button class="danger" disabled="@(_cts is not { IsCancellationRequested: false })" @onclick="StopExtract">
+                        @(_cts is { IsCancellationRequested: false } ? "Stop" : "Stopping…")
+                    </button>
+                }
+                else if (_done)
+                {
+                    <button class="link" @onclick="Close">Done</button>
+                }
+                else
+                {
+                    <button class="link" @onclick="Close">Cancel</button>
+                }
+            </div>
+            @if (_resultText.Length > 0)
+            {
+                <div class="exp-result">@_resultText</div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool Show { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    string _sourcePath = "";
+    string _outputFolder = "";
+    string _passphrase = "";
+    string _sourceError = "";
+
+    bool _running;
+    bool _done;
+    string _resultText = "";
+    bool _wasShown;
+    bool _needsFocus;
+    ElementReference _dlgRef;
+    CancellationTokenSource? _cts;
+
+    protected override void OnInitialized() => AppState.Changed += StateHasChanged;
+
+    public void Dispose()
+    {
+        AppState.Changed -= StateHasChanged;
+        // Closing the dialog mid-run (without pressing Stop) must not leave the background
+        // read/decrypt/unzip running unobserved — RunExtract's own finally still disposes the
+        // CancellationTokenSource once it unwinds.
+        _cts?.Cancel();
+    }
+
+    bool CanConfirm =>
+        !_running && !_done &&
+        _sourceError.Length == 0 &&
+        Path.IsPathRooted(_sourcePath.Trim()) && _sourcePath.Trim().Length > 0 &&
+        Path.IsPathRooted(_outputFolder.Trim()) && _outputFolder.Trim().Length > 0;
+
+    Task HandleKeyDown(KeyboardEventArgs e) =>
+        e.Key == "Escape" && !_running ? Close() : Task.CompletedTask;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (Show && _needsFocus)
+        {
+            _needsFocus = false;
+            await _dlgRef.FocusAsync();
+        }
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (Show && !_wasShown)
+        {
+            _sourcePath = ""; _outputFolder = ""; _passphrase = "";
+            _sourceError = ""; _resultText = ""; _done = false; _needsFocus = true;
+        }
+        _wasShown = Show;
+    }
+
+    string ValidateSource()
+    {
+        var path = _sourcePath.Trim();
+        if (path.Length == 0) return "";
+        if (!Path.IsPathRooted(path)) return "Enter a full path, starting from the root of the drive.";
+        if (!File.Exists(path)) return "That file doesn't exist.";
+        return "";
+    }
+
+    async Task RunExtract()
+    {
+        if (!CanConfirm || _running) return;
+        _running = true;
+        _resultText = "Reading…";
+        StateHasChanged();
+
+        var inFlight = true;
+        // ExtractAsync only ever reports ExtractPhase.Reading — Decrypting/Unzipping below are
+        // narrated directly by this method, not through the progress channel, since
+        // PayloadCrypto.Decrypt/PayloadZipper.ExtractZip don't report progress themselves.
+        var progress = new Progress<ExtractProgress>(p =>
+        {
+            if (!inFlight) return;
+            _resultText = "Reading…";
+            InvokeAsync(StateHasChanged);
+        });
+
+        var outputFolder = _outputFolder.Trim();
+        // ExtractZip never rolls back a cancelled run — files already written stay on disk.
+        // Snapshot what was there before this run so a cancel can still report how many of *this*
+        // run's files made it, without inflating the count with unrelated pre-existing ones.
+        var before = Directory.Exists(outputFolder)
+            ? new HashSet<string>(Directory.GetFiles(outputFolder))
+            : [];
+
+        _cts = new CancellationTokenSource();
+        var ct = _cts.Token;
+        try
+        {
+            var (payload, encrypted) = await StegoEngine.ExtractAsync(_sourcePath.Trim(), progress, ct);
+
+            byte[] zipBytes;
+            if (encrypted)
+            {
+                if (_passphrase.Length == 0)
+                    throw new StegoException("This file is passphrase-protected — enter the passphrase.");
+
+                _resultText = "Decrypting…";
+                StateHasChanged();
+                zipBytes = await Task.Run(() => PayloadCrypto.Decrypt(payload, _passphrase, ct), ct);
+            }
+            else
+            {
+                zipBytes = payload;
+            }
+
+            _resultText = "Unzipping…";
+            StateHasChanged();
+            var written = await Task.Run(() => PayloadZipper.ExtractZip(zipBytes, outputFolder, ct), ct);
+            inFlight = false;
+
+            _resultText = $"Recovered {written.Count} file{(written.Count == 1 ? "" : "s")} to {outputFolder}:\n"
+                         + string.Join("\n", written.Select(Path.GetFileName));
+            _done = true;
+        }
+        catch (OperationCanceledException)
+        {
+            inFlight = false;
+            var after = Directory.Exists(outputFolder) ? Directory.GetFiles(outputFolder) : [];
+            var recovered = after.Count(f => !before.Contains(f));
+            _resultText = recovered > 0
+                ? $"Stopped. {recovered} file{(recovered == 1 ? " was" : "s were")} already recovered to {outputFolder} before the cancel."
+                : "Stopped. No files were recovered.";
+        }
+        catch (StegoException ex)
+        {
+            inFlight = false;
+            _resultText = ex.Message;
+        }
+        catch (CryptographicException)
+        {
+            inFlight = false;
+            _resultText = "Incorrect passphrase or corrupted image.";
+        }
+        catch (Exception ex)
+        {
+            // Anything else (disk full while writing a recovered file, permissions on the output
+            // folder) — show it inline rather than letting an unhandled exception crash the
+            // circuit, matching ExportDialog's fallback.
+            inFlight = false;
+            _resultText = $"Extract stopped: {ex.Message}";
+        }
+        finally
+        {
+            _running = false;
+            _cts?.Dispose();
+            _cts = null;
+            StateHasChanged();
+        }
+    }
+
+    void StopExtract() => _cts?.Cancel();
+
+    Task Close() => OnClose.InvokeAsync();
+}

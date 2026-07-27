@@ -475,3 +475,67 @@ Considered and explicitly out of scope for now:
   addition. Do not build it preemptively.
 - **NudeNet / granular body-part detection** — a single score covers the use case.
 - **Video support**, RAW formats, face recognition, screenshot detection.
+
+---
+
+## 13. Steganography (Hide/Extract)
+
+Conceals a set of selected photos inside an ordinary-looking carrier image, optionally encrypted
+with a user-supplied passphrase. `Core/Stego/` — `StegoEngine` (concatenation + footer),
+`PayloadCrypto` (optional encryption), `PayloadZipper` (bundling). No new dependencies:
+`System.Security.Cryptography` and `System.IO.Compression` are BCL; format probing reuses the
+existing SkiaSharp dependency.
+
+**Technique: file concatenation ("polyglot"), not pixel manipulation.** An earlier draft of this
+feature embedded the payload bit-by-bit into the carrier's pixel data (LSB steganography). That
+was replaced with simple concatenation — the carrier's own bytes, byte-for-byte unchanged,
+followed by the payload, followed by a small footer — because image decoders stop reading at the
+image's own end-of-data marker and never see anything appended after it, so the output opens
+exactly like the original carrier, and the app no longer needs to touch pixels, care about a
+specific carrier format, or track a byte-capacity ceiling at all. This is the same mechanism the
+classic `copy /b photo.jpg + archive.zip output.jpg` trick and self-extracting archives rely on.
+
+### Wire format (SNZC footer)
+
+```
+output file = carrier bytes (unmodified) ++ payload bytes ++ footer
+
+footer (13 bytes, fixed, at the very end of the file):
+  "SNZC" (4 bytes) + encrypted flag (1 byte) + payload length (8-byte UInt64 BE)
+
+payload = either:
+  - a plain zip (when no passphrase was given), or
+  - the AES-GCM blob below (when a passphrase was given):
+    version (1 byte, 0x01) + PBKDF2 iterations (4-byte UInt32 BE) + salt (16 bytes)
+    + AES-GCM nonce (12 bytes) + AES-GCM tag (16 bytes) + ciphertext (== plaintext zip length)
+```
+
+`StegoEngine` reads the footer by seeking from the *end* of the file — it never needs to know
+the carrier's format, dimensions, or length up front, so any image format `SkiaImageService` can
+probe works as a carrier (JPEG, PNG, whatever). The PBKDF2 iteration count travels with the blob
+rather than being hardcoded, so a future release can raise it without breaking images hidden by
+an older version — `Decrypt` always reads the count that was actually used out of the blob, and
+rejects an implausible one (near `0` or absurdly large) rather than trusting an untrusted carrier's
+claim outright.
+
+### Passphrase is optional
+
+Leaving the passphrase blank in the Hide dialog appends the zip unencrypted — the file is smaller
+to produce and faster to extract, but anyone who receives it can read the photos with an ordinary
+zip tool once they know to look (many common tools — 7-Zip, WinRAR, Windows' own "Extract
+All" — tolerate the leading carrier bytes and locate the zip's central directory by scanning
+backward from the end of the file; **.NET's own `System.IO.Compression.ZipArchive` does not**,
+verified while building this feature, so SnapZap's own Extract flow reads the payload out via the
+footer rather than ever trying to open the combined file directly as a zip). Providing a
+passphrase (minimum 8 characters) encrypts the zip with AES-GCM first, so the appended bytes are
+opaque ciphertext instead of a directly-readable archive.
+
+### Explicit non-goal: lossy or re-encoding transport
+
+Concatenation does not survive anything that re-saves or re-encodes the carrier — messaging apps,
+social platforms, and some cloud photo services recompress or convert images on upload/send
+(destroying the hidden data the same way lossy re-encoding would have under the old LSB approach),
+and so does any image editor that opens and re-saves the file, even losslessly, since re-encoding
+only ever reproduces the pixel data, not arbitrary trailing bytes. The Hide dialog's own UI copy
+says this explicitly. There is no plan to support a transport-surviving technique (DCT/frequency-
+domain steganography), which is a different technique entirely and was never in scope.

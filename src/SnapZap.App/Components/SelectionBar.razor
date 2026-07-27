@@ -26,6 +26,8 @@
 
         <button class="primary" disabled="@(!CanAct)" title="@ActHint"
                 @onclick="() => OnOpenExport.InvokeAsync()">Export…</button>
+        <button disabled="@(!CanAct)" title="@ActHint"
+                @onclick="() => OnOpenHide.InvokeAsync()">Hide in Image…</button>
         <button class="danger" disabled="@(!CanAct)" title="@ActHint" @ref="_deleteBtn"
                 @onclick="AskDelete">Delete…</button>
 
@@ -49,6 +51,7 @@
 
 @code {
     [Parameter] public EventCallback OnOpenExport { get; set; }
+    [Parameter] public EventCallback OnOpenHide { get; set; }
 
     bool _confirmDelete;
     bool _needsConfirmFocus;

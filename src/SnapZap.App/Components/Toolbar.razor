@@ -16,6 +16,8 @@
         Find duplicates
     </button>
     <button disabled="@(AppState.Busy || AppState.Images.Count == 0 || !_nsfwReady)" title="@NsfwTitle" @onclick="Nsfw">Score NSFW</button>
+    <button title="Recover photos hidden inside a PNG someone gave you — it doesn't need to be in this library."
+            @onclick="() => OnOpenExtract.InvokeAsync()">Extract Hidden Images…</button>
 </div>
 
 @if (AppState.Busy)
@@ -46,6 +48,8 @@ else if (AppState.Status.Length > 0)
 }
 
 @code {
+    [Parameter] public EventCallback OnOpenExtract { get; set; }
+
     string _folder = "";
 
     // Surface a missing sidecar before the user commits to a run, rather than only

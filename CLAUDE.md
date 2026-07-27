@@ -156,9 +156,10 @@ The sidecars are excluded from publish output (`CopyToPublishDirectory="Never"`)
 
 - **Components/** — Razor components. `Pages/Home.razor` composes the whole app; `Toolbar`
   (scan bar), `FilterBar` (filters + selection menus, library actions), `SelectionBar`
-  (contextual Export/Delete, only while something is selected), `FolderTreeView` (the entire
-  left pane), `PhotoGrid`, `Card`, `Toast`, and the `ExportDialog` / `UndoDialog` /
-  `PreviewModal` / `DependencyDialog` / `SetupDialog` / `ShortcutsDialog` overlays.
+  (contextual Export/Delete/Hide, only while something is selected), `FolderTreeView` (the
+  entire left pane), `PhotoGrid`, `Card`, `Toast`, and the `ExportDialog` / `HideDialog` /
+  `ExtractDialog` / `UndoDialog` / `PreviewModal` / `DependencyDialog` / `SetupDialog` /
+  `ShortcutsDialog` overlays.
 - **Services/** — `AppState` (scoped per circuit: view state + operations, replaces the old
   `app.js` state object), `ImageView` (record wrapping `ImageRecord` for display),
   `DependencyChecker` (validates the optional sidecars, singleton).
@@ -178,6 +179,7 @@ The sidecars are excluded from publish output (`CopyToPublishDirectory="Never"`)
 - **Analysis/** — EXIF extraction (`ExifExtractor`), blur detection via Laplacian variance (`BlurDetector`)
 - **Export/** — `ExportEngine` (copy/move/hardlink modes), manifest writer, hash verification, collision-safe naming
 - **Delete/** — recycle-bin operations, undo/restore, platform-specific `ITrashService`
+- **Stego/** — `StegoEngine` (hides photos by appending a payload to a carrier image's own bytes, plus a small footer — the carrier still opens normally as an image, any image format), `PayloadCrypto` (optional AES-GCM keyed from a passphrase via PBKDF2, versioned blob with a stored iteration count), `PayloadZipper` (in-memory `ZipArchive` wrapper with local collision-safe naming)
 - **Data/** — SQLite schema, `ImageRepository`, `DupeRepository`, cache layer
 - **Platform/** — `IPlatformServices` interface + macOS impl (`MacOsServices`), Windows impl stub (`WindowsServices`)
 - **Imaging/** — `SkiaImageService` for decode, EXIF geometry, thumbnail generation (never use ImageSharp — Six Labors split license trap)

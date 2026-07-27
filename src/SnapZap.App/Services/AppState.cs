@@ -36,6 +36,7 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
     void NotifySelectionChanged()
     {
         _selectedBytes = null;
+        _selectedImages = null;
         Changed?.Invoke();
     }
 
@@ -73,6 +74,7 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
     public void RefreshSelection()
     {
         _selectedBytes = null;
+        _selectedImages = null;
         Changed?.Invoke();
     }
 
@@ -99,6 +101,15 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
     public string FormattedSelectedBytes => FormatBytes(SelectedBytes);
 
     long? _selectedBytes;
+
+    /// <summary>The currently-selected photos themselves, for dialogs (Hide) that need more than
+    /// just the id/byte tally — e.g. individual file paths to zip. Cached and invalidated
+    /// alongside <see cref="SelectedBytes"/> for the same reason: rebuilding it per call scans
+    /// the whole library on every render.</summary>
+    public IReadOnlyList<ImageView> SelectedImages => _selectedImages ??=
+        Images.Where(i => Selected.Contains(i.Id)).ToList();
+
+    IReadOnlyList<ImageView>? _selectedImages;
 
     /// <summary>Id lookup built once per load. Rebuilding it per call made the duplicate
     /// review scan the whole library a dozen times on every render.</summary>

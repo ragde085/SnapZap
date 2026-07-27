@@ -12,7 +12,7 @@
         <img class="brand-mark" src="snapzap.png" width="28" height="28" alt="" />
         <span>Snap<em>Zap</em></span>
     </div>
-    <Toolbar />
+    <Toolbar OnOpenExtract="OpenExtract" />
 
     @* Setup and help: needed rarely, so they get icons at the far edge rather than space in the
        working toolbar below. The pip is the only reason Setup is ever urgent. *@
@@ -127,13 +127,15 @@
                 </p>
             </div>
         }
-        <SelectionBar OnOpenExport="OpenExport" />
+        <SelectionBar OnOpenExport="OpenExport" OnOpenHide="OpenHide" />
     </section>
 </main>
 
 <Toast />
 
 <ExportDialog Show="_showExport" OnClose="CloseExport" />
+<HideDialog Show="_showHide" OnClose="CloseHide" />
+<ExtractDialog Show="_showExtract" OnClose="CloseExtract" />
 <UndoDialog Show="_showUndo" OnClose="CloseUndo" />
 <PreviewModal Img="_previewImg" OnClose="ClosePreview" OnNavigate="img => _previewImg = img" />
 <DupeReview Show="_showDupes" OnClose="() => _showDupes = false" />
@@ -143,6 +145,8 @@
 
 @code {
     bool _showExport;
+    bool _showHide;
+    bool _showExtract;
     bool _showUndo;
     bool _showDeps;
     bool _showDupes;
@@ -233,6 +237,12 @@
 
     void OpenExport() => _showExport = true;
     void CloseExport() => _showExport = false;
+
+    void OpenHide() => _showHide = true;
+    void CloseHide() => _showHide = false;
+
+    void OpenExtract() => _showExtract = true;
+    void CloseExtract() => _showExtract = false;
 
     void OpenUndo() => _showUndo = true;
     void CloseUndo() => _showUndo = false;
