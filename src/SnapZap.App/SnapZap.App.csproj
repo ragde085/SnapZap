@@ -4,10 +4,34 @@
     <ProjectReference Include="..\SnapZap.Core\SnapZap.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="Photino.NET" Version="4.0.16" />
+  </ItemGroup>
+
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+
+    <!--
+      ⚠ Do NOT add an OutputType of WinExe here to get rid of the console window.
+
+      It builds, it publishes, it runs — and it silently ships a UI with no styling and no
+      interactivity, because the SDK target that contributes blazor.web.js and blazor.server.js
+      is gated on an exact string match:
+
+        Microsoft.AspNetCore.App.Internal.Assets.targets
+        <Target Name="_AddBlazorFrameworkStaticWebAssets" Condition="'$(OutputType)' == 'Exe'">
+
+      'WinExe' does not match, so wwwroot/_framework never reaches the output, the browser 404s
+      on the script that starts Blazor, and all that renders is the prerendered markup. The
+      combination is simply untravelled: Blazor Hybrid is WinExe but loads a different script
+      from a different package, and web apps are Exe.
+
+      The console window is dealt with where it actually is — at run time, in
+      Services/AppHost.cs, which hides it only when SnapZap owns it (double-clicked) and leaves
+      it alone when there's a developer on the other end of it.
+    -->
 
     <!--
       The .exe icon — Explorer, the taskbar, alt-tab. It deliberately points at the same file
@@ -51,6 +75,17 @@
     <PublishReadyToRun>true</PublishReadyToRun>
   </PropertyGroup>
 
+  <PropertyGroup>
+    <!--
+      IIS hosting manifest. Meaningless for an app that is launched by double-click, and one
+      more file beside the executable inviting the question of whether it can be deleted.
+    -->
+    <IsTransformWebConfigDisabled>true</IsTransformWebConfigDisabled>
+
+    <!-- Nothing in the UI is localised, so the satellite assemblies are pure download. -->
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+  </PropertyGroup>
+
   <!--
     The optional sidecar, installed by scripts/install-deps.{sh,bat} into <repo>/models. The app
     resolves it relative to AppContext.BaseDirectory, so without this copy a freshly installed
@@ -76,5 +111,56 @@
              CopyToPublishDirectory="Never"
              Visible="false" />
   </ItemGroup>
+
+  <!--
+    Publish is the download. Three kinds of file were riding along in it that no user has any
+    use for, and one of them was 41% of the total:
+
+      *.pdb   libSkiaSharp.pdb alone is 89 MB of native debug symbols shipped from the
+              SkiaSharp.NativeAssets.Win32 package. `-p:DebugType=none` does not remove it —
+              that governs symbols this build produces, not ones a package brings with it.
+      *.lib   onnxruntime.lib / onnxruntime_providers_shared.lib: link-time import libraries
+              for people compiling against ONNX Runtime in C++. Inert at runtime.
+      appsettings.Development.json   Development-only configuration.
+
+    Symbols are still produced into the intermediate output, so a crash dump from a released
+    build remains resolvable against the matching bin/ — they are simply not part of what the
+    user downloads. Keep them out of publish, not out of build.
+
+    ComputeResolvedFilesToPublishList is where the final set exists and is still mutable;
+    hooking anything earlier misses files the static-web-assets and RID pipelines add later.
+  -->
+  <Target Name="TrimPublishOutput" AfterTargets="ComputeResolvedFilesToPublishList">
+    <ItemGroup>
+      <ResolvedFileToPublish
+        Remove="@(ResolvedFileToPublish)"
+        Condition="'%(Extension)' == '.pdb'
+                or '%(Extension)' == '.lib'
+                or '%(Filename)%(Extension)' == 'appsettings.Development.json'" />
+    </ItemGroup>
+  </Target>
+
+  <!--
+    The regression test for the shipped artifact.
+
+    Twice now the app has published, launched, served a 200 for every page and still been
+    unusable, because a file the browser needs was not in the output: once when the executable
+    was distributed without wwwroot beside it, and once when OutputType=WinExe quietly took
+    wwwroot/_framework with it (see the note at the top of this file). Both look identical from
+    the outside — prerendered markup, no styling, nothing clickable — and neither fails a build.
+
+    So the build asserts on the real files in the real publish directory. Failing here costs a
+    minute; not failing here costs a release.
+  -->
+  <Target Name="VerifyPublishOutput" AfterTargets="Publish">
+    <Error Condition="!Exists('$(PublishDir)wwwroot/_framework/blazor.web.js')"
+           Text="Publish is missing wwwroot/_framework/blazor.web.js — the script that starts Blazor. The app would render unstyled and dead. This is what setting OutputType=WinExe does; see the note in this file." />
+    <Error Condition="!Exists('$(PublishDir)wwwroot/app.css')"
+           Text="Publish is missing wwwroot/app.css — the app would render unstyled." />
+    <Error Condition="!Exists('$(PublishDir)wwwroot/interop.js')"
+           Text="Publish is missing wwwroot/interop.js — the photo grid measures its geometry there and would render empty." />
+    <Error Condition="!Exists('$(PublishDir)wwwroot/favicon.ico')"
+           Text="Publish is missing wwwroot/favicon.ico — used as the window icon as well as the favicon. Run scripts/make-icons.py." />
+  </Target>
 
 </Project>

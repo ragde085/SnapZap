@@ -63,14 +63,34 @@ No cloud, no subscriptions, no paid dependencies. Two promises hold throughout:
 
 ## Install and run
 
-SnapZap is a single file. Download `SnapZap.App.exe`, put it anywhere, and double-click it.
-There is nothing to install — no .NET runtime, no setup wizard, no account.
+Download `SnapZap-setup.exe` (~42 MB) and run it. It installs for your user only, so there is
+no administrator prompt, and it puts SnapZap in the Start Menu. There is no .NET runtime to
+install and no account to create.
 
-Double-clicking starts a small local server on your own machine and opens SnapZap in your
-browser. Everything stays on your computer; nothing is uploaded anywhere. Close the browser tab
-and the console window when you're done.
+SnapZap opens in its own window. Everything happens on your computer; nothing is uploaded
+anywhere. Close the window when you're done — that's the whole session.
+
+Windows may warn that the publisher is unknown, because the download isn't code-signed yet.
+**More info → Run anyway**, or build it yourself from source and skip the question entirely.
 
 *(Prefer to build it yourself? See [Building from source](#building-from-source).)*
+
+### Why an installer, if nothing needs installing
+
+Because SnapZap is a folder, not a file. `SnapZap.App.exe` serves its own stylesheet and scripts
+from the `wwwroot` directory beside it, and moving the executable away from that directory
+doesn't produce an error — it produces an app that opens and renders a grey, unstyled page that
+doesn't respond to anything. The installer removes the opportunity to take it apart.
+
+If you'd rather not use it, the published folder runs as-is from anywhere. Keep it intact:
+
+```
+SnapZap.App.exe
+wwwroot/                          ← required, and not optional-looking enough
+appsettings.json
+models/nsfw.onnx                  (optional — enables explicit-content scoring)
+models/preprocessor_config.json
+```
 
 ### The one optional add-on
 
@@ -79,7 +99,13 @@ app. **Everything else works without it** — scanning, all three kinds of dupli
 blur, dates, export, and delete are built in and need no download.
 
 If the model isn't installed, SnapZap says so once at startup, marks the **Setup** gear with a
-badge, and greys out **Score NSFW**. To add it, run the installer that ships with the source:
+badge, and greys out **Score NSFW**.
+
+**If you installed SnapZap:** run the installer again and tick *Explicit-content scoring
+model*. It downloads the file, verifies its checksum, and puts it in place. Your catalogue and
+settings are untouched.
+
+**If you're working from a source checkout:**
 
 ```
 scripts\install-deps.bat                        Windows
@@ -87,7 +113,7 @@ scripts/install-deps.sh                         macOS / Linux
 ```
 
 It downloads from a pinned URL, verifies the SHA-256 before putting anything in place, and skips
-work that's already done. To install beside an already-published app rather than into the repo:
+work that's already done. To install beside an already-published folder rather than into the repo:
 
 ```
 scripts\install-deps.bat --dest artifacts\win-x64
@@ -98,15 +124,6 @@ Then open **Setup** (the gear, top right) and press **Check again** — no resta
 | Add-on | Unlocks | Size | Source |
 |---|---|---|---|
 | `models/nsfw.onnx` + `preprocessor_config.json` | Explicit-content scoring | 328 MB | [Falconsai ViT](https://huggingface.co/Falconsai/nsfw_image_detection), Apache-2.0, via a [pinned ONNX conversion](https://huggingface.co/onnx-community/nsfw_image_detection-ONNX) |
-
-Sidecar layout beside the executable:
-
-```
-SnapZap.App.exe
-wwwroot/                          (published automatically)
-models/nsfw.onnx                  (optional — enables explicit-content scoring)
-models/preprocessor_config.json
-```
 
 ## The screen
 
@@ -510,7 +527,7 @@ Then open the printed `http://localhost:<port>` URL. Environment knobs:
   beside the binary)
 - `PC_NO_BROWSER=1` — don't auto-open a browser (used by tests/headless)
 
-### The Windows executable
+### The Windows app
 
 From Windows or macOS:
 
@@ -520,12 +537,37 @@ dotnet publish src/SnapZap.App -c Release -r win-x64 --self-contained \
   -o artifacts/win-x64
 ```
 
-Produces a single self-contained `SnapZap.App.exe` (~130 MB, no .NET install needed).
-Double-clicking it starts the local server and opens the app in your browser.
+Produces `artifacts/win-x64/` — `SnapZap.App.exe` plus `wwwroot/`, ~132 MB in total, needing no
+.NET install. `PublishSingleFile` bundles the runtime and the app's own assemblies into the
+executable; it does **not** bundle `wwwroot`, and it can't be made to. The two ship together.
 
-The optional model is deliberately **not** copied into the publish output, so the `.exe` stays
-~130 MB whether or not you installed it locally. To ship it, point the installer at the publish
-folder: `scripts\install-deps.bat --dest artifacts\win-x64`.
+The publish step asserts that `wwwroot/_framework/blazor.web.js`, `app.css`, `interop.js` and
+`favicon.ico` are all present, and fails the build if any is missing. That check exists because
+their absence doesn't break anything visibly — the app starts, serves a 200 for every page, and
+renders an unstyled page that ignores every click.
+
+The optional model is deliberately **not** copied into the publish output, so the folder stays
+~132 MB whether or not you installed it locally. To include it:
+`scripts\install-deps.bat --dest artifacts\win-x64`.
+
+### The Windows installer
+
+Needs [Inno Setup 6](https://jrsoftware.org/isdl.php) (`winget install --id JRSoftware.InnoSetup`),
+and must be built on Windows:
+
+```
+scripts\build-installer.bat
+```
+
+Publishes, then packages `artifacts/win-x64` into `artifacts/installer/SnapZap-<version>-setup.exe`
+(~42 MB — LZMA2 compresses the bundled runtime well). Pass `--no-build` to package an existing
+publish folder as-is.
+
+The installer is per-user (`%LOCALAPPDATA%\Programs\SnapZap`, no UAC prompt), registers in Apps
+& features, adds a Start Menu entry, offers the NSFW model as an optional component that it
+downloads and checksums, and installs the WebView2 runtime if it's somehow absent. On uninstall
+it asks — once, interactively — whether to also delete the catalogue in `%LOCALAPPDATA%\SnapZap`;
+a silent uninstall never deletes it. Definition: [installer/SnapZap.iss](installer/SnapZap.iss).
 
 This publish also picks up ReadyToRun automatically (scoped to `win-x64` in the `.csproj`) for a
 faster cold start, at the cost of a larger binary.

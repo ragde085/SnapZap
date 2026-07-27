@@ -44,9 +44,16 @@
                         }
                     }
 
-                    @* With no command above it there is nothing to be an alternative to, so
-                       the manual route is the only route and starts open. *@
-                    <details class="dep-manual" open="@(d.Command is null)">
+                    @* An installed copy has no scripts folder to run anything from, so it gets
+                       the one action it does have instead of a command it cannot run. *@
+                    @if (d.InstallerHint is { } hint)
+                    {
+                        <div class="dep-cmd-label">@hint</div>
+                    }
+
+                    @* With nothing actionable above it there is nothing to be an alternative
+                       to, so the manual route is the only route and starts open. *@
+                    <details class="dep-manual" open="@(d.Command is null && d.InstallerHint is null)">
                         <summary>@(d.Command is null ? "Install it by hand" : "Or install it by hand")</summary>
                         <ol class="dep-steps">
                             @foreach (var dl in d.Downloads)
