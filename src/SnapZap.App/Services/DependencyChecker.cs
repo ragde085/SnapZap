@@ -83,6 +83,9 @@ sealed class StoredSettings
     public double NsfwWholeFlag { get; set; } = NsfwSettings.Default.WholeFlag;
     public double NsfwTileMeanFlag { get; set; } = NsfwSettings.Default.TileMeanFlag;
     public double NsfwUnsure { get; set; } = NsfwSettings.Default.Unsure;
+
+    /// <summary>"light", "dark", or "system" (the default — follows the OS).</summary>
+    public string Theme { get; set; } = "system";
 }
 
 /// <summary>
@@ -137,6 +140,23 @@ public sealed class DependencyChecker
             _settings.NsfwWholeFlag = next.WholeFlag;
             _settings.NsfwTileMeanFlag = next.TileMeanFlag;
             _settings.NsfwUnsure = next.Unsure;
+            Save();
+            Changed?.Invoke();
+        }
+    }
+
+    /// <summary>
+    /// "light", "dark", or "system". Persisted so the choice survives a restart, and read by
+    /// App.razor on the initial server render to set `data-theme` before any JS runs — without
+    /// that, an explicit dark choice would flash light on every reload.
+    /// </summary>
+    public string Theme
+    {
+        get => _settings.Theme;
+        set
+        {
+            if (_settings.Theme == value) return;
+            _settings.Theme = value;
             Save();
             Changed?.Invoke();
         }

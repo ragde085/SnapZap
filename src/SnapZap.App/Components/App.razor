@@ -1,7 +1,12 @@
 @using Microsoft.AspNetCore.Components.Web
+@using SnapZap.App.Services
 @inject IWebHostEnvironment Env
+@inject DependencyChecker Checker
 <!DOCTYPE html>
-<html lang="en">
+@* data-theme is omitted entirely for "system", so app.css's prefers-color-scheme fallback
+   decides — rendering it here (rather than only via JS after load) is what keeps an explicit
+   light/dark choice from flashing the other theme for the first frame. *@
+<html lang="en" data-theme="@(Checker.Theme is "light" or "dark" ? Checker.Theme : null)">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />

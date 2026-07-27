@@ -243,6 +243,29 @@ window.snapzap = (function () {
     },
 
     /**
+     * Applies a theme choice to the live page. Must be JS: `<html>` is rendered once by
+     * App.razor's static SSR page and is never touched again by the interactive circuit, so
+     * there is no Blazor-bound attribute to flip after a toggle click — only the DOM itself.
+     * "system" removes the attribute so app.css's prefers-color-scheme rule takes back over.
+     */
+    setTheme: function (theme) {
+      if (theme === 'light' || theme === 'dark') {
+        document.documentElement.setAttribute('data-theme', theme);
+      } else {
+        document.documentElement.removeAttribute('data-theme');
+      }
+    },
+
+    /** What's actually painted right now: an explicit choice if one is set, otherwise the OS
+     * preference — the same fallback app.css itself applies. Lets the toggle button flip
+     * relative to reality instead of assuming it knows the current state. */
+    resolvedTheme: function () {
+      const explicit = document.documentElement.getAttribute('data-theme');
+      if (explicit === 'light' || explicit === 'dark') return explicit;
+      return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    },
+
+    /**
      * Wire the reconnection overlay's buttons.
      *
      * These cannot be Blazor event handlers: the circuit is precisely what is missing when the

@@ -1,9 +1,15 @@
 /*
   SnapZap — "Modernist"
   Flat, printed, architectural: 2px rules and a visible modular grid do the organising, the
-  contact sheet runs edge to edge with no gutters, and red is spent only on the one action
-  that matters. No rounded corners, no shadows on ordinary surfaces — depth comes from rules
-  and fills, not blur.
+  contact sheet runs edge to edge with no gutters, and the accent is spent only on the one
+  action that matters. No rounded corners, no shadows on ordinary surfaces — depth comes from
+  rules and fills, not blur.
+
+  Palette is keyed to the wolf mark (assets/icon/snapzap-source.png), not chosen independently
+  of it: ink and neutrals are the mark's navy, the accent is its one saturated color — the eyes
+  and the lightning bolt — and warn is its amber fur. Light is the tokens below; dark is the
+  same roles re-lit, defined once under `--color-*` overrides further down so every component
+  that already reads `var(--color-*)` gets both themes for free.
 
   Archivo is self-hosted (wwwroot/fonts/archivo/archivo.woff2) rather than pulled from a CDN
   at runtime: SnapZap is explicitly offline-first, and a Google Fonts @import would quietly
@@ -33,36 +39,38 @@
 }
 
 :root {
-  --color-bg: #f3f2f2;
-  --color-surface: #eae9e9;
-  --color-text: #201e1d;
-  --color-divider: color-mix(in srgb, #201e1d 40%, transparent);
+  --color-bg: #eef1f2;
+  --color-surface: #e1e7ea;
+  --color-text: #101c2c;
+  --color-divider: color-mix(in srgb, var(--color-text) 40%, transparent);
 
-  --color-neutral-100: #f8f4f4;
-  --color-neutral-200: #eae7e7;
-  --color-neutral-300: #d7d3d3;
-  --color-neutral-400: #bab6b6;
-  --color-neutral-500: #9b9797;
-  --color-neutral-600: #7d7979;
-  --color-neutral-700: #605d5d;
-  --color-neutral-800: #444141;
-  --color-neutral-900: #2d2b2b;
+  --color-neutral-100: #f5f6f7;
+  --color-neutral-200: #e4e7e9;
+  --color-neutral-300: #ced3d7;
+  --color-neutral-400: #acb6bb;
+  --color-neutral-500: #88959d;
+  --color-neutral-600: #6b7982;
+  --color-neutral-700: #4f5a61;
+  --color-neutral-800: #363d42;
+  --color-neutral-900: #1f2326;
 
-  --color-accent: #ec3013;
-  --color-accent-100: #fff2ef;
-  --color-accent-200: #ffe0d9;
-  --color-accent-300: #ffc4b8;
-  --color-accent-400: #ff9783;
-  --color-accent-500: #ff563c;
-  --color-accent-600: #dd2b0f;
-  --color-accent-700: #ae1800;
-  --color-accent-800: #7c1405;
-  --color-accent-900: #4d170e;
+  /* Eyes + lightning bolt — the mark's one saturated color, so it's the only one spent here too. */
+  --color-accent: #156a79;
+  --color-accent-100: #ebf9fc;
+  --color-accent-200: #cdf0f6;
+  --color-accent-300: #97e0ed;
+  --color-accent-400: #47c8de;
+  --color-accent-500: #1f98ad;
+  --color-accent-600: #156a79;
+  --color-accent-700: #115562;
+  --color-accent-800: #0d424c;
+  --color-accent-900: #092c32;
 
-  /* Semantic — separate from the brand accent, so danger/ok/warn never double as it. */
-  --color-ok: #3a7d3a;
+  /* Semantic — separate from the brand accent, so danger/ok/warn never double as it. Warn is
+     the mark's own amber fur; danger reuses the old brand red now that red isn't spoken for. */
+  --color-ok: #2f6b34;
   --color-danger: #ae1800;
-  --color-warn: #ae7a00;
+  --color-warn: #8a5a12;
 
   --font-heading: "Archivo", system-ui, sans-serif;
   --font-heading-weight: 800;
@@ -81,9 +89,11 @@
   --radius-md: 0px;
   --radius-lg: 0px;
 
-  --shadow-sm: 0 1px 2px color-mix(in srgb, #2d2b2b 14%, transparent);
-  --shadow-md: 0 3px 10px color-mix(in srgb, #2d2b2b 16%, transparent);
-  --shadow-lg: 0 12px 32px color-mix(in srgb, #2d2b2b 22%, transparent);
+  /* Fixed black, not var(--color-text): a shadow that tracked the (light-colored) dark-theme
+     ink would render as a pale glow instead of a shadow. */
+  --shadow-sm: 0 1px 2px color-mix(in srgb, #000 14%, transparent);
+  --shadow-md: 0 3px 10px color-mix(in srgb, #000 16%, transparent);
+  --shadow-lg: 0 12px 32px color-mix(in srgb, #000 22%, transparent);
 
   /* type scale */
   --t-xs: 11.5px;
@@ -98,6 +108,80 @@
 
   --ease: cubic-bezier(0.2, 0, 0.2, 1);
   --dur: 140ms;
+}
+
+/*
+  Dark theme — same roles, re-lit off the mark's own dark ground instead of paper. Declared
+  twice on purpose: once behind the OS preference (`prefers-color-scheme`) for whoever hasn't
+  chosen, once behind an explicit `data-theme="dark"` for whoever has (set via the topbar
+  toggle — see interop.js `snapzap.setTheme` — and mirrored server-side in App.razor from the
+  persisted choice, so the first paint is never wrong). `:not([data-theme="light"])` lets an
+  explicit light choice win over a dark OS preference.
+
+  Every declaration here is a --color-* token already read by var() elsewhere in this file, so
+  no component rule needs a dark-mode variant of its own.
+*/
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --color-bg: #0d1620;
+    --color-surface: #16222f;
+    --color-text: #eaf1f3;
+
+    --color-neutral-100: #181d20;
+    --color-neutral-200: #232a2f;
+    --color-neutral-300: #323d43;
+    --color-neutral-400: #47565e;
+    --color-neutral-500: #5f737e;
+    --color-neutral-600: #7b8f9b;
+    --color-neutral-700: #9eacb6;
+    --color-neutral-800: #c2cbd1;
+    --color-neutral-900: #e6eaec;
+
+    --color-accent: #2a9db2;
+    --color-accent-100: #0c2c32;
+    --color-accent-200: #103e46;
+    --color-accent-300: #175863;
+    --color-accent-400: #207988;
+    --color-accent-500: #2a9db2;
+    --color-accent-600: #45bed3;
+    --color-accent-700: #73cede;
+    --color-accent-800: #a4dfea;
+    --color-accent-900: #d6f1f5;
+
+    --color-ok: #7ecb82;
+    --color-danger: #ff8a73;
+    --color-warn: #f0b464;
+  }
+}
+:root[data-theme="dark"] {
+  --color-bg: #0d1620;
+  --color-surface: #16222f;
+  --color-text: #eaf1f3;
+
+  --color-neutral-100: #181d20;
+  --color-neutral-200: #232a2f;
+  --color-neutral-300: #323d43;
+  --color-neutral-400: #47565e;
+  --color-neutral-500: #5f737e;
+  --color-neutral-600: #7b8f9b;
+  --color-neutral-700: #9eacb6;
+  --color-neutral-800: #c2cbd1;
+  --color-neutral-900: #e6eaec;
+
+  --color-accent: #2a9db2;
+  --color-accent-100: #0c2c32;
+  --color-accent-200: #103e46;
+  --color-accent-300: #175863;
+  --color-accent-400: #207988;
+  --color-accent-500: #2a9db2;
+  --color-accent-600: #45bed3;
+  --color-accent-700: #73cede;
+  --color-accent-800: #a4dfea;
+  --color-accent-900: #d6f1f5;
+
+  --color-ok: #7ecb82;
+  --color-danger: #ff8a73;
+  --color-warn: #f0b464;
 }
 
 * { box-sizing: border-box; }
@@ -366,6 +450,16 @@ kbd {
 .icon-btn:hover { background: color-mix(in srgb, var(--color-text) 7%, transparent); }
 .icon-btn:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 1px; }
 .icon-btn svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+/* Sun/moon icon swap tracks the same theme cascade as the color tokens above, so the button's
+   own icon never disagrees with what's actually painted. */
+.theme-toggle .i-moon { display: none; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .theme-toggle .i-sun { display: none; }
+  :root:not([data-theme="light"]) .theme-toggle .i-moon { display: block; }
+}
+:root[data-theme="dark"] .theme-toggle .i-sun { display: none; }
+:root[data-theme="dark"] .theme-toggle .i-moon { display: block; }
 
 /* Determinate progress in the topbar/scan bar. */
 .op { display: flex; flex-direction: column; gap: 5px; min-width: 230px; }
