@@ -108,6 +108,37 @@ from geometry measured in `interop.js`.
    question only you can judge. Assemble a labeled `nsfw/` + `sfw/` fixture set and run
    `dotnet test --filter Category=NsfwModelValidation` to pick a default threshold.
 
+~~8. **Scan progress: estimated time remaining**~~ — ✅ **done 2026-07-26.** Added
+   `EtaEstimator` (`src/SnapZap.App/Services/EtaEstimator.cs`), a rolling-window rate estimate
+   fed from `AppState.RunAsync`'s `Report` closure — shared by every operation that reports
+   progress (scan, NSFW, dedup, export), not just scan. A cumulative done/elapsed average would
+   skew toward whatever mix of cache hits/misses came first in the run, so the estimator only
+   keeps samples from the last 4s and recomputes the rate from that window on every report,
+   which self-corrects as the actual hit/miss mix changes mid-run instead of needing to model it
+   explicitly. Shown in `Toolbar`'s progress line as "128 / 500 · ~40s left". Covered by
+   `EtaEstimatorTests` (pure, ticks fed explicitly — no real waiting).
+
+~~9. **Allow more than one keeper per duplicate group**~~ — ✅ **done 2026-07-26.**
+   `DupeRepository.SetKeeper` (clear-whole-group-then-set-one) replaced by `ToggleKeeper`, which
+   flips a single member's flag and refuses to turn off a group's last remaining keeper.
+   `AppState.SetKeeperAsync` → `ToggleKeeperAsync`. Fixed a latent bug this surfaced in
+   `BuildLoadSnapshot`: it derived the keeper from `members.FirstOrDefault(m => m.IsKeeper)`, a
+   single id, so if more than one row were ever flagged, every keeper past the first silently
+   read as an extra — replaced with a `HashSet` of keeper ids. `DupeReview.razor`'s cards now
+   toggle instead of radio-select, and disable (with a tooltip) when clicking would remove the
+   last keeper. `DuplicateExtras`/`IsBulkSelectable()` untouched — still only ever selects
+   non-keepers, now correctly excluding all keepers, not just the first. Covered by
+   `DupeRepositoryTests` (4 tests) and an `AppStateTests` case exercising the full
+   toggle → extras-count → selection-scope path. Verified live in the browser (scan → find
+   duplicates → toggle a second keeper on → both show "Keeping" → toggling the last one off is
+   refused with the tooltip visible).
+
+~~10. **Scope NSFW scoring to selection / current folder**~~ — ✅ **done 2026-07-26.**
+   `NsfwScorer.ScoreAllAsync` gained an `imageIds` scope (reusing the chunked
+   `ImageRepository.ByIds` lookup, same convention as delete/export); `AppState.NsfwAsync`
+   picks selection first, else the folder focused in the tree, else the whole `ScanRoot`.
+   Toolbar tooltip reflects the active scope. Covered by `NsfwScorerScopeTests`.
+
 ### Backlog (from DESIGN §12, deliberately deferred)
 
 - Plex path-scoped refresh (unnecessary — Plex watches the export destination).

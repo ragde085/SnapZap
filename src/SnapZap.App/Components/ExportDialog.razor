@@ -243,10 +243,16 @@
         // the final _resultText) before the last progress post is actually delivered. Guard
         // against that post clobbering the final message once we're done.
         var inFlight = true;
+        // Export runs its own dialog-scoped progress/cancellation rather than AppState.RunAsync
+        // (it needs the preflight/confirm UI RunAsync doesn't model), so it gets its own
+        // EtaEstimator instance rather than sharing AppState's.
+        var eta = new EtaEstimator();
         var progress = new Progress<ExportProgress>(p =>
         {
             if (!inFlight) return;
-            _resultText = $"{p.Phase} {p.Done}/{p.Total} — {p.Current}";
+            var remaining = eta.Estimate(Environment.TickCount64, p.Done, p.Total);
+            var etaSuffix = remaining is { } r ? $" · ~{EtaEstimator.Format(r)} left" : "";
+            _resultText = $"{p.Phase} {p.Done}/{p.Total}{etaSuffix} — {p.Current}";
             InvokeAsync(StateHasChanged);
         });
 

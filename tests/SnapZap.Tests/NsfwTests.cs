@@ -1,3 +1,5 @@
+using SnapZap.Core;
+using SnapZap.Core.Data;
 using SnapZap.Core.Nsfw;
 using SkiaSharp;
 using Xunit;
@@ -157,5 +159,74 @@ public class NsfwModelValidationTests
             Assert.True(clf.ScoreFile(f) >= 0.6f, $"expected NSFW>=0.6 for {Path.GetFileName(f)}");
         foreach (var f in Directory.EnumerateFiles(Path.Combine(Fixtures!, "sfw")))
             Assert.True(clf.ScoreFile(f) <= 0.4f, $"expected NSFW<=0.4 for {Path.GetFileName(f)}");
+    }
+}
+
+/// <summary>
+/// Covers the id-scope (selection / current folder) that <c>ScoreAllAsync</c> was given so a
+/// wrong-folder scan or a whole-library re-run couldn't force scoring photos the user never
+/// asked about (AppState.NsfwAsync). Exercises <see cref="NsfwScorer.CollectTargets"/> directly
+/// rather than the full ScoreAllAsync run, since a real run needs the ~350 MB ONNX model this
+/// test suite deliberately doesn't depend on.
+/// </summary>
+public class NsfwScorerScopeTests : IDisposable
+{
+    readonly string _work =
+        Path.Combine(Path.GetTempPath(), "pc_nsfw_scope_" + Guid.NewGuid().ToString("N"));
+    readonly string _dbPath;
+
+    public NsfwScorerScopeTests()
+    {
+        Directory.CreateDirectory(_work);
+        _dbPath = Path.Combine(_work, "catalog.db");
+    }
+
+    static ImageRecord Row(string path, double? nsfwScore) => new()
+    {
+        Path = path,
+        ContentHash = "h_" + path,
+        FileSize = 1,
+        Mtime = 1,
+        NsfwScore = nsfwScore,
+    };
+
+    [Fact]
+    public void CollectTargets_WithImageIds_ScopesToThoseIdsAndSkipsAlreadyScored()
+    {
+        using var db = new Database(_dbPath);
+        var repo = new ImageRepository(db);
+
+        var inScopeUnscored = repo.Upsert(Row("/lib/folder/a.jpg", nsfwScore: null));
+        var inScopeAlreadyScored = repo.Upsert(Row("/lib/folder/b.jpg", nsfwScore: 0.7));
+        var outOfScopeUnscored = repo.Upsert(Row("/lib/other/c.jpg", nsfwScore: null));
+
+        var scorer = new NsfwScorer(db, modelPath: "/does/not/matter/for/CollectTargets.onnx");
+
+        // Scope is exactly {a, b}: b is filtered out for being already scored, and c (unscored,
+        // but never in the requested scope) must not sneak in just because it's eligible.
+        var targets = scorer.CollectTargets(
+            root: null, imageIds: [inScopeUnscored, inScopeAlreadyScored], rescoreExisting: false);
+
+        Assert.Equal([inScopeUnscored], targets.Select(t => t.id));
+        Assert.DoesNotContain(targets, t => t.id == outOfScopeUnscored);
+    }
+
+    [Fact]
+    public void CollectTargets_WithImageIds_RescoreExisting_IncludesAlreadyScored()
+    {
+        using var db = new Database(_dbPath);
+        var repo = new ImageRepository(db);
+
+        var id = repo.Upsert(Row("/lib/folder/a.jpg", nsfwScore: 0.7));
+
+        var scorer = new NsfwScorer(db, modelPath: "/does/not/matter/for/CollectTargets.onnx");
+        var targets = scorer.CollectTargets(root: null, imageIds: [id], rescoreExisting: true);
+
+        Assert.Equal([id], targets.Select(t => t.id));
+    }
+
+    public void Dispose()
+    {
+        try { if (Directory.Exists(_work)) Directory.Delete(_work, true); } catch { }
     }
 }

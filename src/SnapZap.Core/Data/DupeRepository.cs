@@ -82,28 +82,50 @@ public sealed class DupeRepository(Database db)
     }
 
     /// <summary>
-    /// Make one member the keeper, clearing the flag from the rest of its group. The detector
-    /// picks a keeper by pixel count, which is a reasonable default and a poor decision for
-    /// crops, edits, or the one shot that happens to be the good one — this is the override.
+    /// Flip one member's keeper flag, without touching the rest of its group. The detector picks
+    /// a single keeper by pixel count, which is a reasonable default and a poor decision for
+    /// crops, edits, or a burst where more than one frame is worth keeping — this is the
+    /// override, and more than one member may be kept at once.
     /// </summary>
-    public void SetKeeper(long groupId, long keeperImageId)
+    /// <remarks>
+    /// Refuses to turn off the group's last remaining keeper: a group must always survive with
+    /// at least one copy, the same invariant <c>AppState.BuildLoadSnapshot</c> falls back to when
+    /// a keeper gets recycled out from under it. Silently a no-op if <paramref name="imageId"/>
+    /// isn't a member of <paramref name="groupId"/> — callers only ever pass a member they read
+    /// off the group itself, so this is a defend-in-depth check, not an expected path.
+    /// </remarks>
+    public void ToggleKeeper(long groupId, long imageId)
     {
         lock (db.WriteLock)
         {
             var c = db.Writer;
             using var tx = c.BeginTransaction();
 
-            using (var clear = c.CreateCommand())
+            long? current;
+            using (var read = c.CreateCommand())
             {
-                clear.CommandText = "UPDATE dupe_members SET is_keeper=0 WHERE group_id=$g";
-                clear.Parameters.AddWithValue("$g", groupId);
-                clear.ExecuteNonQuery();
+                read.CommandText = "SELECT is_keeper FROM dupe_members WHERE group_id=$g AND image_id=$i";
+                read.Parameters.AddWithValue("$g", groupId);
+                read.Parameters.AddWithValue("$i", imageId);
+                current = (long?)read.ExecuteScalar();
             }
+            if (current is null) return;
+
+            var isKeeper = current.Value != 0;
+            if (isKeeper)
+            {
+                using var count = c.CreateCommand();
+                count.CommandText = "SELECT COUNT(*) FROM dupe_members WHERE group_id=$g AND is_keeper=1";
+                count.Parameters.AddWithValue("$g", groupId);
+                if ((long)count.ExecuteScalar()! <= 1) return;
+            }
+
             using (var set = c.CreateCommand())
             {
-                set.CommandText = "UPDATE dupe_members SET is_keeper=1 WHERE group_id=$g AND image_id=$i";
+                set.CommandText = "UPDATE dupe_members SET is_keeper=$v WHERE group_id=$g AND image_id=$i";
+                set.Parameters.AddWithValue("$v", isKeeper ? 0 : 1);
                 set.Parameters.AddWithValue("$g", groupId);
-                set.Parameters.AddWithValue("$i", keeperImageId);
+                set.Parameters.AddWithValue("$i", imageId);
                 set.ExecuteNonQuery();
             }
 

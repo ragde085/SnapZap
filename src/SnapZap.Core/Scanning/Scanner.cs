@@ -6,7 +6,7 @@ using SnapZap.Core.Imaging;
 
 namespace SnapZap.Core.Scanning;
 
-public sealed record ScanProgress(int Seen, int Analyzed, int Cached, int Failed, string? Current);
+public sealed record ScanProgress(int Seen, int Analyzed, int Cached, int Failed, string? Current, int Total);
 
 /// <summary>One file the scan could not take, and why. Attributing the reason matters more
 /// than the count: "3 failed" is not actionable, "3 unreadable HEIC files in /2021" is.</summary>
@@ -85,7 +85,10 @@ public sealed class Scanner(Database db, SkiaImageService imaging, string thumbD
         CancellationToken ct = default)
     {
         var start = Environment.TickCount64;
-        var (files, unsupported) = Enumerate(root);
+        // Off the calling thread (the Blazor circuit's sync context) and cancellable per file:
+        // the walk over a large/wrong folder used to block Stop from even being dispatched,
+        // let alone honored, until the whole tree had been enumerated.
+        var (files, unsupported) = await Task.Run(() => Enumerate(root, ct), ct);
         _lastReportTicks = 0;
 
         int seen = 0, analyzed = 0, cached = 0, failed = 0, undecodable = 0;
@@ -127,7 +130,7 @@ public sealed class Scanner(Database db, SkiaImageService imaging, string thumbD
                         p.analyzed && p.size == file.Length && p.mtime == mtime)
                     {
                         Interlocked.Increment(ref cached);
-                        Report(progress, seen, analyzed, cached, failed, file.Name);
+                        Report(progress, seen, analyzed, cached, failed, file.Name, files.Count);
                         return default;
                     }
 
@@ -158,7 +161,7 @@ public sealed class Scanner(Database db, SkiaImageService imaging, string thumbD
                     if (toFlush is not null) FlushPending(toFlush);
 
                     Interlocked.Increment(ref analyzed);
-                    Report(progress, seen, analyzed, cached, failed, file.Name);
+                    Report(progress, seen, analyzed, cached, failed, file.Name, files.Count);
                 }
                 catch (OperationCanceledException) { throw; }
                 catch (Exception ex)
@@ -180,7 +183,7 @@ public sealed class Scanner(Database db, SkiaImageService imaging, string thumbD
 
         // Always emit the true final state, even if the last per-file report was throttled away —
         // the UI must never end mid-count.
-        Report(progress, seen, analyzed, cached, failed, current: null, force: true);
+        Report(progress, seen, analyzed, cached, failed, current: null, total: files.Count, force: true);
 
         return new ScanResult(files.Count, analyzed, cached, failed, pruned,
                               Environment.TickCount64 - start)
@@ -271,7 +274,7 @@ public sealed class Scanner(Database db, SkiaImageService imaging, string thumbD
         };
     }
 
-    void Report(IProgress<ScanProgress>? p, int seen, int a, int c, int f, string? current, bool force = false)
+    void Report(IProgress<ScanProgress>? p, int seen, int a, int c, int f, string? current, int total, bool force = false)
     {
         if (p is null) return;
         if (!force)
@@ -281,14 +284,14 @@ public sealed class Scanner(Database db, SkiaImageService imaging, string thumbD
             if (now - last < ReportIntervalMs) return;
             if (Interlocked.CompareExchange(ref _lastReportTicks, now, last) != last) return;
         }
-        p.Report(new ScanProgress(seen, a, c, f, current));
+        p.Report(new ScanProgress(seen, a, c, f, current, total));
     }
 
     /// <summary>
     /// One walk, two buckets: files we can analyse, and a tally of recognised-but-undecodable
     /// formats by extension so the caller can say what was left behind.
     /// </summary>
-    static (List<FileInfo> Supported, Dictionary<string, int> Unsupported) Enumerate(string root)
+    static (List<FileInfo> Supported, Dictionary<string, int> Unsupported) Enumerate(string root, CancellationToken ct)
     {
         var opts = new EnumerationOptions
         {
@@ -304,6 +307,7 @@ public sealed class Scanner(Database db, SkiaImageService imaging, string thumbD
         // instead of Directory.EnumerateFiles + a second stat via `new FileInfo(path)` per file.
         foreach (var file in new DirectoryInfo(root).EnumerateFiles("*", opts))
         {
+            ct.ThrowIfCancellationRequested();
             var ext = file.Extension;
             if (Extensions.Contains(ext))
                 supported.Add(file);

@@ -48,7 +48,10 @@
                     <div class="cmp-meta">
                         <b>@m.FileName</b>
                         <span>@m.Dimensions · @m.SizeLabel</span>
-                        <button class="@(isKeeper ? "primary" : "")" @onclick="() => Keep(m.Id)">
+                        <button class="@(isKeeper ? "primary" : "")"
+                                disabled="@(isKeeper && KeeperCountInGroup <= 1)"
+                                title="@(isKeeper && KeeperCountInGroup <= 1 ? "A group always keeps at least one copy." : null)"
+                                @onclick="() => ToggleKeeper(m.Id)">
                             @(isKeeper ? "Keeping this" : "Keep this")
                         </button>
                     </div>
@@ -83,7 +86,9 @@
                     var isKeeper = AppState.DupeOf.TryGetValue(m.Id, out var d) && d.IsKeeper;
                     <button class="review-card @(isKeeper ? "keeper" : "")"
                             aria-pressed="@(isKeeper ? "true" : "false")"
-                            @onclick="() => Keep(m.Id)">
+                            disabled="@(isKeeper && KeeperCountInGroup <= 1)"
+                            title="@(isKeeper && KeeperCountInGroup <= 1 ? "A group always keeps at least one copy." : null)"
+                            @onclick="() => ToggleKeeper(m.Id)">
                         <span class="review-shot">
                             <img src="@m.ThumbUrl" alt="@m.FileName" loading="lazy" />
                             @if (isKeeper)
@@ -113,8 +118,9 @@
                 <button class="link" @onclick="Close">Done</button>
             </div>
             <p class="hint">
-                <kbd>←</kbd> <kbd>→</kbd> move between groups · <kbd>1</kbd>–<kbd>9</kbd> pick a keeper ·
-                <kbd>Esc</kbd> close. Nothing is deleted here — this only decides which copy survives an export.
+                <kbd>←</kbd> <kbd>→</kbd> move between groups · <kbd>1</kbd>–<kbd>9</kbd> toggle a keeper
+                (more than one can survive) · <kbd>Esc</kbd> close. Nothing is deleted here — this only
+                decides which copies survive an export.
             </p>
         </div>
     </div>
@@ -169,6 +175,11 @@
 
     int ExtraCount => AppState.DupeOf.Count(kv => !kv.Value.IsKeeper);
 
+    /// <summary>How many members of the group currently being reviewed are keepers — more than
+    /// one is allowed, but toggling the last one off is refused (see ToggleKeeper), so the button
+    /// disables itself instead of silently doing nothing.</summary>
+    int KeeperCountInGroup => Members.Count(m => AppState.DupeOf.TryGetValue(m.Id, out var d) && d.IsKeeper);
+
     protected override void OnInitialized() => AppState.Changed += StateHasChanged;
     public void Dispose() => AppState.Changed -= StateHasChanged;
 
@@ -200,6 +211,10 @@
         {
             // Panes are recreated on each open, so their listeners are too.
             _panesWired = false;
+            // Compare took focus onto _cmpRef; closing it back to the review grid left focus on
+            // nothing (document.body), which silently killed the 1-9 keeper shortcuts and Esc
+            // until the user clicked something — @onkeydown only fires on _dlgRef and its children.
+            await _dlgRef.FocusAsync();
         }
 
         if (Show && _needsFocus && Groups.Count > 0)
@@ -250,7 +265,7 @@
     void Prev() { if (_index > 0) _index--; }
     void Next() { if (_index < Groups.Count - 1) _index++; }
 
-    Task Keep(long imageId) => AppState.SetKeeperAsync(Current.Id, imageId);
+    Task ToggleKeeper(long imageId) => AppState.ToggleKeeperAsync(Current.Id, imageId);
 
     async Task SelectExtrasAndClose()
     {
@@ -269,7 +284,7 @@
                 if (e.Key.Length == 1 && char.IsDigit(e.Key[0]))
                 {
                     var n = e.Key[0] - '1';
-                    if (n >= 0 && n < Members.Count) await Keep(Members[n].Id);
+                    if (n >= 0 && n < Members.Count) await ToggleKeeper(Members[n].Id);
                 }
                 break;
         }

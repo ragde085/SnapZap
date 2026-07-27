@@ -89,6 +89,35 @@ public class AppStateTests : IDisposable
         Assert.Single(_state.Selected);
     }
 
+    [Fact]
+    public async Task Toggling_a_second_member_keeps_both_and_only_the_third_counts_as_an_extra()
+    {
+        // Two copies can both be worth keeping (e.g. one for a shared album, one for the
+        // original folder) — toggling a second keeper on must not clear the first (the old
+        // SetKeeper did exactly that), and the extras count/selection must follow: only the
+        // member nobody chose to keep is reclaimable.
+        var keeper = AddImage("keeper.png");
+        var alsoWorthKeeping = AddImage("also.png");
+        var extra = AddImage("extra.png");
+        var groupId = new DupeRepository(_catalog.Db)
+            .AddGroup(DupeKind.Exact, null, [(keeper, true), (alsoWorthKeeping, false), (extra, false)]);
+
+        await _state.LoadAsync();
+        await _state.ToggleKeeperAsync(groupId, alsoWorthKeeping);
+
+        Assert.True(_state.DupeOf[keeper].IsKeeper);
+        Assert.True(_state.DupeOf[alsoWorthKeeping].IsKeeper);
+        Assert.False(_state.DupeOf[extra].IsKeeper);
+        Assert.Equal(1, _state.DupeExtraCount);
+
+        _state.SelectBy(AppState.SelectionScope.DuplicateExtras);
+        Assert.Single(_state.Selected);
+        Assert.Contains(extra, _state.Selected);
+
+        _state.SelectBy(AppState.SelectionScope.DuplicateKeepers);
+        Assert.Equal(2, _state.Selected.Count);
+    }
+
     /// <summary>Removes a catalog row the way a completed recycle does.</summary>
     sealed class DeleteRow(CatalogService catalog)
     {

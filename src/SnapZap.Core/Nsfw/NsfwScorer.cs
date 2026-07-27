@@ -14,33 +14,28 @@ public sealed record NsfwRunResult(bool ModelAvailable, int Scored, int Failed, 
 public sealed class NsfwScorer(Database db, string modelPath)
 {
     /// <param name="root">
-    /// Score only photos beneath this folder; null scores the whole catalogue. The catalogue
-    /// spans every folder ever scanned, so an unscoped run on a four-photo folder went off and
-    /// scored thousands of photos the user could not see and had not asked about.
+    /// Score only photos beneath this folder; null scores the whole catalogue. Ignored when
+    /// <paramref name="imageIds"/> is supplied. The catalogue spans every folder ever scanned,
+    /// so an unscoped run on a four-photo folder went off and scored thousands of photos the
+    /// user could not see and had not asked about.
+    /// </param>
+    /// <param name="imageIds">
+    /// Score exactly these images (e.g. the current selection, or everything under the folder
+    /// focused in the tree) instead of a path scope. Takes precedence over <paramref name="root"/>.
     /// </param>
     public async Task<NsfwRunResult> ScoreAllAsync(
         string? root = null,
         IProgress<NsfwProgress>? progress = null,
         bool rescoreExisting = false,
+        IReadOnlyList<long>? imageIds = null,
         CancellationToken ct = default)
     {
         if (!File.Exists(modelPath))
             return new NsfwRunResult(false, 0, 0, $"NSFW model not found at {modelPath} — scoring skipped.");
 
-        // Collect target rows (id, path). Inference is CPU-bound and the ORT session is not
-        // thread-safe for concurrent Run on all providers, so we score sequentially; the SQLite
-        // writes are naturally serialized too.
-        var targets = new List<(long id, string path)>();
-        using (var c = db.OpenRead())
-        using (var cmd = c.CreateCommand())
-        {
-            cmd.CommandText = rescoreExisting
-                ? $"SELECT id, path FROM images WHERE {PathScope.Where(root)}"
-                : $"SELECT id, path FROM images WHERE nsfw_score IS NULL AND {PathScope.Where(root)}";
-            PathScope.Bind(cmd, root);
-            using var r = cmd.ExecuteReader();
-            while (r.Read()) targets.Add((r.GetInt64(0), r.GetString(1)));
-        }
+        // Inference is CPU-bound and the ORT session is not thread-safe for concurrent Run on
+        // all providers, so we score sequentially; the SQLite writes are naturally serialized too.
+        var targets = CollectTargets(root, imageIds, rescoreExisting);
 
         if (targets.Count == 0)
             return new NsfwRunResult(true, 0, 0, "All images already scored.");
@@ -85,5 +80,32 @@ public sealed class NsfwScorer(Database db, string modelPath)
 
         return new NsfwRunResult(true, done - failed, failed,
             clf.ConfigFromFile ? null : "⚠ preprocessor_config.json not found — using Falconsai defaults.");
+    }
+
+    /// <summary>Split out of <see cref="ScoreAllAsync"/> so the id-vs-path scoping and the
+    /// already-scored filter can be tested without loading the ONNX model.</summary>
+    internal List<(long id, string path)> CollectTargets(
+        string? root, IReadOnlyList<long>? imageIds, bool rescoreExisting)
+    {
+        if (imageIds is not null)
+        {
+            // Explicit id scope (selection / current folder) rather than a path prefix — reuses
+            // the chunked id lookup so a large selection can't blow past SQLite's parameter cap.
+            return new ImageRepository(db).ByIds(imageIds)
+                .Where(r => rescoreExisting || r.NsfwScore is null)
+                .Select(r => (r.Id, r.Path))
+                .ToList();
+        }
+
+        var targets = new List<(long id, string path)>();
+        using var c = db.OpenRead();
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = rescoreExisting
+            ? $"SELECT id, path FROM images WHERE {PathScope.Where(root)}"
+            : $"SELECT id, path FROM images WHERE nsfw_score IS NULL AND {PathScope.Where(root)}";
+        PathScope.Bind(cmd, root);
+        using var r = cmd.ExecuteReader();
+        while (r.Read()) targets.Add((r.GetInt64(0), r.GetString(1)));
+        return targets;
     }
 }

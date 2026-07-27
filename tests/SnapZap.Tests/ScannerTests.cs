@@ -83,6 +83,58 @@ public class ScannerTests : IDisposable
     }
 
     [Fact]
+    public async Task Progress_reports_carry_the_real_total_not_zero()
+    {
+        // AppState.RunAsync's EtaEstimator treats total<=0 as "unknown" and never shows an ETA —
+        // ScanProgress used to hardcode 0 regardless of how many files were actually found, so
+        // Scan alone, of every long operation, could never show "X / Y · ~Ns left".
+        WritePng(Path.Combine(_photos, "a.png"), 200, 120, SKColors.Red);
+        WritePng(Path.Combine(_photos, "b.png"), 640, 480, SKColors.Green);
+        WritePng(Path.Combine(_photos, "c.png"), 100, 100, SKColors.Blue);
+
+        using var db = new Database(_dbPath);
+        var scanner = new Scanner(db, new SkiaImageService(), _thumbs);
+
+        // A hand-rolled IProgress<T> rather than System.Progress<T>: with no ambient
+        // SynchronizationContext (the default on an xunit thread), Progress<T> posts callbacks
+        // to the thread pool asynchronously, so reports could still be in flight when ScanAsync
+        // returns. SyncProgress reports inline, so what's collected here is exactly what fired.
+        var progress = new SyncProgress<ScanProgress>();
+
+        await scanner.ScanAsync(_photos, progress);
+
+        Assert.NotEmpty(progress.Values);
+        Assert.All(progress.Values, r => Assert.Equal(3, r.Total));
+    }
+
+    [Fact]
+    public async Task Scan_observes_cancellation_before_doing_any_analysis_work()
+    {
+        // Regression guard for the actual fix this session was about: the folder walk used to
+        // run fully synchronously with no CancellationToken at all, so Stop could not touch it —
+        // not "was slow to respond", but had literally no way to observe cancellation. This
+        // doesn't need a huge directory or timing games: a token that's already cancelled before
+        // ScanAsync is even called must still short-circuit cleanly, with nothing analyzed and
+        // nothing written — which only holds if both the Task.Run wrapper and Enumerate's own
+        // ct.ThrowIfCancellationRequested() are still wired through. Drop either one (e.g.
+        // "simplify" Enumerate back to a plain synchronous call with no token) and this starts
+        // scanning for real instead of throwing.
+        WritePng(Path.Combine(_photos, "a.png"), 200, 120, SKColors.Red);
+        WritePng(Path.Combine(_photos, "b.png"), 640, 480, SKColors.Green);
+
+        using var db = new Database(_dbPath);
+        var scanner = new Scanner(db, new SkiaImageService(), _thumbs);
+
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => scanner.ScanAsync(_photos, ct: cts.Token));
+
+        Assert.Empty(new ImageRepository(db).All());
+    }
+
+    [Fact]
     public async Task Scanning_a_second_folder_leaves_the_first_folders_catalog_intact()
     {
         // Pruning removes rows whose file is gone. It must not treat "not in the folder I just
@@ -146,4 +198,13 @@ public class ScannerTests : IDisposable
     {
         try { if (Directory.Exists(_work)) Directory.Delete(_work, true); } catch { }
     }
+}
+
+/// <summary>Reports inline instead of via a captured (or thread-pool-fallback)
+/// SynchronizationContext, so a test can assert against exactly what fired without a race
+/// against System.Progress&lt;T&gt;'s async delivery.</summary>
+sealed class SyncProgress<T> : IProgress<T>
+{
+    public List<T> Values { get; } = [];
+    public void Report(T value) => Values.Add(value);
 }
