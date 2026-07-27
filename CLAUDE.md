@@ -53,15 +53,28 @@ Two tests are conditional:
 1. **ONNX plumbing** — skips unless `PC_TEST_ONNX` is set and model exists
 2. **NSFW model validation** — skips unless `PC_NSFW_MODEL` and `PC_NSFW_FIXTURES` provided
 
-### Build (Windows executable)
+### Build (Windows)
 ```bash
-# From macOS or Windows, publish as self-contained win-x64 executable
+# From macOS or Windows. Publishes a folder, not a file — see below.
 dotnet publish src/SnapZap.App -c Release -r win-x64 --self-contained \
   -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true \
   -o artifacts/win-x64
+
+# Windows only: the same publish, then packaged into an installer (needs Inno Setup 6).
+scripts\build-installer.bat
 ```
 
-Output: `artifacts/win-x64/SnapZap.App.exe` (~130 MB, includes .NET runtime, requires no installation)
+Output: `artifacts/win-x64/` — `SnapZap.App.exe` + `wwwroot/` + `appsettings.json`, ~157 MB, no .NET
+install needed. `scripts\build-installer.bat` turns that into
+`artifacts/installer/SnapZap-<version>-setup.exe` (~47 MB).
+
+**The executable does not work on its own.** `PublishSingleFile` bundles the runtime and the app
+assemblies; it cannot bundle `wwwroot`, which holds `app.css`, `interop.js` and Blazor's
+`_framework/blazor.web.js`. Separated from it, the app still starts and still serves 200 for
+every page — it just renders unstyled, prerendered markup that ignores every click. That is
+what shipping a bare `.exe` produced, and it is why distribution is an installer.
+
+A `VerifyPublishOutput` target asserts those files exist after every publish. Do not remove it.
 
 ReadyToRun is enabled automatically for this RID (scoped by `RuntimeIdentifier` in
 `SnapZap.App.csproj`, no extra flag needed) — pre-JITted native startup code, trading a larger
@@ -107,14 +120,15 @@ dotnet test --filter "Category=NsfwModelValidation"
 Windows sidecar layout:
 ```
 SnapZap.App.exe
-wwwroot/                    (published automatically)
+wwwroot/                    (published automatically — required, not optional)
+appsettings.json
 models/nsfw.onnx            (optional — enables NSFW scoring)
 models/preprocessor_config.json
 ```
 
 Graceful degradation: a missing NSFW model disables NSFW scoring and nothing else. Duplicate detection — exact, variant and burst — is entirely in-process and needs no sidecar.
 
-The sidecars are excluded from publish output (`CopyToPublishDirectory="Never"`), so the published `.exe` stays ~130 MB whether or not they are installed locally. Populate a publish folder with `scripts/install-deps.sh --dest artifacts/win-x64`.
+The sidecars are excluded from publish output (`CopyToPublishDirectory="Never"`), so the published folder is the same size whether or not they are installed locally. Populate a publish folder with `scripts/install-deps.sh --dest artifacts/win-x64`, or tick the model component in the installer.
 
 ---
 
@@ -129,6 +143,8 @@ The sidecars are excluded from publish output (`CopyToPublishDirectory="Never"`)
 | `docs/ROADMAP.md` | Current status + prioritized next steps |
 | `docs/BLAZOR-MIGRATION.md` | The SPA → Blazor Server migration (completed) |
 | `docs/WINDOWS-VERIFY.md` | Checklist for four Windows-only code paths |
+| `installer/SnapZap.iss` | Inno Setup definition for the Windows installer (per-user, optional model component, WebView2 bootstrap) |
+| `scripts/build-installer.bat` | Publish + package in one step; the supported way to build the installer |
 | `scripts/install-deps.{sh,bat}` | One-command install of both optional sidecars (pinned + checksummed) |
 | `scripts/export-nsfw-model.sh` | Build the ONNX model from PyTorch weights instead of downloading it |
 | `scripts/make-icons.py` | Rebuild the icon set from the source art (needs Pillow; outputs are committed) |
@@ -147,9 +163,12 @@ The sidecars are excluded from publish output (`CopyToPublishDirectory="Never"`)
   `app.js` state object), `ImageView` (record wrapping `ImageRecord` for display),
   `DependencyChecker` (validates the optional sidecars, singleton).
 - **wwwroot/** — `app.css` (the "Darkroom" design system), `interop.js` (grid geometry
-  measurement, scroll windowing, arrow-key focus movement), and `favicon.ico`, which is also
-  the `.exe` icon (`<ApplicationIcon>` in the csproj points here so the tab and the taskbar
-  cannot disagree). Regenerate it with `scripts/make-icons.py`.
+  measurement, scroll windowing, arrow-key focus movement), and two icon files. `favicon.ico`
+  is also the `.exe` icon (`<ApplicationIcon>` in the csproj points here so the tab, the
+  taskbar and the window cannot disagree); `snapzap.png` is the same artwork at 128px for the
+  mark beside the wordmark in `Home.razor`. Both are generated from
+  `assets/icon/snapzap-source.png` by `scripts/make-icons.py` — edit the source art, not the
+  outputs, and `VerifyPublishOutput` will catch it if either goes missing from a publish.
 
 ### Key subdirectories in `Core/`
 
@@ -176,7 +195,7 @@ All Windows-specific logic is behind `IPlatformServices` (in `Platform/IPlatform
 | `ITrashService` | Recycle bin operations (delete → recycle → restore) | macOS impl working; Windows impl written, never executed |
 | `ILinkService` | Hardlink creation + stat (for export hardlink mode) | macOS impl (libc `link()`) working; Windows impl written, never executed |
 | `IInferenceProvider` | NSFW ONNX inference (CPU on macOS, optionally DirectML on Windows) | CPU impl working; DirectML not started |
-| `IAppHost` | Window host + browser launch (Photino/WebView2 on Windows) | **Declared but never implemented or called** — the browser is launched inline in `Program.cs`. Wiring Photino behind it is [ROADMAP](docs/ROADMAP.md) P2.5 |
+| `IAppHost` | Window host + browser launch (Photino/WebView2 on Windows) | Implemented in `App/Services/AppHost.cs` and verified on Windows 11: `PhotinoAppHost` (embedded WebView2, STA thread) with `BrowserAppHost` as fallback and as the macOS host |
 
 There is no issue tracker on this repo; open work lives in [docs/ROADMAP.md](docs/ROADMAP.md)
 and [docs/WINDOWS-VERIFY.md](docs/WINDOWS-VERIFY.md).
@@ -267,9 +286,36 @@ All other deps are MIT or Apache-2.0. No paid, no subscription-gated.
 
 - **ONNX Runtime inference** runs in-process (no server, no cloud).
 - **Model is the Falconsai ViT** trained on ~10k labeled images (Apache-2.0).
-- **Output is a single float `[0, 1]`** (probability of NSFW). The UI provides a threshold slider.
+- **Output is a single float `[0, 1]`** (probability of NSFW), per input image.
 - **Preprocessing** (resize, normalize) is in `NsfwPreprocess.cs`; the config is in `preprocessor_config.json` (downloaded alongside the model).
 - **Model validation** (test category `NsfwModelValidation`) requires labeled fixtures to confirm the model's scores are sensible. Tests skip unless you provide them.
+
+### The NSFW flag rule (`NsfwSettings`, in `Core/Nsfw/NsfwDecision.cs`)
+
+The rule reads **two** numbers, and both halves are load-bearing. Rationale and the measurements
+are in the type's own docs; the parts you must not undo:
+
+- **Every photo is scored twice: whole frame, and as nine overlapping tiles.** The model only
+  ever sees a 224×224 thumbnail of its input, so a person occupying part of a wide photo is
+  destroyed by the resize before inference. Measured: one image scored **0.0014** whole-frame and
+  **0.9983** on the tile containing the subject. No threshold recovers that.
+- **Tiles are combined with `mean`, never `max`.** ⚠ This is the safety-critical one. A clothed
+  head-and-shoulders portrait contains one tile that is nearly all skin, which the model scores
+  ~0.99 — max-over-tiles flagged **8 of 17** photos in a real family album. The mean flagged
+  none, across 263 control images. `NsfwBandTests.An_ordinary_photo_of_a_person_is_not_flagged`
+  pins it.
+- **`TileMeanFlag` below `SafeTileMeanFloor` (0.50) is where false positives start**, and they
+  arrive fast: 0 of 17 at 0.50, 6 of 17 at 0.40. The setting allows it; the UI warns at the edge.
+- **`nsfw_tile_mean` is nullable and that is the mechanism, not an oversight.** Null means
+  "scored whole-frame only", which is how a tiled run finds rows a previous quick run left
+  behind — exactly the job `dupe_checked_kinds` does for dedup. Without it, turning the deeper
+  setting on would appear to do nothing.
+- **Thresholds and depth are user settings** (`settings.json`, via `DependencyChecker.Nsfw`),
+  presented as Cautious / Balanced / Eager with per-threshold overrides. Read them through
+  `AppState.NsfwRule` — never re-derive a comparison inline, or the badge, the filter and the
+  counts start disagreeing, which is precisely what moving the rule into Core fixed.
+- **Changing a threshold re-judges, it does not re-score.** `AppState.Reband()` exists because
+  the band counts are cached per load.
 
 ### Duplicate detection (v2 — in-process)
 
@@ -332,7 +378,9 @@ Full rationale in [docs/DEDUP-V2.md](docs/DEDUP-V2.md). The short version:
 
 3. **Duplicate detection has no external dependency.** All three detectors run in-process; the `czkawka_cli` sidecar was removed in v2 (docs/DEDUP-V2.md). Exact detection has no setting to switch it off.
 
-4. **Windows-specific code is stubbed on macOS.** The four `IPlatformServices` methods for Windows (Recycle Bin, hardlinks, DirectML, Photino window) are macOS-compatible stubs or no-ops. Full end-to-end testing happens on macOS, but **those four paths must be verified on Windows hardware** before shipping.
+4. **Windows-specific code is stubbed on macOS.** The `IPlatformServices` methods for Windows (Recycle Bin, hardlinks, DirectML) are macOS-compatible stubs or no-ops. Full end-to-end testing happens on macOS, but **those paths must be verified on Windows hardware** before shipping. The window host is no longer among them — it is implemented and verified. `dotnet test` on Windows currently fails four tests that pass on macOS; they are listed in [WINDOWS-VERIFY.md](docs/WINDOWS-VERIFY.md) §6 and two of them are the Recycle Bin and hardlink implementations failing for real.
+
+9. **Never set `<OutputType>WinExe</OutputType>` on `SnapZap.App`.** It builds and publishes cleanly and silently drops `wwwroot/_framework` — the SDK target that contributes Blazor's scripts is gated on `'$(OutputType)' == 'Exe'` exactly. The result is an app that runs, serves 200s and renders unstyled and dead. The console window is hidden at run time instead (`ConsoleWindow.HideIfOwned` in `App/Services/AppHost.cs`), only when SnapZap owns the console, so `dotnet run` from a terminal keeps its log. The `VerifyPublishOutput` target in the csproj fails the build if this ever regresses.
 
 5. **SkiaSharp's native assets** are in the Core csproj (macOS + Win32 .nupkg packages). The publish step bundles them into the self-contained .exe.
 

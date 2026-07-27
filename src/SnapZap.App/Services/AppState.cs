@@ -21,7 +21,7 @@ public enum SortKey { Scanned, Captured, Name, Size, Blur, Nsfw }
 /// object and top-level functions in the old app.js. Components subscribe to <see cref="Changed"/>
 /// and re-render; this class never touches the DOM/UI directly.
 /// </summary>
-public sealed class AppState(CatalogService catalog, ITrashService trash, SessionStore session)
+public sealed class AppState(CatalogService catalog, ITrashService trash, SessionStore session, DependencyChecker deps)
 {
     public event Action? Changed;
 
@@ -51,6 +51,21 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
     public void NotifyDedupSettingsChanged()
     {
         Tree = FolderTreeBuilder.Build(Images, DupeOf, DedupSettings.Load(catalog.Db).CoveredKinds);
+        Changed?.Invoke();
+    }
+
+    /// <summary>
+    /// Re-judge every photo after the explicit-content thresholds changed.
+    /// </summary>
+    /// <remarks>
+    /// Nothing is re-scored — the scores are already in the catalogue, and it is only the
+    /// question asked of them that moved. The band counts are cached per load (see
+    /// <see cref="CountInBand"/>), so without this the filter chips would keep reporting the old
+    /// tally while the grid showed the new one.
+    /// </remarks>
+    public void Reband()
+    {
+        _bandCounts = Images.GroupBy(BandOf).ToDictionary(g => g.Key, g => g.Count());
         Changed?.Invoke();
     }
 
@@ -251,17 +266,55 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
         Likely,
     }
 
-    /// <summary>The score at or above which a photo counts as explicit. Follows the filter once
-    /// the user picks a stricter one, so the badge and the filter can never disagree.</summary>
-    public double NsfwThreshold => ImageView.NsfwFlagThreshold;
+    /// <summary>The configured explicit-content thresholds and depth. One copy, read by the
+    /// badge, the filter, the counts and the scorer, so they cannot disagree.</summary>
+    public NsfwSettings NsfwRule => deps.Nsfw;
 
-    public NsfwBand BandOf(ImageView img) => img.NsfwScore switch
+    /// <summary>The whole-frame score at or above which a photo counts as explicit. Not the
+    /// whole rule — see <see cref="BandOf"/>.</summary>
+    public double NsfwThreshold => NsfwRule.WholeFlag;
+
+    /// <summary>The number to show for a photo: the one its flag was decided on.</summary>
+    public double? NsfwDisplayScore(ImageView img) =>
+        NsfwRule.DisplayScore(img.NsfwScore, img.NsfwTileMean);
+
+    /// <summary>
+    /// Which band a photo falls in. Delegates the rule to <see cref="NsfwDecision"/> rather than
+    /// comparing scores here: a tiled score can flag a photo whose whole-frame score is well
+    /// under the threshold, and a band computed from the whole-frame number alone would disagree
+    /// with the filter that selected it.
+    /// </summary>
+    public NsfwBand BandOf(ImageView img)
     {
-        null => NsfwBand.Unchecked,
-        var n when n >= NsfwThreshold => NsfwBand.Likely,
-        var n when n >= ImageView.NsfwUnsureThreshold => NsfwBand.Unsure,
-        _ => NsfwBand.Clean,
-    };
+        if (img.NsfwScore is null) return NsfwBand.Unchecked;
+        var rule = NsfwRule;
+        if (rule.IsExplicit(img.NsfwScore, img.NsfwTileMean)) return NsfwBand.Likely;
+        return rule.IsUnsure(img.NsfwScore, img.NsfwTileMean) ? NsfwBand.Unsure : NsfwBand.Clean;
+    }
+
+    /// <summary>
+    /// The numbers behind a band, in one line, for the tooltip and the preview panel.
+    /// </summary>
+    /// <remarks>
+    /// Shared so the two can't drift, and written out in full because the short version was
+    /// actively misleading: a photo scored 0.40 whole-frame displayed "0.40 of 1.00 · flagged at
+    /// 0.85", which reads as "this was nearly flagged" when 0.40 is what the model gives any
+    /// photograph of a person. Naming both numbers and both cutoffs is the only version that
+    /// explains a flag the whole-frame score alone would not account for.
+    /// </remarks>
+    public string NsfwEvidence(ImageView img)
+    {
+        if (img.NsfwScore is not { } whole) return "Not scored yet.";
+
+        var rule = NsfwRule;
+        var closer = img.NsfwTileMean;
+        if (closer is null)
+            return $"{whole:F2} of 1.00 · flagged at {rule.WholeFlag:F2} and above";
+
+        return $"{whole:F2} looking at the whole photo, {closer:F2} looking closer"
+            + (closer >= rule.TileMeanFlag ? " — flagged on the closer look" : "")
+            + $" · flagged at {rule.WholeFlag:F2} overall or {rule.TileMeanFlag:F2} closer";
+    }
 
     /// <summary>Plain-language name for a band; the primary reading everywhere a score shows.</summary>
     public static string BandLabel(NsfwBand band) => band switch
@@ -558,7 +611,9 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
             SortKey.Size => desc ? items.OrderByDescending(i => i.FileSize) : items.OrderBy(i => i.FileSize),
             SortKey.Captured => Nulls(items, i => i.ExifTaken, desc),
             SortKey.Blur => Nulls(items, i => i.BlurScore, desc),
-            SortKey.Nsfw => Nulls(items, i => i.NsfwScore, desc),
+            // The score the flag was decided on, not the whole-frame one: sorting by the latter
+            // would bury a photo flagged on its tiles below every unflagged photo above it.
+            SortKey.Nsfw => Nulls(items, NsfwDisplayScore, desc),
             _ => items,
         };
 
@@ -922,8 +977,12 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
         await RunAsync("Scoring NSFW", async (report, ct) =>
         {
             var progress = new Progress<NsfwProgress>(p => report(p.Done, p.Total, null));
+            // Read once per run, not per photo: changing the setting mid-run would otherwise
+            // leave half the folder scored one way and half the other, with nothing recording
+            // which was which.
+            var depth = NsfwRule.Depth;
             var result = await new NsfwScorer(catalog.Db, catalog.NsfwModelPath)
-                .ScoreAllAsync(catalog.ScanRoot, progress, imageIds: scope, ct: ct);
+                .ScoreAllAsync(catalog.ScanRoot, progress, imageIds: scope, depth: depth, ct: ct);
             await LoadAsync();
             return result.ModelAvailable
                 ? $"Scored {result.Scored}" + (result.Failed > 0 ? $", {result.Failed} failed" : "")

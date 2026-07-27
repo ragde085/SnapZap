@@ -1,4 +1,5 @@
 using System.Text.Json;
+using SnapZap.Core.Nsfw;
 
 namespace SnapZap.App.Services;
 
@@ -52,6 +53,14 @@ public sealed record DependencyInfo
     /// Null when it takes effect as soon as <em>Check again</em> is pressed.</summary>
     public string? CommandNote { get; init; }
 
+    /// <summary>
+    /// Shown instead of <see cref="Command"/> when SnapZap was installed by the Windows
+    /// installer. An installed copy has no <c>scripts/</c> directory, so quoting a command
+    /// from it sends the user looking for a file that isn't there; the installer offers this
+    /// as a component and is the honest answer.
+    /// </summary>
+    public string? InstallerHint { get; init; }
+
     /// <summary>Optional extra step after a manual download (e.g. chmod on macOS).</summary>
     public string? ExtraStep { get; init; }
 }
@@ -59,6 +68,21 @@ public sealed record DependencyInfo
 sealed class StoredSettings
 {
     public bool SuppressDependencyPrompt { get; set; }
+
+    /// <summary>
+    /// Whether NSFW scoring also looks at the frame in tiles. Defaults on: the whole-frame pass
+    /// alone misses anything that isn't most of the picture, and a filter that quietly misses
+    /// things is worse than a slow one. Off is for large libraries where ten inferences a photo
+    /// is too much to sit through.
+    /// </summary>
+    public bool NsfwThorough { get; set; } = true;
+
+    /// <summary>The flag thresholds. Stored as three numbers rather than a preset name so a
+    /// future change to what "Balanced" means cannot silently re-tune a library someone had
+    /// already settled.</summary>
+    public double NsfwWholeFlag { get; set; } = NsfwSettings.Default.WholeFlag;
+    public double NsfwTileMeanFlag { get; set; } = NsfwSettings.Default.TileMeanFlag;
+    public double NsfwUnsure { get; set; } = NsfwSettings.Default.Unsure;
 }
 
 /// <summary>
@@ -87,6 +111,34 @@ public sealed class DependencyChecker
             if (_settings.SuppressDependencyPrompt == value) return;
             _settings.SuppressDependencyPrompt = value;
             Save();
+        }
+    }
+
+    /// <summary>
+    /// Depth and thresholds for explicit-content scoring. Sanitised on the way out as well as in:
+    /// settings.json is a plain file next to the catalogue and a hand-edited 1.5 would otherwise
+    /// mean nothing is ever flagged again, with no way to tell from the UI.
+    /// </summary>
+    public NsfwSettings Nsfw
+    {
+        get => new NsfwSettings
+        {
+            Depth = _settings.NsfwThorough ? NsfwDepth.Tiled : NsfwDepth.WholeFrame,
+            WholeFlag = _settings.NsfwWholeFlag,
+            TileMeanFlag = _settings.NsfwTileMeanFlag,
+            Unsure = _settings.NsfwUnsure,
+        }.Sanitised();
+        set
+        {
+            var next = value.Sanitised();
+            if (next == Nsfw) return;
+
+            _settings.NsfwThorough = next.Depth == NsfwDepth.Tiled;
+            _settings.NsfwWholeFlag = next.WholeFlag;
+            _settings.NsfwTileMeanFlag = next.TileMeanFlag;
+            _settings.NsfwUnsure = next.Unsure;
+            Save();
+            Changed?.Invoke();
         }
     }
 
@@ -129,6 +181,12 @@ public sealed class DependencyChecker
         var installer = win ? @"scripts\install-deps.bat" : "scripts/install-deps.sh";
         var repoRoot = FindRepoRoot(sidecarDir, installer);
 
+        // An installed copy (installer/SnapZap.iss) leaves its uninstaller beside the binary.
+        // Nothing else in the layout distinguishes it from an unzipped publish folder, and the
+        // difference matters: one of them can run scripts\install-deps.bat and the other has
+        // never had a scripts directory.
+        var installedCopy = win && Directory.EnumerateFiles(sidecarDir, "unins*.exe").Any();
+
         // Two shapes, because the right one depends on how the app was started. From a repo
         // build the plain command installs into <repo>/models and <repo>/tools, which the next
         // build copies into this directory — shorter, and it survives deleting bin/. From a
@@ -168,8 +226,13 @@ public sealed class DependencyChecker
                 FoundAt = modelFound ? modelPath : null,
                 FileName = "nsfw.onnx",
                 InstallTo = modelDir,
-                Command = modelDest is null ? null : Install("--model-only", modelDest),
-                CommandNote = modelDest is null ? null : Note(modelDest),
+                Command = modelDest is null || installedCopy ? null : Install("--model-only", modelDest),
+                CommandNote = modelDest is null || installedCopy ? null : Note(modelDest),
+                InstallerHint = installedCopy
+                    ? "Run the SnapZap installer again and tick “Explicit-content scoring " +
+                      "model”. It downloads the file, checks it, and puts it where SnapZap " +
+                      "looks — your settings and catalogue are left alone."
+                    : null,
                 Downloads =
                 [
                     new DownloadLink($"{ModelBase}/onnx/model.onnx", "model.onnx", "nsfw.onnx", "328 MB"),

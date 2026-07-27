@@ -5,7 +5,13 @@
 @inject SessionStore Session
 
 <header class="topbar">
-    <div class="brand">Snap<em>Zap</em></div>
+    @* The same artwork as the window and taskbar icon (assets/icon/snapzap.png, resized into
+       wwwroot by scripts/make-icons.py). alt is empty on purpose: the wordmark beside it already
+       says "SnapZap", and a description here would just make a screen reader say it twice. *@
+    <div class="brand">
+        <img class="brand-mark" src="snapzap.png" width="28" height="28" alt="" />
+        <span>Snap<em>Zap</em></span>
+    </div>
     <Toolbar />
 
     @* Setup and help: needed rarely, so they get icons at the far edge rather than space in the

@@ -162,12 +162,23 @@ kbd {
 }
 
 .brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
   font-family: var(--serif);
   font-size: var(--t-lg);
   letter-spacing: 0.01em;
   white-space: nowrap;
 }
 .brand em { color: var(--accent); font-style: normal; }
+
+/* Rounded corners are baked into the artwork's alpha, so no border-radius here — one would
+   only clip the tile a second time, slightly inside the first. */
+.brand-mark {
+  width: 28px;
+  height: 28px;
+  flex: none;
+}
 
 .folder { display: flex; gap: 8px; flex: 1; min-width: 300px; }
 .folder input { flex: 1; }
@@ -799,8 +810,129 @@ main { display: flex; flex: 1; min-height: 0; }
 
 .dep-suppress { margin-top: 14px; }
 
-/* Catalogue footprint + the purge, inside Setup. */
+/* ---------- setup ----------
+
+   A rail of panels, not a scroll of sections. Four unrelated subjects separated only by
+   hairlines meant "Forget everything" sat a flick below a checkbox, and the panel a user
+   actually wanted was never the one on screen.
+
+   The height is pinned rather than fitted so switching panels does not resize the dialog
+   under the pointer — the rail item you just clicked would move out from under it. */
+.dlg-box.setup { width: min(760px, 100%); }
+
+.setup-layout {
+  display: grid;
+  grid-template-columns: 168px minmax(0, 1fr);
+  gap: 22px;
+  margin-top: 14px;
+  min-height: 400px;
+}
+
+.setup-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  border-right: 1px solid var(--line-soft);
+  padding-right: 12px;
+}
+
+.setup-rail-item {
+  all: unset;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  box-sizing: border-box;
+  padding: 7px 10px;
+  border-radius: var(--radius);
+  font-size: var(--t-xs);
+  color: var(--muted);
+  cursor: pointer;
+  /* The marker is a border rather than an ::before so it cannot shift the label. */
+  border-left: 2px solid transparent;
+  transition: color var(--dur) var(--ease), background var(--dur) var(--ease);
+}
+.setup-rail-item:hover { color: var(--ink); background: var(--surface); }
+.setup-rail-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.setup-rail-item.on {
+  color: var(--ink);
+  background: var(--surface);
+  border-left-color: var(--accent);
+}
+
+.setup-rail-badge {
+  flex: none;
+  min-width: 16px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 0.66rem;
+  line-height: 16px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.setup-panel { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.setup-lede { margin: 0; font-size: var(--t-xs); color: var(--muted); line-height: 1.55; }
+.setup-field { display: flex; flex-direction: column; gap: 8px; }
+.setup-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.setup-actions .hint { margin: 0; }
+
+/* The segmented control for sensitivity. One row, one choice, current state legible without
+   reading — three checkboxes would have implied they combine. */
+.seg {
+  display: flex;
+  align-self: flex-start;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.seg button {
+  all: unset;
+  padding: 5px 13px;
+  font-size: var(--t-xs);
+  color: var(--muted);
+  cursor: pointer;
+  border-right: 1px solid var(--line);
+  transition: color var(--dur) var(--ease), background var(--dur) var(--ease);
+}
+.seg button:last-of-type { border-right: 0; }
+.seg button:hover { color: var(--ink); background: var(--surface); }
+.seg button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.seg button[aria-pressed="true"] { background: var(--accent-soft); color: var(--ink); }
+/* Not a button: custom is a state you land in by moving a slider, never one you pick. */
+.seg-custom {
+  padding: 5px 13px;
+  font-size: var(--t-xs);
+  color: var(--accent);
+  border-left: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.setup-advanced summary {
+  font-size: var(--t-xs);
+  color: var(--muted);
+  cursor: pointer;
+  list-style: revert;
+}
+.setup-advanced summary:hover { color: var(--ink); }
+.setup-advanced .setup-nested { margin-top: 8px; }
+
+/* Reserved for the one setting with a measured cliff under it. Warm, not red: nothing has gone
+   wrong yet, and --danger is spoken for by the controls that delete things. */
+.setup-warn {
+  margin: 0;
+  padding: 7px 9px;
+  border-left: 2px solid var(--warn);
+  background: var(--surface);
+  font-size: var(--t-xs);
+  color: var(--muted);
+  line-height: 1.5;
+}
+
 .setup-block { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line-soft); display: flex; flex-direction: column; gap: 9px; }
+.setup-field h3,
 .setup-block h3 {
   margin: 0;
   font-family: var(--mono);

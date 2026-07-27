@@ -23,7 +23,7 @@ public class AppStateTests : IDisposable
         Directory.CreateDirectory(_work);
         _catalog = new CatalogService(_work);
         _session = new SessionStore(_catalog, TimeSpan.FromMilliseconds(50));
-        _state = new AppState(_catalog, new MacOsTrashService(), _session);
+        _state = new AppState(_catalog, new MacOsTrashService(), _session, new DependencyChecker(_catalog));
     }
 
     long AddImage(string name)

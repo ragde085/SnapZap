@@ -51,5 +51,57 @@ public sealed class OnnxNsfwClassifier : IDisposable
         return ScoreBitmap(bmp);
     }
 
+    /// <summary>
+    /// Score one image at the requested depth.
+    /// </summary>
+    /// <remarks>
+    /// The tiled pass exists because the model sees a 224×224 thumbnail of whatever it is given.
+    /// A person occupying a corner of a wide photo survives that resize as a smear, and the model
+    /// then reports — with confidence — that the photo is clean. One measured case scored 0.0014
+    /// whole-frame and 0.9983 on the tile containing the subject. Nothing about the threshold can
+    /// recover that; the information is gone before inference starts.
+    /// </remarks>
+    public NsfwVerdict Score(SKBitmap bitmap, NsfwDepth depth)
+    {
+        double whole = ScoreBitmap(bitmap);
+        if (depth == NsfwDepth.WholeFrame) return new NsfwVerdict(whole, null);
+
+        double sum = 0;
+        int n = 0;
+        foreach (var (fx, fy, fw, fh) in NsfwDecision.Tiles)
+        {
+            using var tile = Crop(bitmap, fx, fy, fw, fh);
+            if (tile is null) continue;
+            sum += ScoreBitmap(tile);
+            n++;
+        }
+
+        // Every tile too small to crop (a thumbnail-sized original) means there is no tile
+        // evidence, not tile evidence of zero — null keeps it out of the mean-based rule.
+        return new NsfwVerdict(whole, n == 0 ? null : sum / n);
+    }
+
+    public NsfwVerdict ScoreFile(string imagePath, NsfwDepth depth)
+    {
+        using var bmp = SKBitmap.Decode(imagePath)
+            ?? throw new InvalidOperationException($"cannot decode {imagePath}");
+        return Score(bmp, depth);
+    }
+
+    /// <summary>A sub-rectangle given as fractions of the frame, or null when it would be too
+    /// small for the model to make anything of.</summary>
+    static SKBitmap? Crop(SKBitmap src, double fx, double fy, double fw, double fh)
+    {
+        int x = (int)(src.Width * fx), y = (int)(src.Height * fy);
+        int w = Math.Min((int)(src.Width * fw), src.Width - x);
+        int h = Math.Min((int)(src.Height * fh), src.Height - y);
+        if (w < 32 || h < 32) return null;
+
+        var dst = new SKBitmap(w, h);
+        if (src.ExtractSubset(dst, SKRectI.Create(x, y, w, h))) return dst;
+        dst.Dispose();
+        return null;
+    }
+
     public void Dispose() => _session.Dispose();
 }

@@ -4,7 +4,43 @@ using SnapZap.App.Services;
 using SnapZap.Core.Data;
 using SnapZap.Core.Platform;
 
-var builder = WebApplication.CreateBuilder(args);
+// Anchor the content root to the executable, not to whatever directory SnapZap happened to be
+// launched from.
+//
+// WebApplication.CreateBuilder defaults ContentRootPath to Directory.GetCurrentDirectory(), a
+// sound default for a server started by a script from its own directory and a trap for a
+// desktop app. Every static file — app.css, interop.js, blazor.web.js — is resolved under
+// <content root>/wwwroot, so launching SnapZap with any other working directory (from a
+// terminal, a shortcut with a different "Start in", a scheduler, another program) served 404
+// for all of them. The app still started, still returned 200 for the page itself, and rendered
+// prerendered markup with no styling and no interactivity. Double-clicking in Explorer happens
+// to set the working directory to the executable's folder, which is why this hid so well.
+//
+// Only overridden when wwwroot actually sits beside the binary — that is what a published
+// layout looks like. In development it does not: wwwroot stays in the project directory and is
+// served through the static-web-assets manifest, which the default content root is right for.
+var baseDir = AppContext.BaseDirectory;
+var publishedLayout = Directory.Exists(Path.Combine(baseDir, "wwwroot"));
+
+var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+{
+    Args = args,
+    ContentRootPath = publishedLayout ? baseDir : null,
+});
+
+// Bind an ephemeral loopback port unless the environment asked for something specific.
+//
+// Kestrel's default is 5000, which on Windows is contested enough that a second SnapZap — or
+// any other dev server the user happens to run — took the app down at startup with an
+// AddressInUseException. Double-clicked, that is a window that flashes and disappears. Port 0
+// asks the OS for a free one and cannot collide; the URL it actually got is read back off
+// app.Urls after the server starts, so nothing downstream may assume a number.
+if (builder.Configuration["urls"] is null &&
+    Environment.GetEnvironmentVariable("ASPNETCORE_URLS") is null)
+{
+    builder.WebHost.UseUrls("http://127.0.0.1:0");
+}
+
 builder.Services.AddSingleton<CatalogService>();
 builder.Services.AddSingleton<DependencyChecker>();
 builder.Services.AddSingleton<SessionStore>();
@@ -85,23 +121,35 @@ app.MapGet("/api/full/{id:long}", async (long id, CatalogService catalog) =>
 
 app.MapRazorComponents<SnapZap.App.Components.App>().AddInteractiveServerRenderMode();
 
-// Double-clickable UX: once the server is listening, open the app in the default browser.
-// Suppressed by PC_NO_BROWSER (used by automated tests) and when a debugger/dev URL is set.
-if (Environment.GetEnvironmentVariable("PC_NO_BROWSER") is null)
+// PC_NO_BROWSER=1 runs the server and nothing else: no window, no browser, no foreground host.
+// This is the mode the automated tests drive.
+if (Environment.GetEnvironmentVariable("PC_NO_BROWSER") is not null)
 {
-    app.Lifetime.ApplicationStarted.Register(() =>
-    {
-        var url = app.Urls.FirstOrDefault() ?? "http://localhost:5099";
-        try
-        {
-            var psi = new System.Diagnostics.ProcessStartInfo { FileName = url, UseShellExecute = true };
-            System.Diagnostics.Process.Start(psi);
-        }
-        catch { /* headless or no default browser — the URL is printed to the console anyway */ }
-    });
+    app.Run();
+    return;
 }
 
-app.Run();
+// Double-clickable UX. Start the server first so the host can be handed the URL it actually
+// bound to, then give the foreground to the host for the rest of the session: an embedded
+// window on Windows, the default browser elsewhere. When it returns, the user is done.
+try
+{
+    app.StartAsync().GetAwaiter().GetResult();
+
+    var url = app.Urls.FirstOrDefault()
+        ?? throw new InvalidOperationException("The server started without binding an address.");
+
+    AppHostFactory.Create(app.Lifetime, app.Services.GetRequiredService<ILoggerFactory>()).Run(url);
+
+    app.StopAsync().GetAwaiter().GetResult();
+}
+catch (Exception ex)
+{
+    // A windowed build has no console to fail into, so an unhandled startup exception would
+    // otherwise be a process that exits with nothing shown at all.
+    NativeDialog.Error($"SnapZap could not start.\n\n{ex.Message}");
+    throw;
+}
 
 // Exposed so the test project can reference the host entry point later.
 public partial class Program;

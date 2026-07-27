@@ -80,8 +80,7 @@
     /// The bare score used to be the whole tooltip, which told you nothing about whether it
     /// was a high one.</summary>
     string NsfwBadgeTitle =>
-        $"{AppState.BandLabel(NsfwBand)} — the model scored this "
-        + $"{Img.NsfwScore!.Value:F2} of 1.00 (flagged at {AppState.NsfwThreshold:F2} and above)";
+        $"{AppState.BandLabel(NsfwBand)} — the model scored this {AppState.NsfwEvidence(Img)}";
 
     string AriaLabel
     {

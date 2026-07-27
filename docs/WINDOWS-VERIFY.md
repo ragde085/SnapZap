@@ -27,16 +27,37 @@ Late-bound `Shell.Application` → Recycle Bin item → `Restore` verb.
 - [ ] Export with Hardlink mode to a **different** drive → confirm it silently falls back to
       Copy (pre-flight should not offer hardlink).
 
-## 4. Native window host / GPU (not yet implemented)
-Currently the `.exe` starts the local server and opens the default browser (the chosen
-double-clickable UX). Two optional upgrades remain, both Windows-runtime-only:
-- [ ] **WebView2 native window** (Photino) instead of a browser tab — `IAppHost`.
+## 4. Native window host / GPU
+- [x] **WebView2 native window** (Photino) instead of a browser tab — `IAppHost`. Verified on
+      Windows 11: window opens, styled UI renders, closing it stops the server and exits.
 - [ ] **DirectML GPU** acceleration for NSFW inference — swap
       `Microsoft.ML.OnnxRuntime` → `Microsoft.ML.OnnxRuntime.DirectML` in the Windows publish
       and wire `IInferenceProvider`. CPU inference works today; this is a speed upgrade.
 
 ## General smoke test on Windows
-- [ ] Double-click `SnapZap.App.exe` → server starts, browser opens the SPA.
+- [x] Double-click `SnapZap.App.exe` → the app opens in its own window, no console window visible.
+- [x] Assets serve (`app.css`, `interop.js`, `_framework/blazor.web.js`) and the circuit connects.
+- [x] Launch with a working directory *other* than the app's own folder → still styled and live.
+- [x] Two copies at once → the second gets its own port instead of an address-in-use crash.
 - [x] Scan a real folder of JPG/PNG → thumbnails, blur, EXIF populate.
 - [ ] Place `models/nsfw.onnx` beside the exe → NSFW scoring works and scores look sane.
 - [ ] Full round-trip: scan → dedup → select duplicate extras → export (copy) → verify manifest.
+
+## 5. Installer
+- [x] Silent install → per-user, no UAC, Start Menu entry, Apps & features registration.
+- [x] Installed copy launches and renders.
+- [x] Uninstall removes the program folder and shortcuts.
+- [ ] Interactive install with the **Explicit-content scoring model** component ticked →
+      328 MB download, checksum verified, `models/` populated, **Score NSFW** enabled.
+- [ ] Interactive uninstall → the "also delete the catalogue?" prompt appears and defaults to
+      keeping it. (A *silent* uninstall must never delete it — see the note in `SnapZap.iss`.)
+- [ ] Install over an existing version → upgrades in place, one entry in Apps & features.
+
+## 6. Known-failing on Windows (pre-existing, unrelated to packaging)
+`dotnet test` on Windows fails four tests that pass on macOS. Three are the Windows platform
+implementations this document exists to verify, so they are evidence, not noise:
+- `ExportTests.Hardlink_export_creates_zero_copy_links_on_same_volume` — `ILinkService`
+- `ExportTests.Reject_recycle_happens_only_after_keepers_verified` — `ITrashService`
+- `ScannerTests.Exact_duplicates_do_not_fail_on_concurrent_thumbnail_write` — 7 of 21 rows end
+  up with an empty `ThumbPath`; fails 5/5 in isolation
+- `SelectionCommandTests.Burst_only_extras_are_distinguishable_from_having_no_extras_at_all`

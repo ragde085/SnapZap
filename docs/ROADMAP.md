@@ -93,15 +93,23 @@ from geometry measured in `interop.js`.
 
 ### P2 — Nice to have
 
-5. **Photino native window** · _needs Windows_ · ~half day
-   Replace the browser-tab launch with an embedded WebView2 window via `IAppHost` for a true
-   desktop feel. Current browser launch is functional; this is UX polish.
+5. ~~**Photino native window**~~ · ✅ done
+   `IAppHost` is implemented in `App/Services/AppHost.cs`: an embedded WebView2 window on
+   Windows, the default browser everywhere else, and the browser as the fallback when the
+   WebView2 runtime is absent. Closing the window stops the server and ends the process, which
+   also retired the orphaned-server problem the browser tab had. The console window is hidden
+   at run time when SnapZap owns it — **not** via `OutputType=WinExe`, which silently drops
+   Blazor's own scripts from the output; see the note in `SnapZap.App.csproj`.
 
-6. **Installer / distribution** · _needs Windows_ · ~half day
-   Package the `.exe` + `wwwroot` + optional sidecars into an installer (e.g. Inno Setup or
-   MSIX), or ship a zip with a first-run helper that fetches the NSFW model. A macOS `.app`
-   bundle already exists for local use; making it distributable would additionally require
-   Developer ID signing and notarization (see the macOS notes in the README).
+6. ~~**Installer / distribution**~~ · ✅ done for Windows
+   `installer/SnapZap.iss` + `scripts/build-installer.bat` produce a per-user Inno Setup
+   installer (~47 MB) with a Start Menu entry, the NSFW model as an optional downloaded-and-
+   checksummed component, and a WebView2 bootstrap. **Still open: code signing.** Unsigned, the
+   download draws a SmartScreen "unknown publisher" warning, which is the last thing standing
+   between this and something you'd hand to a non-technical user.
+
+   A macOS `.app` bundle exists for local use; distributing it additionally needs Developer ID
+   signing and notarization (see the macOS notes in the README).
 
 7. **NSFW judgment tuning** · user-driven
    The pipeline is validated; whether the model's *decisions* meet your bar is a content

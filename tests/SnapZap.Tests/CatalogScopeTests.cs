@@ -32,7 +32,7 @@ public class CatalogScopeTests : IDisposable
 
         _catalog = new CatalogService(_work);
         _session = new SessionStore(_catalog, TimeSpan.FromMilliseconds(50));
-        _state = new AppState(_catalog, new MacOsTrashService(), _session);
+        _state = new AppState(_catalog, new MacOsTrashService(), _session, new DependencyChecker(_catalog));
     }
 
     long Add(string folder, string name)
