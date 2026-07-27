@@ -74,8 +74,8 @@ else if (AppState.Status.Length > 0)
     string DedupTitle =>
         AppState.ScannedFolder is null
             ? "Scan a folder first."
-            : $"Find identical files and repeated shots in {AppState.ScannedFolder}. "
-              + "Choose which checks run in Setup.";
+            : $"Re-run duplicate detection for {AppState.ScannedFolder} — this already ran once "
+              + "after the last scan. Use this after changing which checks run in Setup.";
 
     string NsfwTitle => _nsfwReady
         ? "Ask the model to guess which photos are explicit. Higher score means more likely — "

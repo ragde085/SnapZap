@@ -904,6 +904,7 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
         await RunAsync("Scanning", async (report, ct) =>
         {
             var progress = new Progress<ScanProgress>(p => report(p.Seen, p.Total, null));
+            string msg;
             try
             {
                 var result = await catalog.ScanAsync(folder, progress, ct);
@@ -912,7 +913,7 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
                 LastUnsupported = result.UnsupportedByFormat;
                 await LoadAsync();
 
-                var msg = $"Scanned {result.Analyzed} new, {result.Cached} cached";
+                msg = $"Scanned {result.Analyzed} new, {result.Cached} cached";
                 if (result.Failed > 0)
                 {
                     var folders = result.Failures.Select(f => f.Folder).Distinct().Count();
@@ -927,43 +928,62 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
                 // has to be said out loud rather than shown as a silently shorter grid.
                 if (result.Pruned > 0)
                     msg += $" · {result.Pruned:N0} no longer in the folder, removed from the catalogue";
-
-                return msg;
             }
             catch (DirectoryNotFoundException)
             {
                 return $"Folder not found: {folder}";
             }
+
+            // Chained here rather than through a call to DedupAsync(): that method's own Busy
+            // guard would just no-op, since we're still inside this run. Dedup used to be a
+            // separate, user-gated step because it was once a genuinely separate pass; now the
+            // perceptual hash rides on scan's own decode (see CLAUDE.md), so what is left for
+            // this to do — a SQL query plus in-memory grouping over hashes already on disk — is
+            // fast enough (docs/PERFORMANCE.md: under a second at 100k photos) that gating it
+            // behind a second click no longer earns its keep.
+            BusyLabel = "Finding duplicates";
+            BusyDone = 0;
+            BusyTotal = 0;
+            BusyDetail = null;
+            Notify();
+            var dedupMsg = await RunDedupAsync(folder, report, ct);
+            return $"{msg} · {dedupMsg}";
         });
     }
 
-    /// <summary>Detect duplicates in the folder currently on screen.</summary>
+    /// <summary>
+    /// Detect duplicates in the folder currently on screen. Runs automatically after every scan
+    /// (see <see cref="ScanAsync"/>) — this is for re-running it on its own, e.g. after changing
+    /// the dedup thresholds in Setup, without repeating the scan itself.
+    /// </summary>
     public async Task DedupAsync()
     {
         if (Busy || ScannedFolder is not { } folder) return;
-        await RunAsync("Finding duplicates", async (reportProgress, ct) =>
+        await RunAsync("Finding duplicates", (report, ct) => RunDedupAsync(folder, report, ct));
+    }
+
+    async Task<string> RunDedupAsync(string folder, Action<int, int, string?> reportProgress, CancellationToken ct)
+    {
+        var progress = new Progress<DedupProgress>(p => reportProgress(p.Done, p.Total, p.Detail));
+        var report = await new DuplicateService(catalog.Db, catalog.Imaging, catalog.ThumbDir)
+            .DetectAsync(folder, progress, ct);
+        await LoadAsync();
+
+        // Counted from the loaded, scoped groups rather than the detectors' own tallies,
+        // so the sentence agrees with the grid behind it.
+        var counts = new List<string>();
+        foreach (var kind in (ReadOnlySpan<DupeKind>)[DupeKind.Exact, DupeKind.Variant, DupeKind.Burst])
         {
-            var progress = new Progress<DedupProgress>(p => reportProgress(p.Done, p.Total, p.Detail));
-            var report = await new DuplicateService(catalog.Db, catalog.Imaging, catalog.ThumbDir)
-                .DetectAsync(folder, progress, ct);
-            await LoadAsync();
+            var n = DupeGroups.Count(g => g.Kind == kind);
+            if (n > 0) counts.Add($"{n:N0} {kind.Label().ToLowerInvariant()}");
+        }
 
-            // Counted from the loaded, scoped groups rather than the detectors' own tallies,
-            // so the sentence agrees with the grid behind it.
-            var counts = new List<string>();
-            foreach (var kind in (ReadOnlySpan<DupeKind>)[DupeKind.Exact, DupeKind.Variant, DupeKind.Burst])
-            {
-                var n = DupeGroups.Count(g => g.Kind == kind);
-                if (n > 0) counts.Add($"{n:N0} {kind.Label().ToLowerInvariant()}");
-            }
-
-            var headline = counts.Count == 0 ? "No duplicates found" : string.Join(", ", counts) + " groups";
-            // The note carries the partial-result warnings — unhashed photos, a truncated
-            // comparison, detectors switched off. Appending it rather than replacing the count is
-            // the point: "0 groups" and "0 groups, but half the library has no signature" have to
-            // look different.
-            return report.Note is null ? headline : $"{headline} · {report.Note}";
-        });
+        var headline = counts.Count == 0 ? "No duplicates found" : string.Join(", ", counts) + " groups";
+        // The note carries the partial-result warnings — unhashed photos, a truncated
+        // comparison, detectors switched off. Appending it rather than replacing the count is
+        // the point: "0 groups" and "0 groups, but half the library has no signature" have to
+        // look different.
+        return report.Note is null ? headline : $"{headline} · {report.Note}";
     }
 
     public async Task NsfwAsync()

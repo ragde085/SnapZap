@@ -389,8 +389,10 @@
             Scope.LikelyExplicit or Scope.NotSure => NothingScored
                 ? "Nothing scored yet — press Score NSFW."
                 : "No photos in this band.",
+            // Dedup now runs automatically right after every scan (see AppState.ScanAsync), so
+            // zero groups here means none were found, not that detection hasn't run yet.
             Scope.DuplicateExtras or Scope.DuplicateKeepers => AppState.DupeGroups.Count == 0
-                ? "Press Find duplicates to look for copies."
+                ? "No duplicates found."
                 // Burst-only is a real state with a misleading obvious message: duplicates were
                 // found, so "no duplicates match" would send the user to clear filters that are
                 // not the reason. Nothing is selectable because nothing here is a copy.
@@ -407,7 +409,7 @@
     /// told a user with a scanned library to go and scan it.</summary>
     string? DupeHint => AppState.DupeGroups.Count > 0 ? null
         : AppState.Images.Count == 0 ? "Scan a folder first."
-        : "Press Find duplicates to look for copies.";
+        : "No duplicates found.";
 
     int ActiveFilterCount =>
         (AppState.Nsfw != NsfwFilter.Any ? 1 : 0) +
