@@ -262,8 +262,9 @@ public class CatalogScopeTests : IDisposable
         // A recycled file's restore record is keyed by path, not by image id, so emptying the
         // catalogue must not take it with them — otherwise "forget the analysis" quietly
         // destroys the only in-app route back for anything already in the Recycle Bin.
-        using (var cmd = _catalog.Db.Connection.CreateCommand())
+        lock (_catalog.Db.WriteLock)
         {
+            using var cmd = _catalog.Db.Writer.CreateCommand();
             cmd.CommandText = """
                 INSERT INTO undo_log(batch_id, op, original_path, new_location, ts_utc)
                 VALUES('batch-1', 'recycle', '/somewhere/gone.jpg', '/Trash/gone.jpg', 0)
@@ -277,7 +278,8 @@ public class CatalogScopeTests : IDisposable
         Assert.Equal(0, _catalog.Images.TotalCount());
         Assert.Null(_catalog.ScanRoot);
 
-        using (var cmd = _catalog.Db.Connection.CreateCommand())
+        using (var c = _catalog.Db.OpenRead())
+        using (var cmd = c.CreateCommand())
         {
             cmd.CommandText = "SELECT COUNT(*) FROM undo_log";
             Assert.Equal(1, Convert.ToInt32(cmd.ExecuteScalar()));

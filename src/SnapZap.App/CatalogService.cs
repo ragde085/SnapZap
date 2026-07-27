@@ -18,6 +18,10 @@ public sealed class CatalogService : IDisposable
     public SkiaImageService Imaging { get; } = new();
     public string ThumbDir { get; }
 
+    /// <summary>Cached mid-size previews served by <c>/api/full/{id}</c> (Task 26), generated
+    /// lazily on first request rather than at scan time.</summary>
+    public string PreviewDir { get; }
+
     /// <summary>Sidecar model path: beside the binary, overridable via PC_NSFW_MODEL.</summary>
     public string NsfwModelPath { get; }
 
@@ -43,6 +47,8 @@ public sealed class CatalogService : IDisposable
             "SnapZap");
         ThumbDir = Path.Combine(_appData, "thumbs");
         Directory.CreateDirectory(ThumbDir);
+        PreviewDir = Path.Combine(_appData, "previews");
+        Directory.CreateDirectory(PreviewDir);
         _db = new Database(Path.Combine(_appData, "catalog.db"));
 
         NsfwModelPath = Environment.GetEnvironmentVariable("PC_NSFW_MODEL")
@@ -54,6 +60,27 @@ public sealed class CatalogService : IDisposable
     public Database Db => _db ?? throw new InvalidOperationException("catalog not open");
 
     public ImageRepository Images => new(Db);
+
+    int _recipeMigrationNoticeTaken;
+
+    /// <summary>
+    /// The signature-recipe migration message (AC 6a: "a catalog.db backup exists at a path
+    /// reported to the user"), if catalogue open just ran one — consumed on first read so it
+    /// surfaces exactly once per process regardless of how many circuits/tabs call this.
+    /// </summary>
+    public string? TakePendingRecipeMigrationNotice()
+    {
+        // RowsInvalidated, not just Migrated: a brand-new catalogue's very first open also "runs a
+        // migration" (from no stored recipe to the current one) but touches zero rows — nothing
+        // happened that a user would recognise as their catalogue changing, so nothing to report.
+        if (Db.RecipeMigration is not { RowsInvalidated: > 0 } migration) return null;
+        if (Interlocked.Exchange(ref _recipeMigrationNoticeTaken, 1) != 0) return null;
+
+        return migration.BackupPath is { } path
+            ? $"Photo signatures were recalculated after an app update ({migration.RowsInvalidated:N0} photos affected). " +
+              $"A backup of the previous catalogue is saved at {path}."
+            : "Photo signatures were recalculated after an app update. Duplicate results will refresh next time you run Find duplicates.";
+    }
 
     const string ScanRootKey = "scan_root";
 
@@ -87,8 +114,8 @@ public sealed class CatalogService : IDisposable
     }
 
     /// <summary>
-    /// Empty the catalogue and the thumbnail cache, returning the app to a fresh install as far
-    /// as analysis goes. Photos on disk are never touched, and the undo log survives so
+    /// Empty the catalogue and the thumbnail/preview caches, returning the app to a fresh install
+    /// as far as analysis goes. Photos on disk are never touched, and the undo log survives so
     /// anything already in the Recycle Bin can still be restored.
     /// </summary>
     public void Forget()
@@ -97,24 +124,24 @@ public sealed class CatalogService : IDisposable
         ScanRoot = null;
         LastScannedFolder = null;
 
-        // Best-effort: a thumbnail that will not delete is wasted disk, not a broken catalogue,
+        // Best-effort: a cached file that will not delete is wasted disk, not a broken catalogue,
         // and the rows that referenced it are already gone.
-        foreach (var file in ThumbFiles())
+        foreach (var file in ThumbFiles().Concat(PreviewFiles()))
         {
             try { File.Delete(file); } catch (IOException) { } catch (UnauthorizedAccessException) { }
         }
     }
 
-    /// <summary>Bytes currently held by the catalogue database and the thumbnail cache.</summary>
+    /// <summary>Bytes currently held by the catalogue database and the thumbnail/preview caches.</summary>
     public (int Photos, long DbBytes, long ThumbBytes) Footprint()
     {
         var db = Path.Combine(_appData, "catalog.db");
-        long thumbs = 0;
-        foreach (var f in ThumbFiles())
+        long cached = 0;
+        foreach (var f in ThumbFiles().Concat(PreviewFiles()))
         {
-            try { thumbs += new FileInfo(f).Length; } catch (IOException) { /* vanished mid-walk */ }
+            try { cached += new FileInfo(f).Length; } catch (IOException) { /* vanished mid-walk */ }
         }
-        return (Images.TotalCount(), File.Exists(db) ? new FileInfo(db).Length : 0, thumbs);
+        return (Images.TotalCount(), File.Exists(db) ? new FileInfo(db).Length : 0, cached);
     }
 
     /// <summary>Every cached thumbnail. Recursive: they are sharded into 256 subdirectories by
@@ -122,6 +149,13 @@ public sealed class CatalogService : IDisposable
     IEnumerable<string> ThumbFiles() =>
         Directory.Exists(ThumbDir)
             ? Directory.EnumerateFiles(ThumbDir, "*", SearchOption.AllDirectories)
+            : [];
+
+    /// <summary>Every cached preview (Task 26) — sharded the same way as thumbnails, and not
+    /// every photo has one yet, since previews are generated lazily on first request.</summary>
+    IEnumerable<string> PreviewFiles() =>
+        Directory.Exists(PreviewDir)
+            ? Directory.EnumerateFiles(PreviewDir, "*", SearchOption.AllDirectories)
             : [];
 
     public void Dispose()

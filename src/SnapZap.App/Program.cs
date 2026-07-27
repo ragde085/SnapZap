@@ -38,19 +38,39 @@ app.MapGet("/api/health", () => Results.Ok(new
 }));
 
 // Serve a cached thumbnail by hash (paths kept server-side, never exposed as file:// URLs).
-app.MapGet("/api/thumb/{hash}", (string hash, CatalogService catalog) =>
+app.MapGet("/api/thumb/{hash}", (string hash, CatalogService catalog, HttpContext ctx) =>
 {
     if (hash.Length < 2 || !hash.All(Uri.IsHexDigit)) return Results.BadRequest();
     var path = Path.Combine(catalog.ThumbDir, hash[..2], hash + ".jpg");
-    return File.Exists(path) ? Results.File(path, "image/jpeg") : Results.NotFound();
+    if (!File.Exists(path)) return Results.NotFound();
+
+    // Content-addressed by hash: different bytes mean a different URL, so a year-long immutable
+    // cache can never point a client at stale content. The recipe-version query parameter
+    // (ImageView.ThumbUrl) is what busts the cache when a thumbnail is regenerated in place —
+    // without it a re-oriented thumbnail would sit behind this header forever (Task 16).
+    ctx.Response.Headers.CacheControl = "public, max-age=31536000, immutable";
+    return Results.File(path, "image/jpeg");
 });
 
 // Full-resolution preview by image id. Guard: only ever serve a path present in the catalog —
 // never an arbitrary path supplied by the client.
-app.MapGet("/api/full/{id:long}", (long id, CatalogService catalog) =>
+//
+// Serves a cached ~1600px preview rather than the original: a 24 MP original is ~20 MB over the
+// wire plus a full-resolution browser decode for what is just a modal (Task 26). The preview is
+// generated and cached lazily on first request, keyed by content hash like the thumbnail cache,
+// and falls back to the original file when one cannot be produced (corrupt/unsupported source —
+// the same file that made the grid's thumbnail generation best-effort).
+app.MapGet("/api/full/{id:long}", async (long id, CatalogService catalog) =>
 {
     var img = new ImageRepository(catalog.Db).ByIds([id]).FirstOrDefault();
     if (img is null || !File.Exists(img.Path)) return Results.NotFound();
+
+    var previewPath = Path.Combine(catalog.PreviewDir, img.ContentHash[..2], img.ContentHash + ".jpg");
+    if (File.Exists(previewPath)) return Results.File(previewPath, "image/jpeg");
+
+    var generated = await Task.Run(() => catalog.Imaging.WritePreview(img.Path, previewPath));
+    if (generated) return Results.File(previewPath, "image/jpeg");
+
     var contentType = Path.GetExtension(img.Path).ToLowerInvariant() switch
     {
         ".jpg" or ".jpeg" => "image/jpeg",

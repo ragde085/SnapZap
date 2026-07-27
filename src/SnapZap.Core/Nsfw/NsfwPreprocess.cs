@@ -12,6 +12,13 @@ namespace SnapZap.Core.Nsfw;
 public static class NsfwPreprocess
 {
     /// <summary>Build the input tensor from an already-decoded bitmap.</summary>
+    /// <remarks>
+    /// Reads pixels via <c>GetPixelSpan()</c> (raw RGBA bytes) and writes through
+    /// <c>tensor.Buffer.Span</c> with a flat plane index, instead of the allocating
+    /// <c>SKBitmap.Pixels</c> property and the four-dimensional tensor indexer. This is eligible
+    /// under the NSFW no-quality-tradeoff rule (TD-1) only because it is bit-identical: same
+    /// source bytes, same arithmetic, same result — the resize filter and decode are untouched.
+    /// </remarks>
     public static DenseTensor<float> ToTensor(SKBitmap bitmap, PreprocessConfig cfg)
     {
         int s = cfg.Size;
@@ -21,16 +28,22 @@ public static class NsfwPreprocess
             ?? throw new InvalidOperationException("resize failed");
 
         var tensor = new DenseTensor<float>([1, 3, s, s]);
-        var px = resized.Pixels; // row-major, length s*s
+        var buf = tensor.Buffer.Span;
+        var px = resized.GetPixelSpan(); // raw RGBA bytes, stride resized.RowBytes
+        int plane = s * s;
+        int stride = resized.RowBytes;
+
+        int i = 0;
         for (int y = 0; y < s; y++)
         {
-            for (int x = 0; x < s; x++)
+            int row = y * stride;
+            for (int x = 0; x < s; x++, i++)
             {
-                var c = px[y * s + x];
+                int off = row + x * 4;
                 // rescale to [0,1] then (v - mean) / std, per channel.
-                tensor[0, 0, y, x] = (c.Red * cfg.RescaleFactor - cfg.Mean[0]) / cfg.Std[0];
-                tensor[0, 1, y, x] = (c.Green * cfg.RescaleFactor - cfg.Mean[1]) / cfg.Std[1];
-                tensor[0, 2, y, x] = (c.Blue * cfg.RescaleFactor - cfg.Mean[2]) / cfg.Std[2];
+                buf[i] = (px[off] * cfg.RescaleFactor - cfg.Mean[0]) / cfg.Std[0];
+                buf[plane + i] = (px[off + 1] * cfg.RescaleFactor - cfg.Mean[1]) / cfg.Std[1];
+                buf[2 * plane + i] = (px[off + 2] * cfg.RescaleFactor - cfg.Mean[2]) / cfg.Std[2];
             }
         }
         return tensor;

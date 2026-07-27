@@ -63,6 +63,11 @@ dotnet publish src/SnapZap.App -c Release -r win-x64 --self-contained \
 
 Output: `artifacts/win-x64/SnapZap.App.exe` (~130 MB, includes .NET runtime, requires no installation)
 
+ReadyToRun is enabled automatically for this RID (scoped by `RuntimeIdentifier` in
+`SnapZap.App.csproj`, no extra flag needed) — pre-JITted native startup code, trading a larger
+binary for faster cold start. Published-size and cold-start deltas need measuring on the actual
+Windows target; not yet done (tracked in `docs/PERFORMANCE.md`).
+
 ### Build for macOS (local use on the dev machine)
 
 ```bash
@@ -126,6 +131,8 @@ The sidecars are excluded from publish output (`CopyToPublishDirectory="Never"`)
 | `docs/WINDOWS-VERIFY.md` | Checklist for four Windows-only code paths |
 | `scripts/install-deps.{sh,bat}` | One-command install of both optional sidecars (pinned + checksummed) |
 | `scripts/export-nsfw-model.sh` | Build the ONNX model from PyTorch weights instead of downloading it |
+| `scripts/make-icons.py` | Rebuild the icon set from the source art (needs Pillow; outputs are committed) |
+| `assets/icon/` | Source art for the app icon + the generated 1024/256 PNGs |
 | `artifacts/` | Publish output (built, not committed) |
 | `models/` | NSFW ONNX model + preprocessor config (installed, not committed) |
 
@@ -139,8 +146,10 @@ The sidecars are excluded from publish output (`CopyToPublishDirectory="Never"`)
 - **Services/** — `AppState` (scoped per circuit: view state + operations, replaces the old
   `app.js` state object), `ImageView` (record wrapping `ImageRecord` for display),
   `DependencyChecker` (validates the optional sidecars, singleton).
-- **wwwroot/** — `app.css` (the "Darkroom" design system) and `interop.js` (grid geometry
-  measurement, scroll windowing, arrow-key focus movement).
+- **wwwroot/** — `app.css` (the "Darkroom" design system), `interop.js` (grid geometry
+  measurement, scroll windowing, arrow-key focus movement), and `favicon.ico`, which is also
+  the `.exe` icon (`<ApplicationIcon>` in the csproj points here so the tab and the taskbar
+  cannot disagree). Regenerate it with `scripts/make-icons.py`.
 
 ### Key subdirectories in `Core/`
 
@@ -302,8 +311,16 @@ Full rationale in [docs/DEDUP-V2.md](docs/DEDUP-V2.md). The short version:
 - **Settings live in the `meta` table**, not `settings.json`, because `images.dupe_checked_kinds`
   only means anything against the settings that produced it and both must reset with `catalog.db`.
   (`settings.json` still exists for app-level prefs — `DependencyChecker.StoredSettings`.)
-- **Matching is brute force**, deliberately. ~1.25 B pairs at 50k photos, but the ceiling in
-  `DistanceTo` bails on the first 64-bit word for unrelated pairs. Revisit an index past ~150k.
+- **Matching uses a pigeonhole band prefilter** (`VariantFinder.BandPrefilterPairs`), not brute
+  force. The original brute-force claim undersold its own cost — with rotations on, the five-word
+  `DistanceTo` loop runs once per rotation and rarely reaches 0 to trigger the early break, ~8×
+  worse than "one XOR and one PopCount" implied. Splitting the 272 bits into `VariantMaxBits + 1`
+  bands and indexing rotation 0 of every signature is **exact, not approximate**: two hashes within
+  threshold can differ in at most that many bands, so by pigeonhole at least one band must match
+  identically. Measured (M1, synthetic/uniform-random hashes — real libraries cluster and will skew
+  differently, see `docs/PERFORMANCE.md`): 6.5×/12×/20× at 20k/50k/100k. The brute-force sweep is
+  retained as a fallback for high thresholds (`VariantMaxBits` up to 60 collapses band width below
+  `VariantFinder.BandWidthFloor`) and as the reference path parity tests compare against.
 - **Not detected: crops and reframes.** No grid hash can find them. Documented and accepted in
   DEDUP-V2 §9, not an oversight.
 

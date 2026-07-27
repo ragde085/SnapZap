@@ -75,12 +75,22 @@ else if (AppState.Status.Length > 0)
 
     string NsfwTitle => _nsfwReady
         ? "Ask the model to guess which photos are explicit. Higher score means more likely — "
-          + "it is a guess, not a verdict."
+          + "it is a guess, not a verdict." + NsfwScopeNote
         : "Needs the NSFW model — see Setup.";
 
+    /// <summary>Mirrors the scope <see cref="Services.AppState.NsfwAsync"/> actually scores:
+    /// selection first, else the focused folder, else the whole library.</summary>
+    string NsfwScopeNote => AppState.Selected.Count > 0
+        ? $" Scores the {AppState.Selected.Count:N0} selected photos."
+        : AppState.Folder.Length > 0
+            ? $" Scores photos in {ImageView.ShortFolder(AppState.Folder)}."
+            : " Scores every unscored photo in the library.";
+
     string CountLabel => AppState.BusyTotal > 0
-        ? $"{AppState.BusyDone:N0} / {AppState.BusyTotal:N0}"
+        ? $"{AppState.BusyDone:N0} / {AppState.BusyTotal:N0}{EtaSuffix}"
         : AppState.BusyDone > 0 ? $"{AppState.BusyDone:N0}" : "";
+
+    string EtaSuffix => AppState.BusyEta is { } eta ? $" · ~{EtaEstimator.Format(eta)} left" : "";
 
     Task HandleFolderKey(KeyboardEventArgs e) =>
         e.Key == "Enter" ? Scan() : Task.CompletedTask;

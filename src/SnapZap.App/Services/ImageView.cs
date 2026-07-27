@@ -1,4 +1,5 @@
 using SnapZap.Core;
+using SnapZap.Core.Dedup;
 
 namespace SnapZap.App.Services;
 
@@ -7,7 +8,11 @@ public sealed record DupeInfo(long GroupId, DupeKind Kind, bool IsKeeper);
 
 /// <summary>An <see cref="ImageRecord"/> plus the view-only fields components need: thumb/full
 /// URLs, resolved dupe info, and folder/year computed from the path/EXIF.</summary>
-public sealed record ImageView(ImageRecord Record, DupeInfo? Dupe)
+/// <param name="ThumbGeneration">
+/// The cached thumbnail file's own last-write time (ticks), stamped once per <c>LoadAsync</c>
+/// snapshot — see <see cref="ThumbUrl"/>. Zero when there is no thumbnail file to stat.
+/// </param>
+public sealed record ImageView(ImageRecord Record, DupeInfo? Dupe, long ThumbGeneration = 0)
 {
     /// <summary>Laplacian variance below this reads as soft enough to flag on the thumbnail,
     /// used when the user hasn't set their own threshold on the filter slider. Read it through
@@ -40,7 +45,21 @@ public sealed record ImageView(ImageRecord Record, DupeInfo? Dupe)
     public long? ExifTaken => Record.ExifTaken;
     public string? ExifCamera => Record.ExifCamera;
 
-    public string ThumbUrl => $"/api/thumb/{Record.ContentHash}";
+    /// <summary>
+    /// The query parameter busts the browser's one-year <c>immutable</c> cache header (Task 2)
+    /// whenever the thumbnail file is regenerated in place — content-addressed by hash, which does
+    /// not change when orientation handling does, so without this the cache header would defeat
+    /// Task 16's regeneration and browsers would keep serving the stale sideways image.
+    /// </summary>
+    /// <remarks>
+    /// Keyed on the thumbnail file's own <see cref="ThumbGeneration"/> (its last-write time), not
+    /// a compile-time recipe-version constant. A global constant only busts the cache across an
+    /// app-version boundary — the lazy signature backfill (<c>DuplicateService</c>) can rewrite a
+    /// thumbnail mid-session, at the same app version, the moment "Find duplicates" is next run,
+    /// and a static constant would leave anyone who had already fetched that URL this session
+    /// stuck on the stale image for up to a year.
+    /// </remarks>
+    public string ThumbUrl => $"/api/thumb/{Record.ContentHash}?v={ThumbGeneration}";
     public string FullUrl => $"/api/full/{Id}";
 
     public string FileName => System.IO.Path.GetFileName(Path);

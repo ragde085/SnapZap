@@ -1,3 +1,5 @@
+<img src="assets/icon/snapzap-256.png" alt="" width="128" />
+
 # SnapZap
 
 Your personal photo assistant. Tired of duplicates and blurry shots cluttering your library?
@@ -525,6 +527,9 @@ The optional model is deliberately **not** copied into the publish output, so th
 ~130 MB whether or not you installed it locally. To ship it, point the installer at the publish
 folder: `scripts\install-deps.bat --dest artifacts\win-x64`.
 
+This publish also picks up ReadyToRun automatically (scoped to `win-x64` in the `.csproj`) for a
+faster cold start, at the cost of a larger binary.
+
 ### macOS
 
 macOS is the development platform, but the app runs there too. Publish framework-dependent and
@@ -579,6 +584,7 @@ score validation (`PC_NSFW_MODEL` + `PC_NSFW_FIXTURES`).
 | `tests/SnapZap.Tests` | xUnit suite |
 | `scripts/install-deps.{sh,bat}` | One-command install of the optional model |
 | `scripts/export-nsfw-model.sh` | Build the ONNX model from PyTorch weights yourself (rarely needed) |
+| `scripts/make-icons.py` | Rebuild the icon set (favicon + `.exe` icon) from `assets/icon/snapzap-source.png` |
 | `docs/DESIGN.md` | Architecture, decisions, safety invariants |
 | `docs/DEDUP-V2.md` | How the three duplicate detectors work, and why |
 | `docs/ROADMAP.md` | Current status + prioritized next steps |

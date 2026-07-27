@@ -12,19 +12,21 @@ namespace SnapZap.Core.Scanning;
 /// </summary>
 public static class Hasher
 {
+    /// <summary>1 MiB buffer, <c>SequentialScan</c> hint: the OS read-ahead this enables matters
+    /// more than the buffer size itself for a hash that reads the whole file once, start to end.</summary>
+    static FileStream OpenSequential(string path) =>
+        new(path, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 20, FileOptions.SequentialScan);
+
     public static string HashFile(string path)
     {
-        using var stream = File.OpenRead(path);
-        using var sha = SHA256.Create();
-        var hash = sha.ComputeHash(stream);
-        return Convert.ToHexStringLower(hash);
+        using var stream = OpenSequential(path);
+        return Convert.ToHexStringLower(SHA256.HashData(stream));
     }
 
     public static string HashFile(string path, out long length)
     {
-        using var stream = File.OpenRead(path);
+        using var stream = OpenSequential(path);
         length = stream.Length;
-        using var sha = SHA256.Create();
-        return Convert.ToHexStringLower(sha.ComputeHash(stream));
+        return Convert.ToHexStringLower(SHA256.HashData(stream));
     }
 }

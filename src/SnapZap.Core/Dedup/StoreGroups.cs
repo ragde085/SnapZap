@@ -28,17 +28,22 @@ public static class StoreGroups
         if (groups.Count == 0) return;
 
         var repo = new DupeRepository(db);
-        using var tx = db.Connection.BeginTransaction();
-        foreach (var group in groups)
+        // One lock, one transaction, for every group — a plain C# lock is re-entrant for the same
+        // thread, so DupeRepository.AddGroup's own internal lock (Task 18) does not deadlock here.
+        lock (db.WriteLock)
         {
-            var members = group.Where(byId.ContainsKey).Select(id => byId[id]).ToList();
-            if (members.Count < 2) continue;
+            using var tx = db.Writer.BeginTransaction();
+            foreach (var group in groups)
+            {
+                var members = group.Where(byId.ContainsKey).Select(id => byId[id]).ToList();
+                if (members.Count < 2) continue;
 
-            var keeper = Keeper(members, rule);
-            repo.AddGroup(kind, similarity,
-                members.Select(m => (m.Id, m.Id == keeper)).ToList());
+                var keeper = Keeper(members, rule);
+                repo.AddGroup(kind, similarity,
+                    members.Select(m => (m.Id, m.Id == keeper)).ToList());
+            }
+            tx.Commit();
         }
-        tx.Commit();
     }
 
     /// <remarks>

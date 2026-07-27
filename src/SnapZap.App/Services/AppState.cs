@@ -123,6 +123,10 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
     /// </remarks>
     public string? BusyDetail { get; private set; }
 
+    /// <summary>Estimated time remaining for the current run, from a rolling recent-throughput
+    /// window (see <see cref="EtaEstimator"/>). Null until enough progress has been observed.</summary>
+    public TimeSpan? BusyEta { get; private set; }
+
     CancellationTokenSource? _cts;
 
     /// <summary>True while an operation is running that hasn't already been asked to stop.</summary>
@@ -365,17 +369,34 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
     /// <summary>Folder hierarchy with per-step completion, rebuilt on each load.</summary>
     public FolderNode? Tree { get; private set; }
 
-    // ---- Load --------------------------------------------------------------
-    public Task LoadAsync()
-    {
-        // Only the folder the session is scoped to. The catalogue keeps every folder ever
-        // scanned as cache; loading all of it put photos from unrelated libraries in the grid
-        // and, worse, inside the reach of "select everything shown" → Delete.
-        // Recover the working folder across restarts: it is what export's mirror mode and the
-        // post-restore re-scan need, and it is already recorded in the catalogue.
-        ScannedFolder ??= catalog.ScanRoot;
+    /// <summary>Everything <see cref="LoadAsync"/> computes off-thread: pure reads and LINQ
+    /// passes over the catalogue, with no dependency on (or mutation of) other <see cref="AppState"/>
+    /// fields, so it is safe to run on a background thread.</summary>
+    sealed record LoadSnapshot(
+        IReadOnlyList<ImageView> Images,
+        Dictionary<NsfwBand, int> BandCounts,
+        Dictionary<long, DupeInfo> DupeOf,
+        IReadOnlyList<DupeGroup> DupeGroups,
+        Dictionary<long, ImageView> ById,
+        IReadOnlyList<string> Folders,
+        IReadOnlyList<int> Years,
+        int DupeExtraCount,
+        long ReclaimableBytes,
+        FolderNode? Tree);
 
-        var records = catalog.Images.Under(catalog.ScanRoot).ToList();
+    /// <summary>The cached thumbnail file's own last-write time, or 0 when there is none to stat
+    /// — see <see cref="ImageView.ThumbUrl"/>.</summary>
+    static long ThumbGenerationOf(ImageRecord r)
+    {
+        if (r.ThumbPath is null) return 0;
+        try { return new FileInfo(r.ThumbPath).LastWriteTimeUtc.Ticks; }
+        catch (IOException) { return 0; }
+        catch (UnauthorizedAccessException) { return 0; }
+    }
+
+    LoadSnapshot BuildLoadSnapshot(string? scanRoot)
+    {
+        var records = catalog.Images.Under(scanRoot).ToList();
         var present = records.Select(r => r.Id).ToHashSet();
 
         // Groups are stored as they were detected, but members get recycled afterwards. A group
@@ -389,40 +410,76 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
         var dupeOf = new Dictionary<long, DupeInfo>();
         foreach (var g in groups)
         {
-            // If the keeper itself was recycled, every survivor still reads IsKeeper=false —
-            // so they all counted as reclaimable extras, and "select all extras" would arm a
-            // delete against every remaining copy of the photo. A group always keeps one.
+            // If every keeper in the group was recycled, every survivor still reads
+            // IsKeeper=false — so they all counted as reclaimable extras, and "select all
+            // extras" would arm a delete against every remaining copy of the photo. A group
+            // always keeps at least one. More than one member may be flagged is_keeper (a burst
+            // can have two frames worth keeping — see ToggleKeeper), so this is a set, not a
+            // single id.
             var members = g.Members;
-            var keeperId = members.FirstOrDefault(m => m.IsKeeper)?.ImageId
-                        ?? members.OrderBy(m => m.ImageId).First().ImageId;
+            var keeperIds = members.Where(m => m.IsKeeper).Select(m => m.ImageId).ToHashSet();
+            if (keeperIds.Count == 0)
+                keeperIds.Add(members.OrderBy(m => m.ImageId).First().ImageId);
 
             foreach (var m in members)
-                dupeOf[m.ImageId] = new DupeInfo(g.Id, g.Kind, m.ImageId == keeperId);
+                dupeOf[m.ImageId] = new DupeInfo(g.Id, g.Kind, keeperIds.Contains(m.ImageId));
         }
 
-        Images = records.Select(r => new ImageView(r, dupeOf.GetValueOrDefault(r.Id))).ToList();
-        _bandCounts = Images.GroupBy(BandOf).ToDictionary(g => g.Key, g => g.Count());
-        DupeOf = dupeOf;
-        DupeGroups = groups;
-        _byId = Images.ToDictionary(i => i.Id);
+        var images = records
+            .Select(r => new ImageView(r, dupeOf.GetValueOrDefault(r.Id), ThumbGenerationOf(r)))
+            .ToList();
+        var bandCounts = images.GroupBy(BandOf).ToDictionary(g => g.Key, g => g.Count());
+        var byId = images.ToDictionary(i => i.Id);
 
-        Folders = Images.Select(i => i.Folder).Distinct()
+        var folders = images.Select(i => i.Folder).Distinct()
             .OrderBy(f => f, StringComparer.Ordinal).ToList();
-        Years = Images.Select(i => i.Year).Where(y => y is not null).Select(y => y!.Value)
+        var years = images.Select(i => i.Year).Where(y => y is not null).Select(y => y!.Value)
             .Distinct().OrderByDescending(y => y).ToList();
 
         // Only non-keepers are reclaimable, and only in kinds a bulk action would actually take.
         // Counting burst frames here would advertise space that "Select duplicate extras" is
         // deliberately never going to free, and send the user hunting for the missing gigabytes.
-        var extras = Images
+        var extras = images
             .Where(i => dupeOf.TryGetValue(i.Id, out var d) && !d.IsKeeper && d.Kind.IsBulkSelectable())
             .ToList();
-        DupeExtraCount = extras.Count;
-        ReclaimableBytes = extras.Sum(i => i.FileSize);
 
         // Built against the detectors that are on right now, not against whatever was on when the
         // rows were stamped — that difference is exactly what re-flags folders as pending.
-        Tree = FolderTreeBuilder.Build(Images, DupeOf, DedupSettings.Load(catalog.Db).CoveredKinds);
+        var tree = FolderTreeBuilder.Build(images, dupeOf, DedupSettings.Load(catalog.Db).CoveredKinds);
+
+        return new LoadSnapshot(images, bandCounts, dupeOf, groups, byId, folders, years,
+                                 extras.Count, extras.Sum(i => i.FileSize), tree);
+    }
+
+    // ---- Load --------------------------------------------------------------
+    public async Task LoadAsync()
+    {
+        // Only the folder the session is scoped to. The catalogue keeps every folder ever
+        // scanned as cache; loading all of it put photos from unrelated libraries in the grid
+        // and, worse, inside the reach of "select everything shown" → Delete.
+        // Recover the working folder across restarts: it is what export's mirror mode and the
+        // post-restore re-scan need, and it is already recorded in the catalogue.
+        ScannedFolder ??= catalog.ScanRoot;
+        var scanRoot = catalog.ScanRoot;
+
+        // The catalogue read, the group read and the dozen-odd whole-library LINQ passes all
+        // happen here, off the circuit thread — previously they ran inline and returned
+        // Task.CompletedTask despite the signature. Mutating AppState's own fields happens only
+        // after this await, back on the circuit (Blazor Server's SynchronizationContext resumes
+        // the continuation there), so subscribed components never observe a torn mix of old and
+        // new state.
+        var snapshot = await Task.Run(() => BuildLoadSnapshot(scanRoot));
+
+        Images = snapshot.Images;
+        _bandCounts = snapshot.BandCounts;
+        DupeOf = snapshot.DupeOf;
+        DupeGroups = snapshot.DupeGroups;
+        _byId = snapshot.ById;
+        Folders = snapshot.Folders;
+        Years = snapshot.Years;
+        DupeExtraCount = snapshot.DupeExtraCount;
+        ReclaimableBytes = snapshot.ReclaimableBytes;
+        Tree = snapshot.Tree;
 
         var live = Images.Select(i => i.Id).ToHashSet();
 
@@ -439,7 +496,14 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
         // LoadAsync both replaces Images and prunes/restores Selected, so the selection memo
         // must be invalidated and the (possibly pruned) selection persisted.
         NotifySelectionChanged();
-        return Task.CompletedTask;
+
+        // One-shot, process-wide: surfaces the backup path a signature-recipe migration took
+        // (AC 6a — "reported to the user", not just written to a log nobody reads). Checked on
+        // every load rather than only the first one in this circuit, since it's the first *tab*
+        // to load after the migration that should show it, and TakePendingRecipeMigrationNotice
+        // itself guarantees only one of them wins the race.
+        if (catalog.TakePendingRecipeMigrationNotice() is { } notice)
+            ShowToast(notice);
     }
 
     // ---- Filtering -----------------------------------------------------
@@ -454,20 +518,23 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
         // Blurrier-than filter: lower blur score = blurrier, so show scores <= threshold.
         if (_blurMax > 0 && !(img.BlurScore is { } b && b <= _blurMax)) return false;
         if (_dupesOnly && !DupeOf.ContainsKey(img.Id)) return false;
-        // Prefix match by default, guarded by the separator so "/a/b" never swallows "/a/bc".
-        // Selecting a parent folder therefore includes everything beneath it; exact matching for
-        // everyone used to mean a folder holding only subfolders matched nothing at all.
-        // IncludeSubfolders off narrows it back to the one directory — see the property.
-        if (_folder.Length > 0)
-        {
-            var hit = _includeSubfolders
-                ? img.Folder == _folder || img.Folder.StartsWith(_folder + "/", StringComparison.Ordinal)
-                : img.Folder == _folder;
-            if (!hit) return false;
-        }
+        if (!InFolderScope(img)) return false;
         if (_year.Length > 0 && img.Year?.ToString() != _year) return false;
         return true;
     }
+
+    /// <summary>
+    /// Prefix match by default, guarded by the separator so "/a/b" never swallows "/a/bc".
+    /// Selecting a parent folder therefore includes everything beneath it; exact matching for
+    /// everyone used to mean a folder holding only subfolders matched nothing at all.
+    /// IncludeSubfolders off narrows it back to the one directory — see the property.
+    /// True (no restriction) when no folder is focused, i.e. "All folders".
+    /// </summary>
+    bool InFolderScope(ImageView img) =>
+        _folder.Length == 0 ||
+        (_includeSubfolders
+            ? img.Folder == _folder || img.Folder.StartsWith(_folder + "/", StringComparison.Ordinal)
+            : img.Folder == _folder);
 
     /// <summary>The visible set, in grid order. Memoised — this runs on every render of
     /// the grid, the summary and the selection ops, over the whole library.</summary>
@@ -667,10 +734,14 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
             .OrderBy(i => i.Path, StringComparer.Ordinal)
             .ToList();
 
-    /// <summary>Override which member of a group survives an export.</summary>
-    public async Task SetKeeperAsync(long groupId, long imageId)
+    /// <summary>
+    /// Flip whether one member of a group survives an export. More than one member of a group
+    /// may be a keeper at once — a burst might have two frames worth keeping — and a group
+    /// always keeps at least one, so toggling off the last remaining keeper is a no-op.
+    /// </summary>
+    public async Task ToggleKeeperAsync(long groupId, long imageId)
     {
-        new DupeRepository(catalog.Db).SetKeeper(groupId, imageId);
+        new DupeRepository(catalog.Db).ToggleKeeper(groupId, imageId);
         await LoadAsync();
     }
 
@@ -766,7 +837,7 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
         folder = ExpandHome(folder);
         await RunAsync("Scanning", async (report, ct) =>
         {
-            var progress = new Progress<ScanProgress>(p => report(p.Seen, 0, null));
+            var progress = new Progress<ScanProgress>(p => report(p.Seen, p.Total, null));
             try
             {
                 var result = await catalog.ScanAsync(folder, progress, ct);
@@ -807,7 +878,8 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
         await RunAsync("Finding duplicates", async (reportProgress, ct) =>
         {
             var progress = new Progress<DedupProgress>(p => reportProgress(p.Done, p.Total, p.Detail));
-            var report = await new DuplicateService(catalog.Db).DetectAsync(folder, progress, ct);
+            var report = await new DuplicateService(catalog.Db, catalog.Imaging, catalog.ThumbDir)
+                .DetectAsync(folder, progress, ct);
             await LoadAsync();
 
             // Counted from the loaded, scoped groups rather than the detectors' own tallies,
@@ -831,11 +903,27 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
     public async Task NsfwAsync()
     {
         if (Busy) return;
+
+        // Selection wins over the folder focused in the tree; with neither set ("All folders",
+        // nothing selected) this falls through to the whole catalogue via ScanRoot. Captured now,
+        // not read again once the run starts, so the scope can't drift if the user changes the
+        // selection or folder while a previous scope's scan is still in flight.
+        //
+        // Deliberately InFolderScope only, not the full Filtered() (which also applies the year
+        // filter etc.) — a year filter narrows what's *shown*, but scoring is additive metadata,
+        // not a destructive/selective action, so "the folder" scores every year in it. If that
+        // ever needs to match the grid's active filters exactly, swap this for Filtered().
+        IReadOnlyList<long>? scope = Selected.Count > 0
+            ? Selected.ToList()
+            : _folder.Length > 0
+                ? Images.Where(InFolderScope).Select(i => i.Id).ToList()
+                : null;
+
         await RunAsync("Scoring NSFW", async (report, ct) =>
         {
             var progress = new Progress<NsfwProgress>(p => report(p.Done, p.Total, null));
             var result = await new NsfwScorer(catalog.Db, catalog.NsfwModelPath)
-                .ScoreAllAsync(catalog.ScanRoot, progress, ct: ct);
+                .ScoreAllAsync(catalog.ScanRoot, progress, imageIds: scope, ct: ct);
             await LoadAsync();
             return result.ModelAvailable
                 ? $"Scored {result.Scored}" + (result.Failed > 0 ? $", {result.Failed} failed" : "")
@@ -855,6 +943,7 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
         BusyDone = 0;
         BusyTotal = 0;
         BusyDetail = null;
+        BusyEta = null;
         Status = "";
         _cts = new CancellationTokenSource();
         Notify();
@@ -866,12 +955,14 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
         await Task.Yield();
 
         var live = true;
+        var eta = new EtaEstimator();
         void Report(int done, int total, string? detail)
         {
             if (!live) return;
             BusyDone = done;
             BusyTotal = total;
             BusyDetail = detail;
+            BusyEta = eta.Estimate(Environment.TickCount64, done, total);
             Notify();
         }
 
@@ -884,7 +975,12 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
             // Everything analysed before the stop is already committed, and the tier-1 cache
             // means re-running skips it — so a cancelled scan is progress, not lost work.
             await LoadAsync();
-            Status = $"{label} stopped after {BusyDone:N0} of {BusyTotal:N0}";
+            // Total can still be 0 here — e.g. Stop lands while Scanner is enumerating the
+            // folder, before file count is even known — so "of 0" would misreport, not just
+            // look odd.
+            Status = BusyTotal > 0
+                ? $"{label} stopped after {BusyDone:N0} of {BusyTotal:N0}"
+                : $"{label} stopped after {BusyDone:N0}";
         }
         catch (Exception ex)
         {
@@ -896,6 +992,7 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
             Busy = false;
             BusyLabel = null;
             BusyDetail = null;
+            BusyEta = null;
             _cts?.Dispose();
             _cts = null;
             Notify();

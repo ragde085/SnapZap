@@ -207,12 +207,48 @@ czkawka's entire extra pass.
 | Kind | Signal | Cost | Auto-select |
 |---|---|---|---|
 | `Exact` | SHA-256 equality, pure SQL | negligible | yes |
-| `Variant` | dHash distance ≤ `variant.maxbits`, over rotations | ~1 s at 50k | yes |
+| `Variant` | dHash distance ≤ `variant.maxbits`, over rotations | pigeonhole band prefilter — see below | yes |
 | `Burst` | same camera + EXIF timestamps within `burst.windowsec`, gated by dHash ≤ `burst.maxbits` | negligible | **no** |
 
 `Burst` costs almost nothing because the EXIF window restricts candidate pairs to near-neighbours
 in time before any hash is compared. It is off by default: bursts are not duplicates, and a user
 who wants them should opt in.
+
+### 5.1 `Variant`'s pigeonhole band prefilter
+
+Superseded from the original design: matching was brute force "deliberately", with the note
+above defending it as "one XOR and one PopCount" per unrelated pair and setting the revisit point
+at ~150k photos. Both understated the cost. Measured: with rotations enabled the five-word
+`DistanceTo` loop runs once per rotation and `best` rarely reaches 0 to trigger the early break —
+**~8×** worse than the "one XOR and one PopCount" framing implied, not the ~4x a naive rotation
+count would suggest.
+
+`VariantFinder.BandPrefilterPairs` splits each 272-bit signature into `B = VariantMaxBits + 1`
+contiguous bands and indexes rotation 0 of every signature by `(band index, band value)`. This is
+**exact, not approximate**: two hashes differing in at most `VariantMaxBits` bits cannot differ in
+all `B` bands, so by pigeonhole at least one band must be bit-for-bit identical between them.
+Probing with all four rotations of each image therefore cannot miss a true match — band collisions
+only ever add candidates that the unchanged, exact `DistanceTo` check filters back out.
+
+**This guarantee depends on actually building `B` non-empty bands, which the first cut of this
+code did not.** It allocated `bandWidth = ceil(272 / B)` for every band; whenever that didn't
+divide 272 evenly, the trailing bands ran past bit 272 and were silently dropped — at
+`VariantMaxBits=32` (`B=33`), `ceil(272/33)=9` gives only 31 real bands, not 33, breaking pigeonhole
+for a 32-bit difference spread one-or-two per band across all 31. That's a silent false negative —
+no error, no truncation flag — across roughly 40% of the slider's range (caught in tech-lead
+review, not by the original test suite, whose planted distances happened not to hit the failure
+mode). `VariantFinder.BandLayout` fixes this: `baseWidth = 272 / B` (floor) with the first
+`272 % B` bands getting one extra bit, which always yields exactly `B` non-empty bands regardless
+of divisibility. See its doc-comment and the regression test in `BandPrefilterTests.cs`.
+
+Measured (M1, uniformly random hashes — real libraries cluster and will skew differently; see
+`docs/PERFORMANCE.md`'s caveats): **6.5× / 12× / 20×** at 20k / 50k / 100k photos, identical pair
+sets confirmed against brute force in every run. At high thresholds (`VariantMaxBits` up to 60)
+band width collapses far enough that the prefilter degenerates to brute force plus indexing
+overhead, so it falls back below `VariantFinder.BandWidthFloor`; the brute-force sweep is kept as
+a callable path for exactly that case, and as the reference `BandPrefilterTests` compares against.
+The revisit-past-150k framing above no longer applies — there is no separate index to build past a
+threshold, only a fallback to the same brute-force sweep this replaces.
 
 ---
 
@@ -313,7 +349,7 @@ Recorded so the gaps are decisions rather than oversights.
 | CLIP/DINOv2 embeddings | **Aggressive crops and reframes are not detected.** No grid hash can find these. This is a real capability we are choosing not to have, to avoid a second ~300 MB model, ~12 min of one-time CPU inference over 50k photos, and an ANN index. |
 | Tiled dHash (3×3 overlapping tiles) | Same gap, milder — would catch crops retaining ≳50% of the frame. Dropped from v1 as unvalidated: it needs its own column, threshold and toggle. Purely additive later. |
 | `DupeKind.Reframe` | Follows from the two above: no detector, so no kind. |
-| BK-tree / multi-index hashing | Nothing at ≤50k, where brute force wins on simplicity. Revisit past ~150k photos. |
+| BK-tree / multi-index hashing | Superseded — see §5.1. The pigeonhole band prefilter gets the same exactness a BK-tree would, at a fraction of the implementation and maintenance cost, and covers the range brute force used to own outright. |
 | czkawka's reference-folder mode, size filters, alternate hash algorithms | Never used any of them. |
 | HEIC / AVIF / JXL / RAW hashing | Already absent — SkiaSharp cannot decode them, so they were never in the catalog. Unchanged. |
 
