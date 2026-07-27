@@ -67,7 +67,10 @@ echo Building installer with "%ISCC%"...
 "%ISCC%" /Q "%REPO%\installer\SnapZap.iss"
 if errorlevel 1 exit /b 1
 
+rem Full path and size, not `dir /b`. The bare filename was all this printed, which told the one
+rem person who had just run it the one thing they already knew and not where the file went.
 echo.
-echo Done:
-dir /b "%REPO%\artifacts\installer\*.exe"
+echo Done. The installer is:
+for %%F in ("%REPO%\artifacts\installer\*.exe") do @echo   %%~fF  (%%~zF bytes)
+echo.
 endlocal
