@@ -86,15 +86,25 @@ Windows target; not yet done (tracked in `docs/PERFORMANCE.md`).
 ```bash
 # RID-specific, framework-dependent (~57 MB). NOT self-contained, NOT single-file — see below.
 dotnet publish src/SnapZap.App -c Release -r osx-arm64 --self-contained false -o artifacts/mac
+
+# Wraps that publish in a double-clickable SnapZap.app and packages it as a .pkg installer.
+scripts/build-installer-mac.sh
 ```
 
 ⚠️ **Do not use `--self-contained` / `PublishSingleFile` on macOS.** The resulting apphost
 Mach-O binary is SIGKILLed on launch (exit 137, no output, no crash report) by endpoint
 security on managed Macs — it is ad-hoc signed and unnotarized. Verified: self-contained and
 framework-dependent apphosts both die; `dotnet SnapZap.App.dll` runs fine. So the macOS
-`.app` bundle uses a **shell-script launcher** that invokes `dotnet <dll>`, which also lets it
-resolve the runtime by absolute path (Finder gives GUI apps a minimal `PATH` that excludes
-`/usr/local/share/dotnet`).
+`.app` bundle uses a **shell-script launcher** (`installer-mac/launcher.sh`) that invokes
+`dotnet <dll>`, resolving the runtime by absolute path via `installer-mac/find-dotnet.sh`
+(Finder gives GUI apps a minimal `PATH` that excludes `/usr/local/share/dotnet`).
+
+`scripts/build-installer-mac.sh` produces `artifacts/installer-mac/SnapZap-<version>.pkg` via
+`pkgbuild`/`productbuild`, with the NSFW model as the same kind of optional, checksummed
+component the Windows installer offers. Unlike Windows it can only warn about a missing .NET
+10 runtime (nothing to silently bootstrap, since the app can't be self-contained here), and a
+`.pkg` has no built-in uninstaller — removal is dragging `SnapZap.app` to the Trash. It is also
+unsigned/unnotarized, so Gatekeeper flags it on any Mac other than the one that built it.
 
 ### Sidecar assets (optional, ship beside the binary)
 ```bash
@@ -144,7 +154,9 @@ The sidecars are excluded from publish output (`CopyToPublishDirectory="Never"`)
 | `docs/BLAZOR-MIGRATION.md` | The SPA → Blazor Server migration (completed) |
 | `docs/WINDOWS-VERIFY.md` | Checklist for four Windows-only code paths |
 | `installer/SnapZap.iss` | Inno Setup definition for the Windows installer (per-user, optional model component, WebView2 bootstrap) |
-| `scripts/build-installer.bat` | Publish + package in one step; the supported way to build the installer |
+| `scripts/build-installer.bat` | Publish + package in one step; the supported way to build the Windows installer |
+| `installer-mac/` | `.app` bundle template (`Info.plist.template`, `launcher.sh`, `find-dotnet.sh`) + `.pkg` postinstall scripts (`postinstall-app.sh`, `postinstall-model.sh`, `notify.sh`) |
+| `scripts/build-installer-mac.sh` | Publish + assemble `SnapZap.app` + package as a `.pkg` in one step; the supported way to build the macOS installer |
 | `scripts/install-deps.{sh,bat}` | One-command install of both optional sidecars (pinned + checksummed) |
 | `scripts/export-nsfw-model.sh` | Build the ONNX model from PyTorch weights instead of downloading it |
 | `scripts/make-icons.py` | Rebuild the icon set from the source art (needs Pillow; outputs are committed) |

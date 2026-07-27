@@ -37,6 +37,7 @@ No cloud, no subscriptions, no paid dependencies. Two promises hold throughout:
 [From source](#building-from-source) ·
 [Windows app](#the-windows-app) ·
 [Windows installer](#the-windows-installer) ·
+[macOS installer](#the-macos-installer) ·
 [Tests](#tests) ·
 [Project layout](#project-layout) ·
 [Development note](#development-note)
@@ -664,16 +665,60 @@ dotnet publish src/SnapZap.App -c Release -r osx-arm64 --self-contained false -o
 dotnet artifacts/mac/SnapZap.App.dll
 ```
 
-For a double-clickable `SnapZap.app`, wrap that output in a bundle whose
-`Contents/MacOS/<name>` is a shell script that `cd`s to the payload and runs
-`dotnet SnapZap.App.dll`. Two things make this necessary:
+For a double-clickable `SnapZap.app`, run [`scripts/build-installer-mac.sh`](scripts/build-installer-mac.sh)
+(see [The macOS installer](#the-macos-installer)), which wraps that output in a bundle whose
+`Contents/MacOS/SnapZap` is a shell script running `dotnet SnapZap.App.dll` rather than the
+publish's own apphost. Two things make that necessary:
 
 - **Don't use `--self-contained` or `PublishSingleFile` on macOS.** The published apphost is
   ad-hoc signed and unnotarized, and endpoint security on managed Macs SIGKILLs it at launch
-  (exit 137, no output, no crash report). Running the DLL through `dotnet` avoids this.
+  (exit 137, no output, no crash report) — verified for both self-contained and
+  framework-dependent apphosts. Running the DLL through `dotnet` avoids this because `dotnet`
+  itself is Microsoft's signed, notarized binary.
 - **Resolve `dotnet` by absolute path in the launcher.** Finder hands GUI apps a minimal `PATH`
   that excludes `/usr/local/share/dotnet`, so a bare `dotnet` works from a terminal but not from
-  a double-click.
+  a double-click. [`installer-mac/find-dotnet.sh`](installer-mac/find-dotnet.sh) is the shared
+  lookup, checked by both the launcher and the installer's postinstall warning.
+
+### The macOS installer
+
+**macOS only**, obviously — `pkgbuild`/`productbuild` are Apple's own command-line tools, already
+on every Mac. From the repo root:
+
+```bash
+scripts/build-installer-mac.sh
+```
+
+That publishes `osx-arm64`, assembles `SnapZap.app`, and packages it as a product `.pkg` via
+`productbuild`, leaving:
+
+```
+artifacts/installer-mac/SnapZap-1.0.0.pkg
+```
+
+The version in the filename is read out of `SnapZap.App.csproj`, not written twice.
+
+| Flag | Effect |
+|---|---|
+| *(none)* | Publish, assemble, package. Use this. |
+| `--no-build` | Package whatever is already in `artifacts/mac`. Faster when iterating on the installer scripts alone. |
+
+#### What the installer does — and where it differs from Windows
+
+- Installs `SnapZap.app` into `/Applications` and offers the NSFW model as an optional
+  component, same pins as `scripts/install-deps.sh`; picking it downloads during install and
+  verifies the SHA-256, same as the Windows installer's model component.
+- Runs a postinstall check for the .NET 10 runtime and shows an alert if it's missing — the
+  closest macOS equivalent of the Windows installer's WebView2 check, but **it can only warn**.
+  There's no bundled runtime installer to fall back to, because the app can't be self-contained
+  here (see above); the machine needs .NET 10 already installed.
+- **Has no uninstaller.** A `.pkg` doesn't register one the way Inno Setup does. Removing
+  SnapZap is dragging `/Applications/SnapZap.app` to the Trash; the catalogue and thumbnails in
+  `~/Library/Application Support/SnapZap` are left behind either way, same as the app itself.
+- **Is unsigned and unnotarized**, so Gatekeeper flags it as being from an unidentified developer
+  on any Mac other than the one that built it — fine for this machine or handing to a few
+  people, not a public download. Fixing that needs an Apple Developer ID and a notarization
+  step, not yet done.
 
 ### Building the model yourself
 

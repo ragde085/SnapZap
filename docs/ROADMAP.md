@@ -42,7 +42,7 @@ select → export (copy/move/hardlink) → delete → undo/restore.
 | Grid sort + folder tree + scan-issue reporting | ✅ browser-tested |
 | Windows platform services | ⚠️ implemented, cross-compiled, runtime-unverified |
 | Self-contained `.exe` packaging | ✅ builds |
-| macOS `.app` bundle | ✅ runs locally (framework-dependent, script launcher) |
+| macOS `.app` bundle + `.pkg` installer | ✅ builds (`scripts/build-installer-mac.sh`), framework-dependent, script launcher |
 
 ---
 
@@ -101,15 +101,21 @@ from geometry measured in `interop.js`.
    at run time when SnapZap owns it — **not** via `OutputType=WinExe`, which silently drops
    Blazor's own scripts from the output; see the note in `SnapZap.App.csproj`.
 
-6. ~~**Installer / distribution**~~ · ✅ done for Windows
+6. ~~**Installer / distribution**~~ · ✅ done for Windows, ✅ done for macOS
    `installer/SnapZap.iss` + `scripts/build-installer.bat` produce a per-user Inno Setup
    installer (~47 MB) with a Start Menu entry, the NSFW model as an optional downloaded-and-
    checksummed component, and a WebView2 bootstrap. **Still open: code signing.** Unsigned, the
    download draws a SmartScreen "unknown publisher" warning, which is the last thing standing
    between this and something you'd hand to a non-technical user.
 
-   A macOS `.app` bundle exists for local use; distributing it additionally needs Developer ID
-   signing and notarization (see the macOS notes in the README).
+   `installer-mac/*` + `scripts/build-installer-mac.sh` produce a `.pkg` (via `pkgbuild` /
+   `productbuild`) that installs `SnapZap.app` into `/Applications`, with the model as the same
+   kind of optional downloaded-and-checksummed component. It differs from the Windows installer
+   in ways that aren't oversights: it can only warn about a missing .NET 10 runtime rather than
+   install one (the app can't be self-contained on macOS — see the known limitation below), and
+   a `.pkg` has no built-in uninstaller, so removal is dragging `SnapZap.app` to the Trash. Also
+   unsigned and unnotarized — distributing it beyond this machine needs an Apple Developer ID
+   and notarization (see [The macOS installer](../README.md#the-macos-installer)).
 
 7. **NSFW judgment tuning** · user-driven
    The pipeline is validated; whether the model's *decisions* meet your bar is a content

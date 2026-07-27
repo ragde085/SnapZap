@@ -11,6 +11,8 @@ Outputs (all committed — this script exists to document how they were made, no
 because a build step runs it)
     assets/icon/snapzap.png                 1024 master, for anything new that needs one
     assets/icon/snapzap-256.png             what README.md displays
+    assets/icon/snapzap.icns                the macOS .app bundle icon (built via `iconutil`,
+                                             so only produced when run on macOS)
     src/SnapZap.App/wwwroot/favicon.ico     the browser tab *and* the .exe icon
     src/SnapZap.App/wwwroot/snapzap.png     the mark beside the wordmark, in the app itself
 
@@ -38,7 +40,10 @@ Two things here are deliberate:
    assembled entry by entry instead of handing Pillow a `sizes=` list.
 """
 
+import shutil
+import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 from PIL import Image, ImageDraw
@@ -47,8 +52,13 @@ ROOT = Path(__file__).resolve().parent.parent
 SOURCE = ROOT / "assets" / "icon" / "snapzap-source.png"
 MASTER = ROOT / "assets" / "icon" / "snapzap.png"
 README_PNG = ROOT / "assets" / "icon" / "snapzap-256.png"
+ICNS = ROOT / "assets" / "icon" / "snapzap.icns"
 FAVICON = ROOT / "src" / "SnapZap.App" / "wwwroot" / "favicon.ico"
 BRAND_PNG = ROOT / "src" / "SnapZap.App" / "wwwroot" / "snapzap.png"
+
+# iconutil wants every one of these; skipping one leaves that resolution missing on the
+# corresponding display rather than falling back to a scaled neighbour.
+ICNS_SIZES = [16, 32, 64, 128, 256, 512, 1024]
 
 BRAND_SIZE = 128  # displayed at 28px; the headroom is for high-DPI displays
 
@@ -127,9 +137,41 @@ def main() -> int:
     frames[-1].save(FAVICON, format="ICO", sizes=[f.size for f in frames],
                     append_images=frames[:-1])
 
-    for path in (MASTER, README_PNG, FAVICON, BRAND_PNG):
+    make_icns(master)
+
+    outputs = [MASTER, README_PNG, FAVICON, BRAND_PNG]
+    if ICNS.exists():
+        outputs.append(ICNS)
+    for path in outputs:
         print(f"{path.relative_to(ROOT).as_posix():<40} {path.stat().st_size / 1024:7.1f} KB")
     return 0
+
+
+def make_icns(master: Image.Image) -> None:
+    """Build the .app bundle icon via iconutil, macOS's own iconset compiler.
+
+    Skipped off macOS (no iconutil there) rather than failing the whole script — this is the
+    one output the Windows dev flow never needed, so its absence must not block regenerating
+    the other four.
+    """
+    if not shutil.which("iconutil"):
+        print("iconutil not found (not on macOS) — skipping snapzap.icns", file=sys.stderr)
+        return
+
+    with tempfile.TemporaryDirectory() as tmp:
+        iconset = Path(tmp) / "snapzap.iconset"
+        iconset.mkdir()
+        for size in ICNS_SIZES:
+            master.resize((size, size), Image.LANCZOS).save(iconset / f"icon_{size}x{size}.png")
+            # @2x entries reuse the next size up rather than a second resize pass — e.g.
+            # icon_16x16@2x.png is pixel-identical to icon_32x32.png, which is already in plan.
+            doubled = size * 2
+            if doubled in ICNS_SIZES:
+                shutil.copyfile(iconset / f"icon_{size}x{size}.png",
+                                 iconset / f"icon_{size}x{size}@2x.png")
+        # 1024 has no @2x slot (there's no 2048 entry in ICNS_SIZES) — iconutil accepts the
+        # iconset without one; it's simply the largest size served at 1x.
+        subprocess.run(["iconutil", "-c", "icns", str(iconset), "-o", str(ICNS)], check=True)
 
 
 if __name__ == "__main__":
