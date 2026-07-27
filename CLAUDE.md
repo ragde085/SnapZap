@@ -64,9 +64,9 @@ dotnet publish src/SnapZap.App -c Release -r win-x64 --self-contained \
 scripts\build-installer.bat
 ```
 
-Output: `artifacts/win-x64/` — `SnapZap.App.exe` + `wwwroot/` + `appsettings.json`, ~132 MB, no .NET
+Output: `artifacts/win-x64/` — `SnapZap.App.exe` + `wwwroot/` + `appsettings.json`, ~157 MB, no .NET
 install needed. `scripts\build-installer.bat` turns that into
-`artifacts/installer/SnapZap-<version>-setup.exe` (~42 MB).
+`artifacts/installer/SnapZap-<version>-setup.exe` (~47 MB).
 
 **The executable does not work on its own.** `PublishSingleFile` bundles the runtime and the app
 assemblies; it cannot bundle `wwwroot`, which holds `app.css`, `interop.js` and Blazor's
@@ -128,7 +128,7 @@ models/preprocessor_config.json
 
 Graceful degradation: a missing NSFW model disables NSFW scoring and nothing else. Duplicate detection — exact, variant and burst — is entirely in-process and needs no sidecar.
 
-The sidecars are excluded from publish output (`CopyToPublishDirectory="Never"`), so the published folder stays ~132 MB whether or not they are installed locally. Populate a publish folder with `scripts/install-deps.sh --dest artifacts/win-x64`, or tick the model component in the installer.
+The sidecars are excluded from publish output (`CopyToPublishDirectory="Never"`), so the published folder is the same size whether or not they are installed locally. Populate a publish folder with `scripts/install-deps.sh --dest artifacts/win-x64`, or tick the model component in the installer.
 
 ---
 
@@ -163,9 +163,12 @@ The sidecars are excluded from publish output (`CopyToPublishDirectory="Never"`)
   `app.js` state object), `ImageView` (record wrapping `ImageRecord` for display),
   `DependencyChecker` (validates the optional sidecars, singleton).
 - **wwwroot/** — `app.css` (the "Darkroom" design system), `interop.js` (grid geometry
-  measurement, scroll windowing, arrow-key focus movement), and `favicon.ico`, which is also
-  the `.exe` icon (`<ApplicationIcon>` in the csproj points here so the tab and the taskbar
-  cannot disagree). Regenerate it with `scripts/make-icons.py`.
+  measurement, scroll windowing, arrow-key focus movement), and two icon files. `favicon.ico`
+  is also the `.exe` icon (`<ApplicationIcon>` in the csproj points here so the tab, the
+  taskbar and the window cannot disagree); `snapzap.png` is the same artwork at 128px for the
+  mark beside the wordmark in `Home.razor`. Both are generated from
+  `assets/icon/snapzap-source.png` by `scripts/make-icons.py` — edit the source art, not the
+  outputs, and `VerifyPublishOutput` will catch it if either goes missing from a publish.
 
 ### Key subdirectories in `Core/`
 

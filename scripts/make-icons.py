@@ -12,10 +12,16 @@ because a build step runs it)
     assets/icon/snapzap.png                 1024 master, for anything new that needs one
     assets/icon/snapzap-256.png             what README.md displays
     src/SnapZap.App/wwwroot/favicon.ico     the browser tab *and* the .exe icon
+    src/SnapZap.App/wwwroot/snapzap.png     the mark beside the wordmark, in the app itself
 
 The .ico lives in wwwroot and is used twice: SnapZap.App.csproj points
 <ApplicationIcon> at it, and App.razor links it as the favicon. One file, so the
 window in the taskbar and the tab in the browser can never drift apart.
+
+snapzap.png is the same artwork again, for the top-left of the UI. It is a
+separate file from the master only because the master is 1024px and 1.3 MB — far
+too much to send down the wire for a 28px mark — and a separate file from the
+.ico because an <img> wants a PNG. 128px, so it stays sharp at 2x and 3x.
 
 Two things here are deliberate:
 
@@ -42,6 +48,9 @@ SOURCE = ROOT / "assets" / "icon" / "snapzap-source.png"
 MASTER = ROOT / "assets" / "icon" / "snapzap.png"
 README_PNG = ROOT / "assets" / "icon" / "snapzap-256.png"
 FAVICON = ROOT / "src" / "SnapZap.App" / "wwwroot" / "favicon.ico"
+BRAND_PNG = ROOT / "src" / "SnapZap.App" / "wwwroot" / "snapzap.png"
+
+BRAND_SIZE = 128  # displayed at 28px; the headroom is for high-DPI displays
 
 CORNER_RATIO = 0.200  # measured off the source art
 EDGE_INSET = 3        # rows of transparent-but-white pixels at the source's edge
@@ -101,6 +110,11 @@ def main() -> int:
     master.save(MASTER, optimize=True)
     master.resize((256, 256), Image.LANCZOS).save(README_PNG, optimize=True)
 
+    # The whole tile, not a face crop: in the UI it sits at 28px next to the
+    # wordmark, where it reads as a logo rather than as an icon in a list, and
+    # the rounded tile is what makes it look like one.
+    master.resize((BRAND_SIZE, BRAND_SIZE), Image.LANCZOS).save(BRAND_PNG, optimize=True)
+
     frames = [
         crop_square(master, keep).resize((size, size), Image.LANCZOS)
         for size, keep in sorted(ICO_PLAN.items())
@@ -113,7 +127,7 @@ def main() -> int:
     frames[-1].save(FAVICON, format="ICO", sizes=[f.size for f in frames],
                     append_images=frames[:-1])
 
-    for path in (MASTER, README_PNG, FAVICON):
+    for path in (MASTER, README_PNG, FAVICON, BRAND_PNG):
         print(f"{path.relative_to(ROOT).as_posix():<40} {path.stat().st_size / 1024:7.1f} KB")
     return 0
 

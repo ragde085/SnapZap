@@ -161,6 +161,8 @@
            Text="Publish is missing wwwroot/interop.js — the photo grid measures its geometry there and would render empty." />
     <Error Condition="!Exists('$(PublishDir)wwwroot/favicon.ico')"
            Text="Publish is missing wwwroot/favicon.ico — used as the window icon as well as the favicon. Run scripts/make-icons.py." />
+    <Error Condition="!Exists('$(PublishDir)wwwroot/snapzap.png')"
+           Text="Publish is missing wwwroot/snapzap.png — the mark beside the wordmark in the toolbar. Run scripts/make-icons.py." />
   </Target>
 
 </Project>

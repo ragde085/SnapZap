@@ -103,7 +103,7 @@ from geometry measured in `interop.js`.
 
 6. ~~**Installer / distribution**~~ · ✅ done for Windows
    `installer/SnapZap.iss` + `scripts/build-installer.bat` produce a per-user Inno Setup
-   installer (~42 MB) with a Start Menu entry, the NSFW model as an optional downloaded-and-
+   installer (~47 MB) with a Start Menu entry, the NSFW model as an optional downloaded-and-
    checksummed component, and a WebView2 bootstrap. **Still open: code signing.** Unsigned, the
    download draws a SmartScreen "unknown publisher" warning, which is the last thing standing
    between this and something you'd hand to a non-technical user.
