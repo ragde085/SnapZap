@@ -1,0 +1,363 @@
+@implements IDisposable
+@inject AppState AppState
+
+@*
+    The left rail: the folder tree, the Filters popover and the Select command row used to be
+    three separate pieces of chrome (a fixed aside, a topbar popover, an inline button row).
+    Here they are one column — Plan / Folders / Filters — with a progress strip that stays
+    above the tabs no matter which is open, because "3 of 5 done · 58 groups waiting" is the
+    one thing this redesign must never hide.
+*@
+<div class="rail">
+    <div class="rail-lib">
+        <div class="eyeb" style="margin-bottom:5px">Library</div>
+        <div class="rail-lib-path">@(AppState.ScannedFolder ?? "—")</div>
+        @if (AppState.ScannedFolder is not null)
+        {
+            <div class="rail-lib-meta">
+                @AppState.Images.Count.ToString("N0") photos
+                @if (AppState.ScannedAt is { } at)
+                {
+                    <text> · scanned @AppState.TimeAgo(at)</text>
+                }
+            </div>
+        }
+    </div>
+
+    @if (AppState.ScannedFolder is not null)
+    {
+        <div class="rail-progress">
+            <div class="rail-progress-head">
+                <span class="eyeb">@DoneCount of 5 done</span>
+                @if (AppState.DupeGroups.Count > 0)
+                {
+                    <span class="waiting">@AppState.DupeGroups.Count.ToString("N0") GROUPS WAITING</span>
+                }
+            </div>
+            <div class="rail-progress-bar">
+                @foreach (var step in AppState.PlanSteps)
+                {
+                    <span class="@(step.State == PlanStepState.Done ? "done" : step.State == PlanStepState.Active ? "current" : "")"></span>
+                }
+            </div>
+        </div>
+    }
+
+    <div class="tabs" role="tablist" aria-label="Rail view">
+        <button class="tab @(_tab == RailTab.Plan ? "tab-on" : "")" role="tab"
+                aria-selected="@(_tab == RailTab.Plan ? "true" : "false")"
+                @onclick="() => _tab = RailTab.Plan">
+            Plan
+            @if (AttentionCount > 0)
+            {
+                <span class="tag tag-accent">@AttentionCount</span>
+            }
+        </button>
+        <button class="tab @(_tab == RailTab.Folders ? "tab-on" : "")" role="tab"
+                aria-selected="@(_tab == RailTab.Folders ? "true" : "false")"
+                @onclick="() => _tab = RailTab.Folders">
+            Folders
+            @if (SomeFolderPending)
+            {
+                <span class="dot">●</span>
+            }
+        </button>
+        <button class="tab @(_tab == RailTab.Filters ? "tab-on" : "")" role="tab"
+                aria-selected="@(_tab == RailTab.Filters ? "true" : "false")"
+                @onclick="() => _tab = RailTab.Filters">
+            Filters
+            @if (AppState.HasActiveFilter)
+            {
+                <span class="tag tag-accent">@ActiveFilterCount</span>
+            }
+        </button>
+    </div>
+
+    <div class="rail-body">
+        @if (_tab == RailTab.Plan)
+        {
+            @* ScannedFolder isn't set until a scan *finishes* — gating on Busy too keeps the
+               live pipeline (Scan step "Reading… N so far") showing during the very first
+               scan, instead of reverting to "nothing scanned" underneath it. *@
+            @if (AppState.ScannedFolder is null && !AppState.Busy)
+            {
+                <div style="padding:16px">
+                    <p class="hint" style="margin-bottom:12px">Scan a folder to see the plan.</p>
+                    <ScanForm />
+                </div>
+            }
+            else
+            {
+                @foreach (var step in AppState.PlanSteps)
+                {
+                    @RenderStep(step)
+                }
+            }
+        }
+        else if (_tab == RailTab.Folders)
+        {
+            <FolderTreeView />
+        }
+        else
+        {
+            @RenderFilters()
+        }
+    </div>
+</div>
+
+@code {
+    public enum RailTab { Plan, Folders, Filters }
+
+    [Parameter] public EventCallback OnOpenDupeReview { get; set; }
+
+    RailTab _tab = RailTab.Plan;
+    bool _changingFolder;
+
+    /// <summary>Lets the grid header's "Filters" button (Home.razor) bring this tab forward
+    /// without Home needing to know the rail's internal tab-state shape.</summary>
+    public void ShowFiltersTab()
+    {
+        _tab = RailTab.Filters;
+        StateHasChanged();
+    }
+
+    int DoneCount => AppState.PlanSteps.Count(s => s.State == PlanStepState.Done);
+
+    /// <summary>Steps genuinely worth a red badge on the Plan tab — an actionable result
+    /// waiting (duplicate groups to review), not merely "not started yet".</summary>
+    int AttentionCount => AppState.DupeGroups.Count > 0 ? 1 : 0;
+
+    bool SomeFolderPending => AppState.Tree?.PendingSteps().Any() ?? false;
+
+    int ActiveFilterCount =>
+        (AppState.Nsfw != NsfwFilter.Any ? 1 : 0) +
+        (AppState.BlurMax > 0 ? 1 : 0) +
+        (AppState.DupeFilter != DupeFilter.Any ? 1 : 0) +
+        (AppState.Folder.Length > 0 ? 1 : 0) +
+        (AppState.Year.Length > 0 ? 1 : 0) +
+        (AppState.IncludeSubfolders ? 0 : 1);
+
+    protected override void OnInitialized() => AppState.Changed += StateHasChanged;
+    public void Dispose() => AppState.Changed -= StateHasChanged;
+
+    RenderFragment RenderStep(PlanStep step) => __builder =>
+    {
+        var rowClass = step.State switch
+        {
+            PlanStepState.Active => "on",
+            PlanStepState.Waiting => "waiting",
+            _ => step.Highlighted ? "on" : "",
+        };
+
+        <div class="step-row @rowClass">
+            <div class="step">
+                @RenderNum(step)
+                <div style="flex:1">
+                    <div class="step-title">@step.Title</div>
+                    <div class="step-detail">@step.Detail</div>
+
+                    @if (step.Number == 1 && step.State == PlanStepState.Done)
+                    {
+                        <button class="btn btn-ghost" style="font-size:11.5px;padding:2px 0;margin-top:4px"
+                                @onclick="() => _changingFolder = !_changingFolder">
+                            @(_changingFolder ? "Cancel" : "Change folder…")
+                        </button>
+                        @if (_changingFolder)
+                        {
+                            <div style="margin-top:6px">
+                                <ScanForm InitialValue="@AppState.ScannedFolder"
+                                          ButtonStyle="font-size:12px;padding:5px 10px;width:100%" />
+                            </div>
+                        }
+                    }
+
+                    @if (step.Number == 2 && step.State == PlanStepState.Done)
+                    {
+                        <div style="margin-top:7px">
+                            @if (AppState.DupeGroups.Count > 0)
+                            {
+                                <button class="btn btn-primary" style="font-size:12px;padding:5px 10px;width:100%;margin-bottom:5px"
+                                        @onclick="() => OnOpenDupeReview.InvokeAsync()">
+                                    Review @AppState.DupeGroups.Count.ToString("N0") groups
+                                </button>
+                            }
+                            <button class="btn btn-secondary" style="font-size:11.5px;padding:3px 9px;background:var(--color-bg)"
+                                    disabled="@AppState.Busy" @onclick="() => AppState.DedupAsync()">
+                                Find again
+                            </button>
+                        </div>
+                    }
+
+                    @if (step.Number == 3 && step.State == PlanStepState.Available)
+                    {
+                        <button class="btn btn-secondary facet-run" style="font-size:12px;padding:4px 10px"
+                                disabled="@(AppState.Busy || !AppState.NsfwModelReady)"
+                                title="@(AppState.NsfwModelReady ? "Ask the model to guess which photos are explicit." : "Needs the NSFW model — see Setup.")"
+                                @onclick="() => AppState.NsfwAsync()">
+                            Run
+                        </button>
+                    }
+                </div>
+            </div>
+        </div>
+    };
+
+    RenderFragment RenderNum(PlanStep step) => __builder =>
+    {
+        var cls = step.State switch
+        {
+            PlanStepState.Done => "num done",
+            PlanStepState.Active => "num on",
+            PlanStepState.Queued => "num queued",
+            _ => "num",
+        };
+
+        <span class="@cls">
+            @if (step.State == PlanStepState.Done)
+            {
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
+            }
+            else
+            {
+                @step.Number
+            }
+        </span>
+    };
+
+    RenderFragment RenderFilters() => __builder =>
+    {
+        <div class="rail-filters">
+            <div class="filter-head">
+                <span class="eyeb">Narrowing to</span>
+                <button class="btn btn-ghost" style="font-size:11.5px" disabled="@(!AppState.HasActiveFilter)"
+                        @onclick="() => AppState.ClearFilters()">Clear all</button>
+            </div>
+
+            <div class="facet">
+                <label class="eyeb" style="display:block;margin-bottom:4px">Duplicates</label>
+                @RenderDupeRow(DupeFilter.Any, "Any", AppState.Images.Count, null)
+                @RenderDupeRow(DupeFilter.ExtrasOnly, "Extra copies only", AppState.DupeExtraCount,
+                    $"Identical and same-shot — {AppState.FormattedReclaimable}.")
+                @RenderDupeRow(DupeFilter.KeepersOnly, "Keepers only", AppState.DupeKeeperCount, null)
+                @RenderDupeRow(DupeFilter.BurstOnly, "Burst frames", AppState.BurstMemberCount, null)
+                <div class="facet-note quiet">Separate photographs — no bulk path picks them.</div>
+            </div>
+
+            <div class="facet">
+                <label class="eyeb" style="display:block;margin-bottom:4px">Content review</label>
+                @RenderNsfwRow(NsfwFilter.Any, "Any", AppState.Images.Count)
+                @RenderNsfwRow(NsfwFilter.Likely, "Likely explicit", AppState.CountInBand(AppState.NsfwBand.Likely))
+                @RenderNsfwRow(NsfwFilter.Unsure, "Not sure", AppState.CountInBand(AppState.NsfwBand.Unsure))
+                @RenderNsfwRow(NsfwFilter.Clean, "Looks clean", AppState.CountInBand(AppState.NsfwBand.Clean))
+                @RenderNsfwRow(NsfwFilter.Unchecked, "Not checked yet", AppState.CountInBand(AppState.NsfwBand.Unchecked))
+                @if (AppState.CountInBand(AppState.NsfwBand.Unchecked) == AppState.Images.Count && AppState.Images.Count > 0)
+                {
+                    <button class="btn btn-secondary facet-run" style="font-size:11.5px;padding:3px 9px"
+                            disabled="@(AppState.Busy || !AppState.NsfwModelReady)"
+                            title="@(AppState.NsfwModelReady ? "Score every photo for explicit content." : "Needs the NSFW model — see Setup.")"
+                            @onclick="() => AppState.NsfwAsync()">
+                        Run to unlock these
+                    </button>
+                }
+            </div>
+
+            <div class="facet">
+                <label class="eyeb" style="display:block;margin-bottom:6px">
+                    Blurrier than — @(AppState.BlurMax == 0 ? "off" : AppState.BlurMax.ToString())
+                </label>
+                <input type="range" min="0" max="300" step="5" value="@AppState.BlurMax"
+                       @onchange="e => AppState.BlurMax = int.Parse(e.Value!.ToString()!)"
+                       @oninput="e => AppState.BlurMax = int.Parse(e.Value!.ToString()!)" />
+                <div class="facet-note quiet">@SoftCount would drop out at @AppState.SoftThreshold.ToString("F0").</div>
+            </div>
+
+            <div class="facet">
+                <label class="eyeb" style="display:block;margin-bottom:4px">Folder</label>
+                <div style="font-size:12.5px;padding:4px 0;border-top:1px solid var(--color-divider);display:flex;justify-content:space-between">
+                    <span>@(AppState.Folder.Length > 0 ? ImageView.ShortFolder(AppState.Folder) : "All folders")</span>
+                    @if (AppState.Folder.Length > 0)
+                    {
+                        <span style="display:flex;align-items:center;gap:6px">
+                            <span style="color:var(--color-neutral-700);font-size:11px">set in Folders</span>
+                            <span class="filter-chip" style="padding:0" @onclick="() => AppState.Folder = string.Empty"><span class="clear">✕</span></span>
+                        </span>
+                    }
+                    else
+                    {
+                        <span style="color:var(--color-neutral-700);font-size:11px">set in Folders</span>
+                    }
+                </div>
+                @* Only meaningful once a folder is chosen — with no folder there is nothing for
+                   "subfolders" to be relative to. *@
+                @if (AppState.Folder.Length > 0)
+                {
+                    <label class="radio" style="margin-top:8px;font-size:12.5px">
+                        <input type="checkbox" checked="@AppState.IncludeSubfolders"
+                               @onchange="e => AppState.IncludeSubfolders = (bool)e.Value!" />
+                        <span class="dot"></span>
+                        Include subfolders
+                    </label>
+                    @if (!AppState.IncludeSubfolders)
+                    {
+                        <div class="facet-note quiet">Off, the folder matches exactly — nothing under it is included.</div>
+                    }
+                }
+            </div>
+
+            <div class="facet">
+                <label class="eyeb" style="display:block;margin-bottom:4px">Year</label>
+                <div class="seg seg-scroll">
+                    <label class="seg-opt">
+                        <input type="radio" name="year" checked="@(AppState.Year.Length == 0)" @onchange="() => AppState.Year = string.Empty" />Any
+                    </label>
+                    @foreach (var year in AppState.Years)
+                    {
+                        <label class="seg-opt">
+                            <input type="radio" name="year" checked="@(AppState.Year == year.ToString())" @onchange="() => AppState.Year = year.ToString()" />@year
+                        </label>
+                    }
+                </div>
+            </div>
+        </div>
+    };
+
+    int SoftCount => AppState.Images.Count(AppState.IsSoft);
+
+    // .facet-row is a plain flex row (space-between) when off — two direct span children lay
+    // out edge to edge. When "on" it switches to a flex column (see app.css), where the first
+    // line has to be its own full-width flex row for space-between to mean anything; a bare
+    // span child of a row-direction flex box does not stretch to fill it.
+    RenderFragment RenderDupeRow(DupeFilter value, string label, int count, string? note) => __builder =>
+    {
+        var on = AppState.DupeFilter == value;
+        <button class="facet-row @(on ? "on" : "")" @onclick="() => AppState.DupeFilter = value">
+            @if (on)
+            {
+                <span class="facet-line"><span>@label</span><span>@count.ToString("N0")</span></span>
+                @if (note is not null)
+                {
+                    <span class="facet-note">@note</span>
+                }
+            }
+            else
+            {
+                <span>@label</span><span>@count.ToString("N0")</span>
+            }
+        </button>
+    };
+
+    RenderFragment RenderNsfwRow(NsfwFilter value, string label, int count) => __builder =>
+    {
+        var on = AppState.Nsfw == value;
+        <button class="facet-row @(on ? "on" : "")" @onclick="() => AppState.Nsfw = value">
+            @if (on)
+            {
+                <span class="facet-line"><span>@label</span><span>@count.ToString("N0")</span></span>
+            }
+            else
+            {
+                <span>@label</span><span>@count.ToString("N0")</span>
+            }
+        </button>
+    };
+}

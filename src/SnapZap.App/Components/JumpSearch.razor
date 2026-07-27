@@ -1,0 +1,87 @@
+@implements IDisposable
+@inject AppState AppState
+
+@*
+    "Jump to anything" — a live filename/folder search over the whole library (not just what's
+    currently filtered — this is a way *around* the filters, not another one of them), opening
+    straight into the preview so there is nothing else to learn: type, see matches, pick one.
+*@
+<div class="jump" @onkeydown="OnKeyDown">
+    <input class="input jump-input" placeholder="Jump to anything…" aria-label="Jump to a photo by name or folder"
+           value="@_query" @oninput="OnInput" @onfocus="() => _open = true" />
+
+    @if (_open && _query.Trim().Length > 0)
+    {
+        <div class="jump-results" role="listbox" aria-label="Matching photos">
+            @{ var results = AppState.Search(_query); }
+            @if (results.Count == 0)
+            {
+                <div class="jump-empty">No photos match "@_query".</div>
+            }
+            else
+            {
+                @for (var i = 0; i < results.Count; i++)
+                {
+                    var img = results[i];
+                    var idx = i;
+                    <button class="jump-row @(idx == _highlight ? "on" : "")" role="option"
+                            @onclick="() => Pick(img)" @onmouseenter="() => _highlight = idx">
+                        <b>@img.FileName</b>
+                        <span>@ImageView.ShortFolder(img.Folder)</span>
+                    </button>
+                }
+            }
+        </div>
+        @* Catches the click that dismisses the dropdown — transparent and behind it, the same
+           pattern the grid header's scope menu uses, so a click elsewhere on the page closes
+           this instead of leaving it open over whatever the user meant to reach. *@
+        <div class="popover-scrim" aria-hidden="true" @onclick="() => _open = false"></div>
+    }
+</div>
+
+@code {
+    [Parameter] public EventCallback<ImageView> OnPick { get; set; }
+
+    string _query = "";
+    bool _open;
+    int _highlight;
+
+    protected override void OnInitialized() => AppState.Changed += StateHasChanged;
+    public void Dispose() => AppState.Changed -= StateHasChanged;
+
+    void OnInput(ChangeEventArgs e)
+    {
+        _query = e.Value?.ToString() ?? "";
+        // A stale highlight from the previous query could point past the end of a shorter
+        // result set, or sit on a result that no longer matches what's on screen.
+        _highlight = 0;
+    }
+
+    async Task Pick(ImageView img)
+    {
+        _query = "";
+        _open = false;
+        await OnPick.InvokeAsync(img);
+    }
+
+    async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        var results = AppState.Search(_query);
+        switch (e.Key)
+        {
+            case "Escape":
+                _query = "";
+                _open = false;
+                break;
+            case "ArrowDown":
+                if (results.Count > 0) _highlight = Math.Min(_highlight + 1, results.Count - 1);
+                break;
+            case "ArrowUp":
+                if (results.Count > 0) _highlight = Math.Max(_highlight - 1, 0);
+                break;
+            case "Enter":
+                if (results.Count > 0) await Pick(results[Math.Clamp(_highlight, 0, results.Count - 1)]);
+                break;
+        }
+    }
+}

@@ -13,7 +13,7 @@
 
 window.snapzap = (function () {
   const MIN_COL = 150; // keep in sync with the grid's minimum column width in app.css
-  const GAP = 10;
+  const GAP = 3; // keep in sync with .grid-row's gap in app.css — the contact-sheet look runs edge to edge
 
   // Everything that behaves as a modal. One list, because the two places that consult it —
   // the focus trap and the Cmd+A guard — must never disagree about what counts: a prompt the

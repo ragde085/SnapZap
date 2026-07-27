@@ -92,6 +92,16 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
 
     public int DupeExtraCount { get; private set; }
 
+    /// <summary>Photos currently kept from a duplicate group — the Filters rail's "Keepers
+    /// only" facet count. Unfiltered by kind, unlike <see cref="DupeExtraCount"/>: a burst's
+    /// keeper is as much a survivor as any other (see <c>SelectionScope.DuplicateKeepers</c>).</summary>
+    public int DupeKeeperCount { get; private set; }
+
+    /// <summary>Photos belonging to a Burst group, keeper or not — the Filters rail's "Burst
+    /// frames" facet count. Bursts are separate photographs, never bulk-selectable, so this is
+    /// tracked apart from <see cref="DupeExtraCount"/> rather than folded into it.</summary>
+    public int BurstMemberCount { get; private set; }
+
     public string FormattedReclaimable => FormatBytes(ReclaimableBytes);
 
     /// <summary>Bytes held by the current selection — what a delete would actually free.</summary>
@@ -129,7 +139,32 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
     public long? LastClickedId { get; private set; }
 
     public string? ScannedFolder { get; private set; }
+
+    /// <summary>When the last scan of <see cref="ScannedFolder"/> completed — for the rail's
+    /// "scanned 2 min ago" line. Set once, at the end of a successful <see cref="ScanAsync"/>,
+    /// not on every <see cref="LoadAsync"/> (a restart's initial load re-reads the same scan,
+    /// it doesn't repeat it).</summary>
+    public DateTimeOffset? ScannedAt { get; private set; }
+
+    /// <summary>Whether an export has completed this session — purely for the Plan tab's Export
+    /// step label. Not persisted; a restart finds nothing exported yet, which is accurate for
+    /// what the step is telling the user (there is nothing to resume or re-check).</summary>
+    public bool HasExportedThisSession { get; set; }
+
     public string Status { get; private set; } = "";
+
+    /// <summary>"2 min ago" / "yesterday" / etc., for the rail's library summary and Plan tab.</summary>
+    public static string TimeAgo(DateTimeOffset when)
+    {
+        var span = DateTimeOffset.UtcNow - when;
+        if (span < TimeSpan.FromSeconds(45)) return "just now";
+        if (span < TimeSpan.FromMinutes(1.5)) return "1 min ago";
+        if (span < TimeSpan.FromMinutes(59.5)) return $"{(int)Math.Round(span.TotalMinutes)} min ago";
+        if (span < TimeSpan.FromHours(1.5)) return "1 hour ago";
+        if (span < TimeSpan.FromHours(23.5)) return $"{(int)Math.Round(span.TotalHours)} hours ago";
+        if (span < TimeSpan.FromHours(36)) return "yesterday";
+        return $"{(int)Math.Round(span.TotalDays)} days ago";
+    }
 
     // ---- Busy / progress -------------------------------------------------
     // Centralised here so every operation reports the same way and the
@@ -149,6 +184,11 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
     /// </remarks>
     public string? BusyDetail { get; private set; }
 
+    /// <summary>How many of the current scan's files were reused from the two-tier cache
+    /// (unchanged since last time) rather than re-analysed. Scan-specific; other operations
+    /// leave it at 0.</summary>
+    public int BusyCached { get; private set; }
+
     /// <summary>Estimated time remaining for the current run, from a rolling recent-throughput
     /// window (see <see cref="EtaEstimator"/>). Null until enough progress has been observed.</summary>
     public TimeSpan? BusyEta { get; private set; }
@@ -164,7 +204,11 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
         if (_cts is { IsCancellationRequested: false })
         {
             _cts.Cancel();
-            BusyLabel = "Stopping";
+            // BusyLabel deliberately keeps naming the operation that's stopping ("Scanning",
+            // not "Stopping") — CanCancel already drives the Stop button's own "Stopping…"
+            // label, and the Plan tab's step detection matches BusyLabel against the running
+            // operation's name; overwriting it here made a cancelled scan misreport as
+            // "nothing scanned yet" for the moment it took to unwind.
             Notify();
         }
     }
@@ -208,7 +252,7 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
     // a plain @bind with no @bind:after bookkeeping at every call site.
     NsfwFilter _nsfw = NsfwFilter.Any;
     int _blurMax;
-    bool _dupesOnly;
+    DupeFilter _dupeFilter = DupeFilter.Any;
     string _folder = "";
     string _year = "";
     bool _includeSubfolders = true;
@@ -221,7 +265,11 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
     /// </summary>
     public NsfwFilter Nsfw { get => _nsfw; set => SetFilter(ref _nsfw, value); }
     public int BlurMax { get => _blurMax; set => SetFilter(ref _blurMax, value); }
-    public bool DupesOnly { get => _dupesOnly; set => SetFilter(ref _dupesOnly, value); }
+
+    /// <summary>The Filters rail's single Duplicates facet — replaces the old on/off
+    /// "Duplicates only" checkbox with the four mutually exclusive rows the redesign shows
+    /// (Any / Extra copies only / Keepers only / Burst frames).</summary>
+    public DupeFilter DupeFilter { get => _dupeFilter; set => SetFilter(ref _dupeFilter, value); }
     public string Folder { get => _folder; set => SetFilter(ref _folder, value ?? ""); }
     public string Year { get => _year; set => SetFilter(ref _year, value ?? ""); }
 
@@ -353,6 +401,7 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
     bool MatchesNsfw(NsfwBand band) => _nsfw switch
     {
         NsfwFilter.Likely => band == NsfwBand.Likely,
+        NsfwFilter.Unsure => band == NsfwBand.Unsure,
         NsfwFilter.Review => band is NsfwBand.Likely or NsfwBand.Unsure,
         NsfwFilter.Clean => band == NsfwBand.Clean,
         NsfwFilter.Unchecked => band == NsfwBand.Unchecked,
@@ -411,14 +460,14 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
     }
 
     public bool HasActiveFilter =>
-        _nsfw != NsfwFilter.Any || _blurMax > 0 || _dupesOnly || _folder.Length > 0
+        _nsfw != NsfwFilter.Any || _blurMax > 0 || _dupeFilter != DupeFilter.Any || _folder.Length > 0
         || _year.Length > 0 || !_includeSubfolders;
 
     public void ClearFilters()
     {
         _nsfw = NsfwFilter.Any;
         _blurMax = 0;
-        _dupesOnly = false;
+        _dupeFilter = DupeFilter.Any;
         _folder = "";
         _year = "";
         _includeSubfolders = true;
@@ -446,6 +495,8 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
         IReadOnlyList<int> Years,
         int DupeExtraCount,
         long ReclaimableBytes,
+        int DupeKeeperCount,
+        int BurstMemberCount,
         FolderNode? Tree);
 
     /// <summary>The cached thumbnail file's own last-write time, or 0 when there is none to stat
@@ -511,8 +562,11 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
         // rows were stamped — that difference is exactly what re-flags folders as pending.
         var tree = FolderTreeBuilder.Build(images, dupeOf, DedupSettings.Load(catalog.Db).CoveredKinds);
 
+        var keeperCount = images.Count(i => i.Dupe is { IsKeeper: true });
+        var burstCount = images.Count(i => i.Dupe is { Kind: DupeKind.Burst });
+
         return new LoadSnapshot(images, bandCounts, dupeOf, groups, byId, folders, years,
-                                 extras.Count, extras.Sum(i => i.FileSize), tree);
+                                 extras.Count, extras.Sum(i => i.FileSize), keeperCount, burstCount, tree);
     }
 
     // ---- Load --------------------------------------------------------------
@@ -543,6 +597,8 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
         Years = snapshot.Years;
         DupeExtraCount = snapshot.DupeExtraCount;
         ReclaimableBytes = snapshot.ReclaimableBytes;
+        DupeKeeperCount = snapshot.DupeKeeperCount;
+        BurstMemberCount = snapshot.BurstMemberCount;
         Tree = snapshot.Tree;
 
         var live = Images.Select(i => i.Id).ToHashSet();
@@ -581,7 +637,7 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
         if (_nsfw != NsfwFilter.Any && !MatchesNsfw(BandOf(img))) return false;
         // Blurrier-than filter: lower blur score = blurrier, so show scores <= threshold.
         if (_blurMax > 0 && !(img.BlurScore is { } b && b <= _blurMax)) return false;
-        if (_dupesOnly && !DupeOf.ContainsKey(img.Id)) return false;
+        if (!MatchesDupeFilter(img)) return false;
         if (!InFolderScope(img)) return false;
         if (_year.Length > 0 && img.Year?.ToString() != _year) return false;
         return true;
@@ -600,9 +656,40 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
             ? img.Folder == _folder || img.Folder.StartsWith(_folder + "/", StringComparison.Ordinal)
             : img.Folder == _folder);
 
+    /// <summary>
+    /// Shares the exact predicates <see cref="InScope"/> uses for the equivalent selection
+    /// scopes, so filtering to "Extra copies only" and selecting "Extras" can never disagree
+    /// about which photos that is.
+    /// </summary>
+    bool MatchesDupeFilter(ImageView img) => _dupeFilter switch
+    {
+        DupeFilter.ExtrasOnly => img.Dupe is { IsKeeper: false } d && d.Kind.IsBulkSelectable(),
+        DupeFilter.KeepersOnly => img.Dupe is { IsKeeper: true },
+        DupeFilter.BurstOnly => img.Dupe is { } b && b.Kind == DupeKind.Burst,
+        _ => true,
+    };
+
     /// <summary>The visible set, in grid order. Memoised — this runs on every render of
     /// the grid, the summary and the selection ops, over the whole library.</summary>
     public List<ImageView> Filtered() => _filtered ??= ApplySort(Images.Where(Matches)).ToList();
+
+    /// <summary>
+    /// "Jump to anything" — matches by filename or folder against the whole library, not just
+    /// what <see cref="Filtered"/> currently shows. Deliberately a way around the active
+    /// filters rather than another one of them: narrowing to "extra copies only" should never
+    /// make a photo you can name unreachable by typing its name.
+    /// </summary>
+    public IReadOnlyList<ImageView> Search(string query)
+    {
+        query = query.Trim();
+        if (query.Length == 0) return [];
+        return Images
+            .Where(i => i.FileName.Contains(query, StringComparison.OrdinalIgnoreCase)
+                     || i.Folder.Contains(query, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(i => i.FileName, StringComparer.OrdinalIgnoreCase)
+            .Take(8)
+            .ToList();
+    }
 
     /// <summary>
     /// Photos missing the value being sorted on always sort last, whichever direction is
@@ -832,6 +919,79 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
         NotifySelectionChanged();
     }
 
+    // ---- Plan (pipeline strip) ----------------------------------------------
+
+    /// <summary>Whether the NSFW sidecar model is installed — mirrors the check the scoring
+    /// button itself makes, so the Plan tab's Content-review step can never disagree with it.</summary>
+    public bool NsfwModelReady => deps.Current.First(d => d.Id == "nsfw-model").Found;
+
+    /// <summary>
+    /// The 5-stage pipeline (Scan → Duplicates → Content review → Sharpness → Export) as a pure
+    /// projection over existing signals — no persisted "current step" exists or is needed.
+    /// Steps 3–5 read as "waiting on the scan" for as long as scan or its automatic dedup pass
+    /// is still running, matching the Plan tab's own dimmed rows for that state.
+    /// </summary>
+    public IReadOnlyList<PlanStep> PlanSteps
+    {
+        get
+        {
+            var scanning = Busy && BusyLabel == "Scanning";
+            var dedupRunning = Busy && BusyLabel == "Finding duplicates";
+            var scoringNsfw = Busy && BusyLabel == "Scoring NSFW";
+            var everScanned = ScannedFolder is not null;
+            var stillWaitingOnScan = !everScanned || scanning;
+
+            // Mirrors the Scan step's own wording ("N so far") — the rail keeps this compact;
+            // the full "N of about M" line with a bar lives in the main content area (see
+            // Home.razor's scan-stats block, which reads the same BusyDone/BusyTotal).
+            var busyProgressLabel = BusyTotal > 0 ? $"{BusyDone:N0} of {BusyTotal:N0}" : $"{BusyDone:N0} so far";
+
+            var scan = scanning
+                ? new PlanStep(1, "Scan", $"Reading… {busyProgressLabel}", PlanStepState.Active, true)
+                : everScanned
+                    ? new PlanStep(1, "Scan",
+                        $"{Images.Count:N0} photos" + (ScannedAt is { } at ? $" · {TimeAgo(at)}" : ""),
+                        PlanStepState.Done, false)
+                    : new PlanStep(1, "Scan", "Nothing scanned yet", PlanStepState.Waiting, false);
+
+            var dupes = dedupRunning
+                ? new PlanStep(2, "Duplicates", $"Grouping… {busyProgressLabel}", PlanStepState.Active, true)
+                : scanning
+                    ? new PlanStep(2, "Duplicates", "Queued — starts on its own when the scan ends", PlanStepState.Queued, false)
+                    : everScanned
+                        ? new PlanStep(2, "Duplicates",
+                            DupeGroups.Count > 0
+                                ? $"{DupeGroups.Count:N0} groups · {DupeExtraCount:N0} extras · {FormattedReclaimable}"
+                                : "No duplicates found",
+                            PlanStepState.Done, DupeGroups.Count > 0)
+                        : new PlanStep(2, "Duplicates", "Waits for the scan", PlanStepState.Waiting, false);
+
+            var unchecked_ = CountInBand(NsfwBand.Unchecked);
+            var content = scoringNsfw
+                ? new PlanStep(3, "Content review", $"Scoring… {busyProgressLabel}", PlanStepState.Active, true)
+                : stillWaitingOnScan
+                    ? new PlanStep(3, "Content review", "Waits for the scan", PlanStepState.Waiting, false)
+                    : unchecked_ == 0 && Images.Count > 0
+                        ? new PlanStep(3, "Content review", "All photos checked", PlanStepState.Done, false)
+                        : new PlanStep(3, "Content review", "Nothing scored yet", PlanStepState.Available, false);
+
+            var softCount = Images.Count(IsSoft);
+            var sharp = stillWaitingOnScan
+                ? new PlanStep(4, "Sharpness", "Waits for the scan", PlanStepState.Waiting, false)
+                : new PlanStep(4, "Sharpness",
+                    softCount > 0 ? $"{softCount:N0} soft shots found" : "Nothing soft found",
+                    PlanStepState.Done, false);
+
+            var export = stillWaitingOnScan
+                ? new PlanStep(5, "Export a clean library", "Waits for the scan", PlanStepState.Waiting, false)
+                : new PlanStep(5, "Export a clean library",
+                    HasExportedThisSession ? "Exported this session" : "Nothing exported yet",
+                    HasExportedThisSession ? PlanStepState.Done : PlanStepState.Available, false);
+
+            return [scan, dupes, content, sharp, export];
+        }
+    }
+
     // ---- Operations --------------------------------------------------------
 
     /// <summary>Files the last scan could not take, grouped so the user knows where to look.</summary>
@@ -903,12 +1063,17 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
         folder = ExpandHome(folder);
         await RunAsync("Scanning", async (report, ct) =>
         {
-            var progress = new Progress<ScanProgress>(p => report(p.Seen, p.Total, null));
+            var progress = new Progress<ScanProgress>(p =>
+            {
+                BusyCached = p.Cached;
+                report(p.Seen, p.Total, p.Current);
+            });
             string msg;
             try
             {
                 var result = await catalog.ScanAsync(folder, progress, ct);
                 ScannedFolder = folder;
+                ScannedAt = DateTimeOffset.UtcNow;
                 LastFailures = result.Failures;
                 LastUnsupported = result.UnsupportedByFormat;
                 await LoadAsync();
@@ -1033,6 +1198,7 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
         BusyDone = 0;
         BusyTotal = 0;
         BusyDetail = null;
+        BusyCached = 0;
         BusyEta = null;
         Status = "";
         _cts = new CancellationTokenSource();
@@ -1152,9 +1318,37 @@ public enum NsfwFilter
     Any,
     /// <summary>Only what the model called explicit.</summary>
     Likely,
+    /// <summary>Only the ones it was unsure about, on its own — distinct from <see cref="Review"/>,
+    /// which also includes Likely. The Filters rail's own standalone "Not sure" row.</summary>
+    Unsure,
     /// <summary>Explicit plus the ones it was unsure about — the review queue.</summary>
     Review,
     Clean,
     /// <summary>Never scored. Its own state, because "not asked" is not "safe".</summary>
     Unchecked,
 }
+
+/// <summary>Which duplicate-related facet the grid is narrowed to — the Filters rail's single
+/// "Duplicates" facet, four mutually exclusive rows rather than the old on/off checkbox.</summary>
+public enum DupeFilter
+{
+    Any,
+    /// <summary>Non-keeper copies from a bulk-selectable group — the same set
+    /// <see cref="AppState.SelectionScope.DuplicateExtras"/> selects.</summary>
+    ExtrasOnly,
+    /// <summary>The copy being kept from each group, including bursts.</summary>
+    KeepersOnly,
+    /// <summary>Every member of a Burst group — separate photographs, never bulk-selectable.</summary>
+    BurstOnly,
+}
+
+/// <summary>One row of the Plan tab's pipeline strip.</summary>
+public enum PlanStepState { Waiting, Queued, Available, Active, Done }
+
+/// <summary>
+/// A computed projection over existing <see cref="AppState"/> signals — not persisted state.
+/// The Plan tab renders one of these per stage (Scan, Duplicates, Content review, Sharpness,
+/// Export); which buttons a stage offers is a rail-rendering concern, decided by
+/// <see cref="Number"/> in the component, not baked in here.
+/// </summary>
+public sealed record PlanStep(int Number, string Title, string Detail, PlanStepState State, bool Highlighted);

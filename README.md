@@ -13,6 +13,8 @@ No cloud, no subscriptions, no paid dependencies. Two promises hold throughout:
 - **Nothing is ever hard-deleted.** Deleting goes to the Recycle Bin, and every batch is
   reversible from **History**.
 
+<img src="assets/screenshots/first-run.png" alt="SnapZap's first-run screen: a folder-to-scan field on the left and the two safety promises on the right" width="100%" />
+
 ---
 
 ## Contents
@@ -28,6 +30,7 @@ No cloud, no subscriptions, no paid dependencies. Two promises hold throughout:
 [Selecting](#selecting-photos) ·
 [Exporting](#exporting) ·
 [Deleting](#deleting-and-undo) ·
+[Hiding photos](#hiding-and-recovering-photos) ·
 [Setup](#setup) ·
 [Shortcuts](#keyboard-shortcuts) ·
 [Data locations](#where-snapzap-keeps-its-data) ·
@@ -59,6 +62,8 @@ No cloud, no subscriptions, no paid dependencies. Two promises hold throughout:
 - **Export** — copy · move · hardlink, into `date` / `mirror` / `flat` structure, with
   pre-flight, hash-verification, collision-safe naming, resume, and a written manifest.
 - **Delete** — recycles to the OS bin with a one-click **undo** and a full history panel.
+- **Hide** — tuck a selection of photos inside an ordinary carrier image, with optional
+  passphrase encryption, and pull them back out later.
 
 ---
 
@@ -102,7 +107,7 @@ app. **Everything else works without it** — scanning, all three kinds of dupli
 blur, dates, export, and delete are built in and need no download.
 
 If the model isn't installed, SnapZap says so once at startup, marks the **Setup** gear with a
-badge, and greys out **Score NSFW**.
+badge, and greys out **Run** under **Content review**.
 
 **If you installed SnapZap:** run the installer again and tick *Explicit-content scoring
 model*. It downloads the file, verifies its checksum, and puts it in place. Your catalogue and
@@ -130,18 +135,20 @@ Then open **Setup** (the gear, top right) and press **Check again** — no resta
 
 ## The screen
 
+<img src="assets/screenshots/plan-tab.png" alt="The Plan tab: a pipeline strip (Scan, Duplicates, Content review, Sharpness, Export) above the grid, with a duplicate-review banner and an active folder filter chip" width="100%" />
+
 | Area | What's there |
 |---|---|
-| **Top bar** | The folder box and three actions: **Scan**, **Find duplicates**, **Score NSFW**. Keyboard-help and **Setup** icons at the far right. |
-| **Filter bar** | **Filters**, the selection commands (**All shown**, **Flagged**, **Extras**, **Invert**, **Clear**, **More**), **Review duplicates**, and **History**. |
-| **Left pane** | The folder tree of whatever you scanned. |
-| **Middle** | The summary line, the sort control, and the photo grid. |
-| **Bottom** | The selection bar — appears once you've picked at least one photo, and carries **Export…** and **Delete…**. |
+| **Top bar** | **Jump to anything** (search by filename or folder), **History**, and icons for Extract hidden images, Help and Setup. |
+| **Rail** | The library summary and a progress strip (*"3 of 5 done"*), above three tabs: **Plan** (what's done, what's next, and the button to run each step), **Folders** (the folder tree), and **Filters** (duplicates, explicit content, sharpness, folder, year). |
+| **Grid header** | **Select all N shown** (with a menu for a few other scopes), the active filter as a clearable chip, and the sort control. |
+| **Bottom** | The selection bar — appears once you've picked at least one photo, and carries **Invert**, **Clear**, **Delete…**, **Hide in Image…** and **Export…**. |
 
 ## Scanning a folder
 
-Type or paste a folder path into the box at the top and press **Scan** (or just hit
-<kbd>Enter</kbd>). A leading `~` expands to your home folder.
+The first time, type or paste a folder path and press **Scan** (or just hit <kbd>Enter</kbd>).
+A leading `~` expands to your home folder. Once a library is loaded, **Change folder…** under
+the **Scan** step in the Plan tab does the same thing for a different folder.
 
 SnapZap walks the folder and everything beneath it, recording for each photo a checksum, the
 dimensions, the capture date and camera from EXIF, a sharpness score, a visual fingerprint, and
@@ -162,7 +169,10 @@ says how many.
 
 ## Finding duplicates
 
-Press **Find duplicates**. Entirely in-process — no internet connection, no extra download.
+Runs automatically the moment a scan finishes — no button to press, no internet connection, no
+extra download. The Plan tab's **Duplicates** step shows **Review N groups** once they're
+ready, and a **Find again** button to re-run it later (after changing a setting in
+**Setup → Duplicates**, say).
 
 SnapZap looks for three kinds, and the difference matters:
 
@@ -187,7 +197,7 @@ either for the group number and kind.
 
 ### Tuning it
 
-**Setup → What "Find duplicates" checks**:
+**Setup → Duplicates**:
 
 - **Identical files** — always on. A duplicate finder that can't find identical files isn't one.
 - **The same shot at another size** — on by default.
@@ -200,15 +210,17 @@ either for the group number and kind.
 Burst detection needs an EXIF capture time. Photos without one are skipped by it, so a burst
 with no timestamps isn't protected from bulk selection.
 
-Changes save immediately. Run **Find duplicates** again to apply them.
+Changes save immediately. Press **Find again** under the Duplicates step (Plan tab) to apply
+them.
 
 > **Not detected: crops and reframes.** A cropped photo is a different image as far as the
 > fingerprint is concerned. That's a known limit, not a bug.
 
 ## Reviewing duplicates
 
-Press **Review duplicates** in the filter bar. This is the good way to work through them: one
-group at a time, copies side by side, with the facts that decide which survives.
+Press **Review N groups** (Plan tab, or the banner above the grid). This is the good way to
+work through them: one group at a time, copies side by side, with the facts that decide which
+survives.
 
 Whatever is identical across the group is greyed out — it can't help you choose. Whatever
 differs stays bright, and a strict winner (largest resolution, biggest file) is highlighted. The
@@ -230,7 +242,15 @@ afterwards.
 
 ## Scoring explicit content
 
-Press **Score NSFW** (needs the optional model — see [above](#the-one-optional-add-on)).
+Press **Run** under **Content review** (Plan tab, or the same facet in the Filters tab) — needs
+the optional model, see [above](#the-one-optional-add-on).
+
+<img src="assets/screenshots/content-review-progress.png" alt="Content review scoring in progress: a live counter and progress bar above the grid, and the Plan tab's Content review step showing the same count" width="100%" />
+
+While it runs, a live counter and progress bar sit above the grid — the same *N of about M*
+treatment scanning gets — and the Plan tab's own **Content review** step tracks the count too.
+**Stop** is always safe: everything scored so far is kept, and re-running picks up where it
+left off.
 
 Every photo gets one score from 0.00 to 1.00 and lands in a band:
 
@@ -249,10 +269,14 @@ Flagged photos get a shield badge; hover it for the score and the threshold.
 
 ## Browsing, filtering and sorting
 
-### The folder tree
+### The Folders tab
 
-The left pane mirrors the folder you scanned. Click a folder to show only its photos, or
-**All folders** to go back. Selecting a folder includes everything beneath it by default.
+<img src="assets/screenshots/folders-tab.png" alt="The Folders tab: a searchable folder tree in the rail, with the grid narrowed to the selected folder" width="100%" />
+
+The rail's **Folders** tab mirrors the folder you scanned. Click a folder to show only its
+photos, or **All folders** to go back — the choice shows up as a clearable chip in the grid
+header, same as any other filter. Selecting a folder includes everything beneath it by default.
+**Find a folder…**, at the top of the tab, filters the tree by name as you type.
 
 Each row shows its photo count, plus two markers: **⧉** means photos here are in duplicate
 groups (greyed **⧉** means checked, none found), and a **small dot** means some analysis hasn't
@@ -261,20 +285,28 @@ reached this folder yet — hover the row to see which step.
 Keyboard: <kbd>↑</kbd> <kbd>↓</kbd> move, <kbd>→</kbd> expands, <kbd>←</kbd> collapses,
 <kbd>Home</kbd> / <kbd>End</kbd> jump.
 
-### Filters
+### The Filters tab
 
-Press **Filters**; the button shows a count when any are active.
+Each facet shows a live count next to every option.
 
-| Filter | Options |
+| Facet | Options |
 |---|---|
-| **Explicit content** | Any · Likely explicit · Likely or not sure · Looks clean · Not checked yet — each with a live count |
+| **Duplicates** | Any · Extra copies only · Keepers only · Burst frames |
+| **Content review** | Any · Likely explicit · Not sure · Looks clean · Not checked yet |
 | **Blurrier than** | Slider, 0–300. At 0 it's off. Photos at or below the value read as soft. |
-| **Duplicates only** | Only photos in a duplicate group |
-| **Folder** | Set by clicking the tree; the ✕ clears it |
+| **Folder** | Read-only here — set it from the **Folders** tab; the ✕ clears it |
 | **Year** | Any year found in your photos' EXIF |
-| **Advanced → Include subfolders** | On by default. Off, the folder matches *exactly* — so **All shown** picks up that directory and nothing under it. |
 
-**Clear filters** resets everything.
+Under **Folder**, once one is set: **Include subfolders**, on by default. Off, the folder
+matches *exactly* — so **Select all N shown** picks up that directory and nothing beneath it.
+
+**Clear all**, at the top of the tab (and next to the active filter chip in the grid header),
+resets everything.
+
+### Jump to anything
+
+The search box in the top bar matches by filename or folder, live, against the whole library —
+not just what the current filters show. Pick a result to open it straight in the preview.
 
 ### Sorting
 
@@ -296,22 +328,26 @@ something is selected.
 **By hand** — click to select or deselect, **shift-click** to select the range from the last
 photo you clicked, **double-click** to open the preview.
 
-**By command** — the **Select** commands in the filter bar. Each shows how many photos it would
-pick, and hovering explains it:
+**By command** — **Select all N shown**, at the top of the grid, picks everything the current
+filters show (<kbd>Ctrl</kbd>+<kbd>A</kbd>). Its own chevron opens a menu for a few other
+scopes:
 
 | Command | Selects |
 |---|---|
 | **All shown** | Everything the current filters show (<kbd>Ctrl</kbd>+<kbd>A</kbd>) |
 | **Flagged** | Photos the model called likely explicit |
-| **Extras** | Every extra copy — **identical and same-shot only, never burst frames**. The tooltip says how much space they'd reclaim. |
-| **Invert** | Everything shown that isn't selected now |
-| **Clear** | Deselect everything (<kbd>Ctrl</kbd>+<kbd>D</kbd>) |
-| **More → Not sure** | Photos the model was unsure about |
-| **More → Keepers** | The one copy being kept from each duplicate group |
+| **Not sure** | Photos the model was unsure about |
+| **Keepers** | The one copy being kept from each duplicate group |
 
-Commands that can't do anything stay visible but greyed, and say why — *"Press Find duplicates
-to look for copies"*, *"Nothing scored yet — press Score NSFW"*, *"Only burst frames left —
-those are separate shots, so review them by hand"*.
+For **Extras** — every extra copy, **identical and same-shot only, never burst frames** — narrow
+the Filters tab's **Duplicates** facet to **Extra copies only**, then **Select all N shown**.
+The facet shows how much space they'd reclaim.
+
+Once something is selected, **Invert** and **Clear** appear in the bar at the bottom of the
+grid, next to the count (<kbd>Ctrl</kbd>+<kbd>D</kbd> also clears).
+
+Commands that can't do anything stay visible but greyed, and say why — *"Nothing scored yet —
+press Run"*, *"Only burst frames left — those are separate shots, so review them by hand"*.
 
 > **Two SnapZap windows on the same library share one selection.** A command like **Extras**
 > *replaces* the selection rather than adding to it, so a press in one window changes what the
@@ -401,6 +437,27 @@ from. Three kinds of entry appear:
 
 You can also restore from the Recycle Bin's own right-click menu in Explorer.
 
+## Hiding and recovering photos
+
+Select photos and press **Hide in Image…**. They're zipped in memory and appended to the end of
+an ordinary carrier photo you pick — the carrier still opens normally in any viewer; nothing
+about it looks unusual unless someone knows to look.
+
+- **Carrier image** — any photo, in or out of your scanned library.
+- **Output path** — defaults to the carrier's own name with `-hidden` appended, next to it;
+  edit it to write somewhere else.
+- **Passphrase** — optional. Without one, the attached zip opens in any ordinary zip tool
+  (7-Zip, WinRAR, Explorer's own "Extract All") with no need for SnapZap at all. With one, it's
+  AES-GCM encrypted and only SnapZap (with the right passphrase) can read it back.
+
+**Extract Hidden Images…**, the icon in the top bar, reverses it: pick the file someone sent
+you (it doesn't need to be part of your library) and, if it was encrypted, the passphrase, and
+the original photos are written back out to a folder you choose.
+
+> Sharing the output file matters: send it **as-is**. Anything that re-saves or re-encodes an
+> image — most messaging apps, social platforms, some cloud photo services — strips whatever
+> was appended to the end of the file, hidden data included.
+
 ## Setup
 
 The gear icon, top right. A badge on it means something optional isn't installed.
@@ -410,7 +467,7 @@ a file in and press **Check again**; no restart needed. Detection uses the same 
 feature itself performs, so "Ready" here can never disagree with what actually happens at run
 time.
 
-**What "Find duplicates" checks** — see [Tuning it](#tuning-it).
+**Duplicates** — what "finding duplicates" checks; see [Tuning it](#tuning-it).
 
 **Catalogue** — how many photos have been analysed, and how much space the database and
 thumbnails take. The catalogue spans *every folder you've ever scanned*, because that's what
@@ -436,7 +493,7 @@ Press the **?** icon in the top right for this list in the app.
 | <kbd>Ctrl</kbd>+<kbd>A</kbd> | Select everything shown |
 | <kbd>Ctrl</kbd>+<kbd>D</kbd> | Clear the selection |
 
-<kbd>Tab</kbd> from the toolbar reaches the grid, which is a single tab stop — the arrows move
+The grid is a single tab stop — <kbd>Tab</kbd> reaches it and moves on, and the arrows move
 within it.
 
 **In the preview** — <kbd>←</kbd> <kbd>→</kbd> previous / next · <kbd>X</kbd> select ·
@@ -481,13 +538,14 @@ Converting to JPEG makes them visible.
 
 **The filters show nothing.** The empty-state message names the reason. The common one: an
 explicit-content filter over a library nothing has scored matches nothing, because every photo
-is still "Not checked". Run **Score NSFW** or clear the filter.
+is still "Not checked". Press **Run** under Content review, or clear the filter.
 
-**"Score NSFW" is greyed out.** The model isn't installed — see
+**"Run" is greyed out under Content review.** The model isn't installed — see
 [the optional add-on](#the-one-optional-add-on).
 
-**"Find duplicates" is greyed out.** Scan a folder first. Duplicate detection itself is built in
-and needs no download.
+**Where's the "Find duplicates" button?** There isn't one to press the first time — duplicate
+detection runs automatically the moment a scan finishes. To re-run it later, use **Find again**
+under the Duplicates step in the Plan tab.
 
 **Export won't let me press the button.** Press **Check destination** first. If you've changed
 the destination, mode or structure since the last check, check again — the button deliberately
@@ -649,7 +707,7 @@ Everything downstream comes from that one file, so the artwork can't drift betwe
 | `assets/icon/snapzap.png` | The 1024px master, and what everything below is resized from |
 | `assets/icon/snapzap-256.png` | The image at the top of this README |
 | `src/SnapZap.App/wwwroot/favicon.ico` | The `.exe` icon (`<ApplicationIcon>`), the app window's icon, and the browser favicon |
-| `src/SnapZap.App/wwwroot/snapzap.png` | The mark beside the **SnapZap** wordmark in the app's own toolbar |
+| `src/SnapZap.App/wwwroot/snapzap.png` | The mark beside the **SnapZap** wordmark in the app's own top bar |
 
 All four are committed, and the publish step checks the two in `wwwroot` are present. Sizes at
 or below 48px in the `.ico` are cropped in on the wolf's face rather than downscaled whole — at

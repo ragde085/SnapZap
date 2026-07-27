@@ -83,22 +83,22 @@
             }
 
             <div class="dlg-actions">
-                <button class="primary" disabled="@(!CanConfirm)" @onclick="RunHide">
+                <button class="btn btn-primary" disabled="@(!CanConfirm)" @onclick="RunHide">
                     @(_running ? "Hiding…" : "Hide")
                 </button>
                 @if (_running)
                 {
-                    <button class="danger" disabled="@(_cts is not { IsCancellationRequested: false })" @onclick="StopHide">
+                    <button class="btn btn-danger" disabled="@(_cts is not { IsCancellationRequested: false })" @onclick="StopHide">
                         @(_cts is { IsCancellationRequested: false } ? "Stop" : "Stopping…")
                     </button>
                 }
                 else if (_done)
                 {
-                    <button class="link" @onclick="Close">Done</button>
+                    <button class="btn btn-ghost" @onclick="Close">Done</button>
                 }
                 else
                 {
-                    <button class="link" @onclick="Close">Cancel</button>
+                    <button class="btn btn-ghost" @onclick="Close">Cancel</button>
                 }
             </div>
             @if (_resultText.Length > 0)

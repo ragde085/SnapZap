@@ -7,11 +7,10 @@
     permanently disabled; here they appear with the selection, next to its count and size,
     so the thing being acted on and the action are in the same sentence.
 
-    Invert and Clear used to be here too, on the argument that they only mean anything with a
-    selection. They have gone back to the toolbar: this bar is where a selection is described
-    and acted on, and the toolbar is where one is made — and putting the ways to select things
-    inside a bar that only exists once you have selected something hid them exactly when they
-    were being looked for.
+    Invert and Clear live here too, per the redesign: with Select collapsed to one verb
+    ("Select all N shown", in the grid header) there is no longer a standing command row for
+    them to sit in — they are relative operations on a selection that already exists, so they
+    belong beside the count that describes it.
 *@
 @if (AppState.Selected.Count > 0)
 {
@@ -24,12 +23,19 @@
             <span class="selbar-bytes">@AppState.FormattedSelectedBytes</span>
         </div>
 
-        <button class="primary" disabled="@(!CanAct)" title="@ActHint"
-                @onclick="() => OnOpenExport.InvokeAsync()">Export…</button>
-        <button disabled="@(!CanAct)" title="@ActHint"
-                @onclick="() => OnOpenHide.InvokeAsync()">Hide in Image…</button>
-        <button class="danger" disabled="@(!CanAct)" title="@ActHint" @ref="_deleteBtn"
-                @onclick="AskDelete">Delete…</button>
+        <button class="btn btn-ghost" disabled="@(!CanInvert)" title="@InvertTitle"
+                @onclick="Invert">Invert</button>
+        <button class="btn btn-ghost" disabled="@(!CanAct)" title="@ActHint"
+                @onclick="Clear">Clear</button>
+
+        <div class="selbar-actions">
+            <button class="btn btn-secondary" disabled="@(!CanAct)" title="@ActHint" @ref="_deleteBtn"
+                    @onclick="AskDelete">Delete…</button>
+            <button class="btn btn-secondary" disabled="@(!CanAct)" title="@ActHint"
+                    @onclick="() => OnOpenHide.InvokeAsync()">Hide in Image…</button>
+            <button class="btn btn-primary" disabled="@(!CanAct)" title="@ActHint"
+                    @onclick="() => OnOpenExport.InvokeAsync()">Export…</button>
+        </div>
 
         @if (_confirmDelete)
         {
@@ -41,8 +47,8 @@
                     (@AppState.FormatBytes(live.Sum(i => i.FileSize))) to the Recycle Bin? You can undo this from History.
                 </p>
                 <div class="row">
-                    <button class="danger" @onclick="Delete">Move to Recycle Bin</button>
-                    <button class="link" @onclick="CancelDelete">Cancel</button>
+                    <button class="btn btn-danger" @onclick="Delete">Move to Recycle Bin</button>
+                    <button class="btn btn-ghost" @onclick="CancelDelete">Cancel</button>
                 </div>
             </div>
         }
@@ -71,6 +77,27 @@
     HashSet<long> _pendingSet = [];
 
     bool CanAct => AppState.Selected.Count > 0 && !AppState.Busy;
+
+    // Inverting nothing means "select everything shown", so this is only unavailable when
+    // nothing is shown at all — not merely when the selection is empty (it can't be, this bar
+    // doesn't render then) or when the whole visible set is already selected.
+    bool CanInvert => !AppState.Busy && AppState.Filtered().Count > 0;
+
+    string InvertTitle => AppState.Busy
+        ? "Wait for the current job to finish."
+        : "Select everything shown that is not selected now";
+
+    void Invert()
+    {
+        if (!CanInvert) return;
+        AppState.InvertVisibleSelection();
+    }
+
+    void Clear()
+    {
+        if (!CanAct) return;
+        AppState.ClearSelection();
+    }
 
     // Both numbers come from the same live pass over the captured ids, so the sentence can
     // never count photos its byte total has already dropped — a snapshot can go stale if

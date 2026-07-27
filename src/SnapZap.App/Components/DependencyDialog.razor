@@ -14,8 +14,8 @@
             <DependencyList Items="_missing" Detailed="true" />
 
             <div class="dlg-actions">
-                <button class="primary" @onclick="Recheck">@(_checking ? "Checking…" : "Check again")</button>
-                <button class="link" @onclick="Close">Continue without them</button>
+                <button class="btn btn-primary" @onclick="Recheck">@(_checking ? "Checking…" : "Check again")</button>
+                <button class="btn btn-ghost" @onclick="Close">Continue without them</button>
             </div>
 
             <label class="f checkbox dep-suppress">

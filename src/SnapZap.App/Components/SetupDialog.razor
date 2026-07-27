@@ -22,7 +22,7 @@
 {
     <div class="dlg" role="dialog" aria-modal="true" aria-label="Setup"
          tabindex="-1" @ref="_ref" @onkeydown="HandleKeyDown">
-        <div class="dlg-box setup">
+        <div class="dlg-box wide">
             <h2>Setup</h2>
 
             <div class="setup-layout">
@@ -51,7 +51,7 @@
                             </p>
                             <DependencyList Items="Checker.Current" Detailed="true" />
                             <div class="setup-actions">
-                                <button @onclick="Recheck">@(_checking ? "Checking…" : "Check again")</button>
+                                <button class="btn btn-secondary" @onclick="Recheck">@(_checking ? "Checking…" : "Check again")</button>
                                 <span class="hint">Drop a file in and press Check again — no restart needed.</span>
                             </div>
                             break;
@@ -97,15 +97,10 @@
                                 <div class="seg" role="group" aria-label="Sensitivity">
                                     @foreach (var s in Sensitivities)
                                     {
-                                        @* Spelled out rather than bound to the bool: Blazor renders a
-                                           bool-valued arbitrary attribute as aria-pressed="" when true
-                                           and omits it when false, which is not a valid ARIA state —
-                                           the control announces nothing, and [aria-pressed="true"]
-                                           never matches, so the selected segment is unstyled too. *@
-                                        <button type="button" aria-pressed="@(_nsfw.Sensitivity == s ? "true" : "false")"
-                                                @onclick="() => SetNsfw(NsfwSettings.Of(s) with { Depth = _nsfw.Depth })">
-                                            @SensitivityLabel(s)
-                                        </button>
+                                        <label class="seg-opt">
+                                            <input type="radio" name="sensitivity" checked="@(_nsfw.Sensitivity == s)"
+                                                   @onchange="() => SetNsfw(NsfwSettings.Of(s) with { Depth = _nsfw.Depth })" />@SensitivityLabel(s)
+                                        </label>
                                     }
                                     @if (_nsfw.Sensitivity == NsfwSensitivity.Custom)
                                     {
@@ -273,7 +268,7 @@
 
                             @if (!_confirmForget)
                             {
-                                <button class="danger" disabled="@(_footprint.Photos == 0 || AppState.Busy)"
+                                <button class="btn btn-danger" disabled="@(_footprint.Photos == 0 || AppState.Busy)"
                                         @onclick="ArmForget">Forget everything…</button>
                             }
                             else
@@ -290,8 +285,8 @@
                                         restorable from History.
                                     </p>
                                     <div class="row">
-                                        <button class="danger" @onclick="Forget">Forget everything</button>
-                                        <button class="link" @onclick="DeclineForget">Cancel</button>
+                                        <button class="btn btn-danger" @onclick="Forget">Forget everything</button>
+                                        <button class="btn btn-ghost" @onclick="DeclineForget">Cancel</button>
                                     </div>
                                 </div>
                             }
@@ -301,7 +296,7 @@
             </div>
 
             <div class="dlg-actions">
-                <button class="primary" @onclick="Close">Done</button>
+                <button class="btn btn-primary" @onclick="Close">Done</button>
             </div>
         </div>
     </div>

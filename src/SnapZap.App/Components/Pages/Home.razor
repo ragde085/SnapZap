@@ -3,23 +3,40 @@
 @inject AppState AppState
 @inject DependencyChecker Checker
 @inject SessionStore Session
+@using Scope = SnapZap.App.Services.AppState.SelectionScope
 
 <header class="topbar">
     @* The same artwork as the window and taskbar icon (assets/icon/snapzap.png, resized into
        wwwroot by scripts/make-icons.py). alt is empty on purpose: the wordmark beside it already
        says "SnapZap", and a description here would just make a screen reader say it twice. *@
     <div class="brand">
-        <img class="brand-mark" src="snapzap.png" width="28" height="28" alt="" />
+        <img class="brand-mark" src="snapzap.png" width="26" height="26" alt="" />
         <span>Snap<em>Zap</em></span>
     </div>
-    <Toolbar OnOpenExtract="OpenExtract" />
 
-    @* Setup and help: needed rarely, so they get icons at the far edge rather than space in the
-       working toolbar below. The pip is the only reason Setup is ever urgent. *@
-    <div class="topbar-tools">
+    @if (AppState.Images.Count > 0)
+    {
+        <JumpSearch OnPick="OpenPreview" />
+    }
+
+    @if (AppState.ScannedFolder is not null)
+    {
+        <button class="btn btn-secondary" style="margin-left:@(AppState.Images.Count > 0 ? "0" : "auto")"
+                @onclick="OpenUndo">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path d="M3 3v5h5" /></svg>
+            History
+        </button>
+    }
+
+    <div class="topbar-tools" style="@(AppState.ScannedFolder is null && AppState.Images.Count == 0 ? "margin-left:auto" : "")">
+        <button class="icon-btn" title="Recover photos hidden inside a PNG" aria-label="Extract hidden images"
+                aria-haspopup="dialog" aria-expanded="@(_showExtract ? "true" : "false")"
+                @onclick="OpenExtract">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="8" width="18" height="12" rx="1" /><path d="M7 8V6a5 5 0 0 1 10 0v2" /></svg>
+        </button>
         <button class="icon-btn" title="Help and FAQ" aria-label="Help and FAQ"
                 aria-haspopup="dialog" aria-expanded="@(_showHelp ? "true" : "false")"
-                @onclick="() => _showHelp = true">
+                @onclick="() => OpenHelp(null)">
             <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M9.5 9a2.5 2.5 0 113.5 2.3c-.7.4-1 .9-1 1.7" /><circle cx="12" cy="17" r=".6" fill="currentColor" stroke="none" /></svg>
         </button>
         <button class="icon-btn" title="Setup" aria-label="Setup"
@@ -28,108 +45,209 @@
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 100-6 3 3 0 000 6z" /><path d="M19.4 15a1.7 1.7 0 00.3 1.9l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.9-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1A1.7 1.7 0 008.9 19a1.7 1.7 0 00-1.9.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.9 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1A1.7 1.7 0 004.6 8.4a1.7 1.7 0 00-.3-1.9l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.9.3H9a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.9-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.9V9a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z" /></svg>
             @if (Checker.MissingCount > 0)
             {
-                <span class="pip warn" title="@Checker.MissingCount optional feature(s) not installed">@Checker.MissingCount</span>
+                <span class="pip" title="@Checker.MissingCount optional feature(s) not installed">@Checker.MissingCount</span>
             }
         </button>
     </div>
 </header>
 
-<FilterBar OnOpenDupeReview="OpenDupeReview" OnOpenUndo="OpenUndo" />
+@if (AppState.Images.Count == 0 && AppState.ScannedFolder is null && !AppState.Busy)
+{
+    <FirstRun OnOpenHelp="() => OpenHelp(null)" />
+}
+else
+{
+    <main>
+        <Rail @ref="_rail" OnOpenDupeReview="OpenDupeReview" />
 
-<main>
-    @* Left pane is the folder tree and nothing else, the way a file explorer is laid out:
-       the place you navigate, not a stack of tool panels that push the photos aside. *@
-    <aside class="tree-pane" aria-label="Folders">
-        <FolderTreeView />
-    </aside>
-
-    <section class="content">
-        <div class="summary-row">
-            <div class="summary">@((MarkupString)Summary)</div>
-            @if (AppState.Images.Count > 0)
+        <section class="content">
+            @* Shared by every long operation that reports progress (Scan, Duplicates, Content
+               review) — not just Scan. AppState.BusyDone/BusyTotal/BusyDetail are populated the
+               same way by all three (see AppState.RunAsync), so Content review scoring gets the
+               same live counter and bar as Scan does, not silent silence while it runs. *@
+            @if (AppState.Busy && BusyProgressNoun is { } noun)
             {
-                <div class="sortbar">
-                    <label for="sortby">Sort</label>
-                    <select id="sortby" value="@AppState.Sort" @onchange="SortChanged">
-                        <option value="@SortKey.Scanned">Scan order</option>
-                        <option value="@SortKey.Captured">Date taken</option>
-                        <option value="@SortKey.Name">Name</option>
-                        <option value="@SortKey.Size">File size</option>
-                        <option value="@SortKey.Blur">Sharpness</option>
-                        <option value="@SortKey.Nsfw">Explicit content</option>
-                    </select>
-                    @* One description, not two that disagree: the tooltip used to report the
-                       current state while the accessible name announced the opposite action. *@
-                    <button class="sort-dir"
-                            title="@SortDirLabel"
-                            aria-label="@SortDirLabel"
-                            @onclick="() => AppState.SortDescending = !AppState.SortDescending">
-                        @(AppState.SortDescending ? "↓" : "↑")
-                    </button>
-                </div>
-            }
-        </div>
-        <ScanIssues />
-        <PhotoGrid OnPreview="OpenPreview" />
-        @* "No photos" has two causes that need opposite responses: nothing scanned yet, and a
-           scan that came back empty. Showing the first message after a scan tells the user to
-           do the thing they just did. *@
-        @if (AppState.Images.Count == 0 && !AppState.Busy && AppState.ScannedFolder is { } scanned)
-        {
-            <div class="empty">
-                <p>
-                    No photos in <b>@ImageView.ShortFolder(scanned)</b>.
-                    @if (AppState.LastUnsupportedTotal > 0)
+                <div class="scan-stats">
+                    <div class="scan-count">
+                        <b>@AppState.BusyDone.ToString("N0")</b>
+                        <span>@(AppState.BusyTotal > 0 ? $"of about {AppState.BusyTotal:N0} {noun}" : noun)</span>
+                    </div>
+                    <div class="scan-track"><div style="width:@(ScanPercent)%"></div></div>
+                    @if (AppState.BusyDetail is { Length: > 0 } current)
                     {
-                        <text>
-                            <br />
-                            SnapZap found @AppState.LastUnsupportedTotal.ToString("N0") file@(AppState.LastUnsupportedTotal == 1 ? "" : "s")
-                            it can't read yet — see the note above the grid.
-                        </text>
+                        <div class="scan-current">@current</div>
+                    }
+                    @if (AppState.BusyLabel == "Scanning")
+                    {
+                        <div class="scan-metrics">
+                            <div class="scan-metric"><div class="eyeb">Checksums</div><b>@AppState.BusyDone.ToString("N0")</b></div>
+                            <div class="scan-metric accent"><div class="eyeb">Reused</div><b>@AppState.BusyCached.ToString("N0")</b></div>
+                        </div>
+                        <div class="scan-hint">
+                            Stopping keeps everything analysed so far — re-scanning picks up where this
+                            left off. Duplicate detection starts by itself the moment this finishes.
+                        </div>
                     }
                     else
                     {
-                        <text>
-                            <br />
-                            Check the folder is the right one, and that it holds images rather
-                            than a folder of folders you meant to point at instead.
-                        </text>
+                        <div class="scan-hint">Stopping keeps everything scored so far — re-running picks up where this left off.</div>
                     }
-                </p>
-            </div>
-        }
-        else if (AppState.Images.Count == 0 && !AppState.Busy)
-        {
-            @* The one screen every new user sees, and the only one with room to say where the
-               instructions live — the "?" icon is a 17px glyph at the far edge of the top bar. *@
-            <div class="empty">
-                <p>Point SnapZap at a folder of photos and press <kbd>Scan</kbd> to begin.</p>
-                <p><button class="link" @onclick="() => OpenHelp(null)">How SnapZap works</button></p>
-            </div>
-        }
-        else if (AppState.Images.Count > 0 && Shown == 0)
-        {
-            <div class="empty">
-                <p>
-                    None of the @AppState.Images.Count.ToString("N0") photos match these filters.
-                    @* An explicit-content filter over an unscored library matches nothing and
-                       looks like a bug. Name the actual reason. *@
-                    @if (AppState.Nsfw != NsfwFilter.Any && Unchecked > 0)
+                </div>
+            }
+
+            <div class="mhead">
+                @if (AppState.Busy)
+                {
+                    <div style="font-size:13px">@AppState.BusyLabel<text>&hellip; </text><b>@(AppState.ScannedFolder ?? "")</b></div>
+                    <button class="btn btn-secondary" style="margin-left:auto" disabled="@(!AppState.CanCancel)" @onclick="() => AppState.Cancel()">
+                        @(AppState.CanCancel ? "Stop" : "Stopping…")
+                    </button>
+                }
+                else
+                {
+                    <div class="mhead-split">
+                        <button class="btn @(AppState.HasActiveFilter ? "btn-primary" : "btn-secondary")" style="font-size:12.5px"
+                                disabled="@(SelectAllCount == 0)" @onclick="() => AppState.SelectBy(Scope.AllShown)">
+                            Select all @SelectAllCount.ToString("N0") shown
+                        </button>
+                        <button class="btn @(AppState.HasActiveFilter ? "btn-primary" : "btn-secondary")" style="width:26px"
+                                aria-haspopup="true" aria-expanded="@(_scopeMenuOpen ? "true" : "false")"
+                                @onclick="() => _scopeMenuOpen = !_scopeMenuOpen">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6" /></svg>
+                        </button>
+                    </div>
+
+                    @if (_scopeMenuOpen)
                     {
-                        <text>
-                            <br />
-                            @Unchecked.ToString("N0") of them have not been checked for explicit
-                            content, so this filter hides them.
-                        </text>
+                        <div class="popover" style="position:absolute;top:100px;left:18px;z-index:50;min-width:220px;padding:6px;background:var(--color-bg);border:1px solid var(--color-text)">
+                            @foreach (var scope in new[] { Scope.LikelyExplicit, Scope.NotSure, Scope.DuplicateKeepers })
+                            {
+                                <button class="btn btn-secondary btn-block" style="border:none;font-size:12.5px"
+                                        disabled="@(AppState.SelectableCount(scope) == 0)"
+                                        @onclick="() => { AppState.SelectBy(scope); _scopeMenuOpen = false; }">
+                                    @ScopeLabel(scope)
+                                    <span class="btn-count">@AppState.SelectableCount(scope).ToString("N0")</span>
+                                </button>
+                            }
+                        </div>
+                        <div style="position:fixed;inset:0;z-index:40" @onclick="() => _scopeMenuOpen = false"></div>
                     }
-                    <br />
-                    <button class="link" @onclick="() => AppState.ClearFilters()">Clear filters</button>
-                </p>
+
+                    @if (!AppState.HasActiveFilter)
+                    {
+                        <button class="btn btn-secondary" style="font-size:12.5px" @onclick="() => _rail?.ShowFiltersTab()">
+                            Filters
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6" /></svg>
+                        </button>
+                    }
+                    else
+                    {
+                        @foreach (var chip in ActiveFilterChips())
+                        {
+                            <div class="filter-chip">
+                                <b>@chip.Label</b>
+                                <span class="clear" role="button" tabindex="0" @onclick="chip.Clear">✕</span>
+                            </div>
+                        }
+                        <button class="btn btn-ghost" style="font-size:11.5px" @onclick="() => _rail?.ShowFiltersTab()">Filters</button>
+                        <button class="btn btn-ghost" style="font-size:11.5px" @onclick="() => AppState.ClearFilters()">Clear all</button>
+                    }
+
+                    <div class="sortbar">
+                        <span class="eyeb">Sort</span>
+                        <select value="@AppState.Sort" @onchange="SortChanged">
+                            <option value="@SortKey.Scanned">Scan order</option>
+                            <option value="@SortKey.Captured">Date taken</option>
+                            <option value="@SortKey.Name">Name</option>
+                            <option value="@SortKey.Size">File size</option>
+                            <option value="@SortKey.Blur">Sharpness</option>
+                            <option value="@SortKey.Nsfw">Explicit content</option>
+                        </select>
+                        <button class="btn btn-icon" title="@SortDirLabel" aria-label="@SortDirLabel"
+                                @onclick="() => AppState.SortDescending = !AppState.SortDescending">
+                            @(AppState.SortDescending ? "↓" : "↑")
+                        </button>
+                    </div>
+                }
             </div>
-        }
-        <SelectionBar OnOpenExport="OpenExport" OnOpenHide="OpenHide" />
-    </section>
-</main>
+
+            @* The result of whatever last ran — including a failure. Without this, an
+               exception during Scan/Dedup/NSFW/Forget/Restore re-enabled the button with
+               nothing on screen to say what went wrong. *@
+            @if (!AppState.Busy && AppState.Status.Length > 0)
+            {
+                <div class="status" role="status" aria-live="polite" style="padding:6px 18px">@AppState.Status</div>
+            }
+
+            @if (!AppState.Busy && AppState.DupeGroups.Count > 0 && !_bannerDismissed)
+            {
+                <div class="banner">
+                    <div style="flex:1">
+                        <div class="banner-title">
+                            @AppState.DupeGroups.Count.ToString("N0") duplicate groups are waiting — @AppState.FormattedReclaimable of them.
+                        </div>
+                        <div class="banner-sub">
+                            Found automatically when the scan finished. One group at a time, keeper
+                            already picked.
+                        </div>
+                    </div>
+                    <button class="btn btn-primary" style="font-size:12.5px" @onclick="() => { _bannerDismissed = true; OpenDupeReview(); }">Start reviewing</button>
+                    <button class="btn btn-ghost" style="font-size:12.5px" @onclick="() => _bannerDismissed = true">Later</button>
+                </div>
+            }
+
+            <ScanIssues />
+            <PhotoGrid OnPreview="OpenPreview" />
+
+            @* "No photos" has two causes that need opposite responses: a scan that came back
+               empty, and a filter that matches none of the library. *@
+            @if (!AppState.Busy && AppState.Images.Count == 0 && AppState.ScannedFolder is { } scanned)
+            {
+                <div class="empty">
+                    <p>
+                        No photos in <b>@ImageView.ShortFolder(scanned)</b>.
+                        @if (AppState.LastUnsupportedTotal > 0)
+                        {
+                            <text>
+                                <br />
+                                SnapZap found @AppState.LastUnsupportedTotal.ToString("N0") file@(AppState.LastUnsupportedTotal == 1 ? "" : "s")
+                                it can't read yet — see the note above the grid.
+                            </text>
+                        }
+                        else
+                        {
+                            <text>
+                                <br />
+                                Check the folder is the right one, and that it holds images rather
+                                than a folder of folders you meant to point at instead.
+                            </text>
+                        }
+                    </p>
+                </div>
+            }
+            else if (!AppState.Busy && AppState.Images.Count > 0 && Shown == 0)
+            {
+                <div class="empty">
+                    <p>
+                        None of the @AppState.Images.Count.ToString("N0") photos match these filters.
+                        @if (AppState.Nsfw != NsfwFilter.Any && Unchecked > 0)
+                        {
+                            <text>
+                                <br />
+                                @Unchecked.ToString("N0") of them have not been checked for explicit
+                                content, so this filter hides them.
+                            </text>
+                        }
+                        <br />
+                        <button class="btn btn-ghost" @onclick="() => AppState.ClearFilters()">Clear filters</button>
+                    </p>
+                </div>
+            }
+
+            <SelectionBar OnOpenExport="OpenExport" OnOpenHide="OpenHide" />
+        </section>
+    </main>
+}
 
 <Toast />
 
@@ -152,6 +270,10 @@
     bool _showDupes;
     bool _showSetup;
     bool _showHelp;
+    bool _scopeMenuOpen;
+    bool _bannerDismissed;
+
+    Rail? _rail;
 
     /// <summary>Which help section to land on. Set by <see cref="OpenHelp"/> so a "what does
     /// this mean?" link can open the paragraph that answers it rather than the front page.</summary>
@@ -160,6 +282,68 @@
     ImageView? _previewImg;
 
     int Shown => AppState.Filtered().Count;
+    int SelectAllCount => AppState.SelectableCount(Scope.AllShown);
+
+    double ScanPercent => AppState.BusyFraction is { } f ? Math.Round(f * 100, 1) : 35;
+
+    /// <summary>
+    /// The noun for the big counter's "N of about M ___" line — null for operations that don't
+    /// get the rich progress block (Delete, Forget, Restore already have their own generic
+    /// mhead label + Stop button, which is all a one-shot batch needs).
+    /// </summary>
+    string? BusyProgressNoun => AppState.BusyLabel switch
+    {
+        "Scanning" => "photos read",
+        "Finding duplicates" => "photos compared",
+        "Scoring NSFW" => "photos scored",
+        _ => null,
+    };
+
+    static string ScopeLabel(Scope scope) => scope switch
+    {
+        Scope.LikelyExplicit => "Flagged",
+        Scope.NotSure => "Not sure",
+        Scope.DuplicateKeepers => "Keepers",
+        _ => scope.ToString(),
+    };
+
+    sealed record FilterChip(string Label, Action Clear);
+
+    /// <summary>One dismissible chip per active filter dimension, so several can combine (a
+    /// folder plus a year plus a duplicates facet) without collapsing into one vague count.</summary>
+    IEnumerable<FilterChip> ActiveFilterChips()
+    {
+        if (AppState.DupeFilter != DupeFilter.Any)
+            yield return new FilterChip(DupeFilterLabel(AppState.DupeFilter), () => AppState.DupeFilter = DupeFilter.Any);
+        if (AppState.Nsfw != NsfwFilter.Any)
+            yield return new FilterChip(NsfwFilterLabel(AppState.Nsfw), () => AppState.Nsfw = NsfwFilter.Any);
+        if (AppState.BlurMax > 0)
+            yield return new FilterChip($"Blurrier than {AppState.BlurMax}", () => AppState.BlurMax = 0);
+        if (AppState.Folder.Length > 0)
+            yield return new FilterChip(ImageView.ShortFolder(AppState.Folder), () => AppState.Folder = "");
+        if (AppState.Year.Length > 0)
+            yield return new FilterChip(AppState.Year, () => AppState.Year = "");
+        if (!AppState.IncludeSubfolders)
+            yield return new FilterChip("This folder only", () => AppState.IncludeSubfolders = true);
+    }
+
+    static string DupeFilterLabel(DupeFilter f) => f switch
+    {
+        DupeFilter.ExtrasOnly => "Extra copies only",
+        DupeFilter.KeepersOnly => "Keepers only",
+        DupeFilter.BurstOnly => "Burst frames",
+        _ => "",
+    };
+
+    static string NsfwFilterLabel(NsfwFilter f) => f switch
+    {
+        NsfwFilter.Likely => "Likely explicit",
+        NsfwFilter.Unsure => "Not sure",
+        NsfwFilter.Review => "Likely or not sure",
+        NsfwFilter.Clean => "Looks clean",
+        NsfwFilter.Unchecked => "Not checked yet",
+        _ => "",
+    };
 
     /// <summary>
     /// Picking a sort also picks the only direction anyone wants from it. Choosing "Explicit
@@ -182,33 +366,6 @@
     string SortDirLabel => AppState.SortDescending
         ? "Sorted descending — switch to ascending"
         : "Sorted ascending — switch to descending";
-
-    string Summary
-    {
-        get
-        {
-            var total = AppState.Images.Count;
-            if (total == 0) return "";
-
-            var noun = total == 1 ? "photo" : "photos";
-            var bits = new List<string>
-            {
-                AppState.HasActiveFilter
-                    ? $"<b>{Shown:N0}</b> of {total:N0} {noun}"
-                    : $"<b>{total:N0}</b> {noun}",
-            };
-            if (AppState.DupeExtraCount > 0)
-                bits.Add($"{AppState.DupeExtraCount:N0} duplicate extra{(AppState.DupeExtraCount == 1 ? "" : "s")} · <b>{AppState.FormattedReclaimable}</b> reclaimable");
-            else if (AppState.DupeOf.Count > 0)
-                bits.Add($"{AppState.DupeOf.Count:N0} in duplicate groups");
-            if (Unchecked > 0)
-                bits.Add(Unchecked == total
-                    ? "none checked for explicit content"
-                    : $"{Unchecked:N0} not checked for explicit content");
-            if (AppState.Selected.Count > 0) bits.Add($"<b>{AppState.Selected.Count:N0}</b> selected");
-            return string.Join(" &nbsp;·&nbsp; ", bits);
-        }
-    }
 
     protected override async Task OnInitializedAsync()
     {

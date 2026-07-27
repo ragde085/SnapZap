@@ -1,0 +1,40 @@
+@inject AppState AppState
+
+@*
+    The one place a folder gets typed in and scanned — used by FirstRun (the only screen with
+    room for it) and by the Plan tab's "Change folder…" disclosure, so the two paths can't drift
+    apart on what Enter does or when Scan is disabled.
+*@
+<div class="field" style="@FieldStyle">
+    <label>FOLDER TO SCAN</label>
+    <input class="input" style="font-size:14px" placeholder="/Volumes/Archive/Photos"
+           spellcheck="false" aria-label="Folder to scan"
+           disabled="@AppState.Busy"
+           @bind="_folder" @bind:event="oninput" @onkeydown="HandleKey" />
+</div>
+<button class="btn btn-primary" style="@ButtonStyle"
+        disabled="@(AppState.Busy || _folder.Trim().Length == 0)" @onclick="Scan">
+    Scan
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+         stroke-linecap="round" stroke-linejoin="round" style="margin-left:auto">
+        <path d="M5 12h14" /><path d="m12 5 7 7-7 7" />
+    </svg>
+</button>
+
+@code {
+    [Parameter] public string? InitialValue { get; set; }
+    [Parameter] public string? FieldStyle { get; set; }
+    [Parameter] public string? ButtonStyle { get; set; }
+
+    string _folder = "";
+
+    protected override void OnInitialized() => _folder = InitialValue ?? "";
+
+    Task HandleKey(KeyboardEventArgs e) => e.Key == "Enter" ? Scan() : Task.CompletedTask;
+
+    Task Scan()
+    {
+        var folder = _folder.Trim();
+        return folder.Length == 0 ? Task.CompletedTask : AppState.ScanAsync(folder);
+    }
+}

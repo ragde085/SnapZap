@@ -5,44 +5,53 @@
 {
     <div class="dlg" role="dialog" aria-modal="true" aria-label="History"
          tabindex="-1" @ref="_dlgRef" @onkeydown="HandleKeyDown">
-        <div class="dlg-box">
-            <h2>History</h2>
+        <div class="dlg-box wide">
+            <h3>History</h3>
             @* Not everything here was recycled — an export in Move mode relocates files rather
                than binning them, and calling that "recycled" sends people to the wrong place
                to look for their photos. *@
-            <p class="dlg-sub">Every batch SnapZap has recycled or moved. Restoring puts the files back where they came from.</p>
+            <p class="history-note">Every batch SnapZap has recycled or moved, newest first. Restore puts the files back where they came from.</p>
 
-            <div class="undo-list">
-                @if (_batches.Count == 0)
-                {
-                    <p class="hint">Nothing has been recycled yet.</p>
-                }
-                else
-                {
-                    @foreach (var b in _batches)
-                    {
-                        var done = b.Restored >= b.Total;
-                        var busy = _restoring == b.BatchId;
-                        <div class="undo-row @(done ? "done" : "")">
-                            <div>
-                                <b>@Describe(b)</b>
-                                <div class="meta">
-                                    @DateTimeOffset.FromUnixTimeSeconds(b.Ts).LocalDateTime.ToString("MMM d, yyyy 'at' h:mm tt")
-                                    @if (b.Restored > 0)
-                                    {
-                                        <text> · @b.Restored restored</text>
-                                    }
-                                </div>
-                            </div>
-                            <button disabled="@(done || busy)" @onclick="() => Restore(b.BatchId)">
-                                @(done ? "Restored" : busy ? "Restoring…" : "Restore")
-                            </button>
-                        </div>
-                    }
-                }
-            </div>
+            @if (_batches.Count == 0)
+            {
+                <p class="hint">Nothing has been recycled yet.</p>
+            }
+            else
+            {
+                <table class="table">
+                    <thead><tr><th>When</th><th>What happened</th><th style="text-align:right">Photos</th><th></th></tr></thead>
+                    <tbody>
+                        @foreach (var b in _batches)
+                        {
+                            var done = b.Restored >= b.Total;
+                            var busy = _restoring == b.BatchId;
+                            <tr>
+                                <td>@DateTimeOffset.FromUnixTimeSeconds(b.Ts).LocalDateTime.ToString("MMM d, yyyy 'at' h:mm tt")</td>
+                                <td>
+                                    @What(b)
+                                    <div class="history-sub">
+                                        @(WasMoved(b) ? "Relocated, not binned" : done ? "Emptied from the bin since" : "In the Recycle Bin")
+                                        @if (b.Restored > 0)
+                                        {
+                                            <text> · @b.Restored restored</text>
+                                        }
+                                    </div>
+                                </td>
+                                <td style="text-align:right;font-variant-numeric:tabular-nums">@b.Total.ToString("N0")</td>
+                                <td style="text-align:right">
+                                    <button class="btn btn-secondary" style="font-size:12px;padding:4px 10px"
+                                            disabled="@(done || busy)" @onclick="() => Restore(b.BatchId)">
+                                        @(done ? "Restored" : busy ? "Restoring…" : "Restore")
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
 
-            <div class="dlg-actions"><button class="link" @onclick="Close">Close</button></div>
+            <div class="history-hint">You can also restore from the Recycle Bin's own right-click menu.</div>
+            <div class="dlg-actions" style="margin-top:14px"><button class="btn btn-ghost" @onclick="Close">Close</button></div>
         </div>
     </div>
 }
@@ -77,16 +86,14 @@
 
     void Refresh() => _batches = AppState.Batches().ToList();
 
-    static string Describe(UndoBatch b)
+    static bool WasMoved(UndoBatch b) => b.BatchId.StartsWith("move-");
+
+    static string What(UndoBatch b) => b.BatchId switch
     {
-        var what = b.BatchId switch
-        {
-            var s when s.StartsWith("move-") => "Moved out by export",
-            var s when s.StartsWith("export-") => "Recycled during export",
-            _ => "Deleted",
-        };
-        return $"{what} · {b.Total} photo{(b.Total == 1 ? "" : "s")}";
-    }
+        var s when s.StartsWith("move-") => "Moved out by export",
+        var s when s.StartsWith("export-") => "Recycled during export — the photos you didn't pick",
+        _ => "Deleted — recycled from a selection",
+    };
 
     async Task Restore(string batchId)
     {

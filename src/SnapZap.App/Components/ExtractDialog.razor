@@ -33,22 +33,22 @@
             }
 
             <div class="dlg-actions">
-                <button class="primary" disabled="@(!CanConfirm)" @onclick="RunExtract">
+                <button class="btn btn-primary" disabled="@(!CanConfirm)" @onclick="RunExtract">
                     @(_running ? "Extracting…" : "Extract")
                 </button>
                 @if (_running)
                 {
-                    <button class="danger" disabled="@(_cts is not { IsCancellationRequested: false })" @onclick="StopExtract">
+                    <button class="btn btn-danger" disabled="@(_cts is not { IsCancellationRequested: false })" @onclick="StopExtract">
                         @(_cts is { IsCancellationRequested: false } ? "Stop" : "Stopping…")
                     </button>
                 }
                 else if (_done)
                 {
-                    <button class="link" @onclick="Close">Done</button>
+                    <button class="btn btn-ghost" @onclick="Close">Done</button>
                 }
                 else
                 {
-                    <button class="link" @onclick="Close">Cancel</button>
+                    <button class="btn btn-ghost" @onclick="Close">Cancel</button>
                 }
             </div>
             @if (_resultText.Length > 0)

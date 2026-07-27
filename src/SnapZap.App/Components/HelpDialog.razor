@@ -24,7 +24,7 @@
                         then writes the set you keep somewhere clean.
                     </p>
                 </div>
-                <button class="link" @onclick="Close">Close</button>
+                <button class="btn btn-ghost" @onclick="Close">Close</button>
             </div>
 
             @* Plain buttons in a nav, deliberately not role="tablist". Real tabs promise one tab
@@ -133,9 +133,9 @@
     RenderFragment StartHere => @<div class="help-sec">
         <h3>The short version</h3>
         <ol class="help-steps">
-            <li><b>Scan a folder.</b> Type or paste its path at the top and press <b>Scan</b>. SnapZap reads every photo under it and remembers what it found.</li>
-            <li><b>Press <b>Find duplicates</b>.</b> It groups identical files, the same shot at another size, and bursts. Optionally press <b>Score NSFW</b> to flag explicit photos.</li>
-            <li><b>Pick the photos you want to keep.</b> Click them, or use the <b>Select</b> commands in the bar.</li>
+            <li><b>Scan a folder.</b> Type or paste its path and press <b>Scan</b>. SnapZap reads every photo under it and remembers what it found.</li>
+            <li><b>Duplicates are found automatically</b> the moment the scan ends — no button to press. The rail's <b>Plan</b> tab shows a <b>Review N groups</b> button once they're ready; optionally press <b>Run</b> under <b>Content review</b> to flag explicit photos.</li>
+            <li><b>Pick the photos you want to keep.</b> Click them, or use <b>Select all N shown</b> at the top of the grid.</li>
             <li><b>Press <b>Export…</b></b> to write them somewhere clean — or <b>Delete…</b> to recycle what you don't want.</li>
         </ol>
 
@@ -147,17 +147,17 @@
 
         <h3>Where things are</h3>
         <dl class="help-dl">
-            <dt>Top bar</dt><dd>The folder box and the three actions: <b>Scan</b>, <b>Find duplicates</b>, <b>Score NSFW</b>.</dd>
-            <dt>Filter bar</dt><dd><b>Filters</b>, the <b>Select</b> commands, <b>Review duplicates</b> and <b>History</b>.</dd>
-            <dt>Left pane</dt><dd>The folder tree of whatever you scanned. Click a folder to show only its photos.</dd>
-            <dt>Bottom bar</dt><dd><b>Export…</b> and <b>Delete…</b> — it appears once you have selected at least one photo.</dd>
+            <dt>Top bar</dt><dd><b>Jump to anything</b> (search by filename or folder), <b>History</b>, and icons for Extract, Help and Setup.</dd>
+            <dt>Rail</dt><dd>The library summary and progress strip, above three tabs: <b>Plan</b> (what's done, what's next, and the buttons to run each step), <b>Folders</b> (the folder tree — click one to show only its photos), and <b>Filters</b> (narrow by duplicates, explicit content, sharpness, folder or year).</dd>
+            <dt>Grid header</dt><dd><b>Select all N shown</b> (with a menu for Flagged / Not sure / Keepers), the active filter as a clearable chip, and Sort.</dd>
+            <dt>Bottom bar</dt><dd><b>Export…</b>, <b>Delete…</b> and <b>Hide in Image…</b>, plus <b>Invert</b> / <b>Clear</b> — it appears once you have selected at least one photo.</dd>
             <dt>Gear icon</dt><dd><b>Setup</b>: the optional add-on, what duplicate detection checks, and the catalogue.</dd>
         </dl>
     </div>;
 
     RenderFragment Scanning => @<div class="help-sec">
         <h3>Scanning a folder</h3>
-        <p>Type or paste a folder path into the box at the top and press <b>Scan</b>, or just press <kbd>Enter</kbd>. A leading <code>~</code> expands to your home folder.</p>
+        <p>The first time, type or paste a folder path and press <b>Scan</b>, or just press <kbd>Enter</kbd>. A leading <code>~</code> expands to your home folder. Once a library is loaded, <b>Change folder…</b> under the <b>Scan</b> step in the Plan tab does the same thing for a different folder.</p>
         <p>SnapZap walks that folder and everything beneath it, recording a checksum, the dimensions, the capture date and camera from EXIF, a sharpness score, a visual fingerprint and a thumbnail for each photo.</p>
         <p><b>Stop</b> is always available, and it is safe — everything analysed so far is kept.</p>
 
@@ -193,22 +193,22 @@
         <p>Cards pick up a badge: <b>✓</b> for the copy being kept from its group, <b>▣</b> for an extra copy. Hover either for the group number and kind.</p>
 
         <h3>Reviewing them</h3>
-        <p>Press <b>Review duplicates</b> for the good way to work through them — one group at a time, copies side by side. Facts that are identical across the group are greyed out because they cannot help you choose; whatever differs stays bright, and a clear winner on resolution or file size is highlighted.</p>
+        <p>Press <b>Review N groups</b> (Plan tab, or the banner above the grid) for the good way to work through them — one group at a time, copies side by side. Facts that are identical across the group are greyed out because they cannot help you choose; whatever differs stays bright, and a clear winner on resolution or file size is highlighted.</p>
         <p>Click a copy to make it the keeper. <b>Compare full size</b> opens them at full resolution with the panes panning together. <b>Nothing is deleted in that dialog</b> — it only decides which copy survives an export or delete you run afterwards.</p>
 
         <h3>Tuning it</h3>
-        <p>In <b>Setup → What "Find duplicates" checks</b>:</p>
+        <p>In <b>Setup → Duplicates</b>:</p>
         <ul>
             <li><b>Identical files</b> — always on. A duplicate finder that cannot find identical files is not one.</li>
             <li><b>The same shot at another size</b> — on by default, with a strictness slider (default 20 of 272) and an option to match rotated copies.</li>
             <li><b>Bursts</b> — always on. Only the window is tunable, default 3 seconds.</li>
         </ul>
-        <p class="hint">Changes save immediately. Run <b>Find duplicates</b> again to apply them.</p>
+        <p class="hint">Changes save immediately. Press <b>Find again</b> under the Duplicates step (Plan tab) to apply them.</p>
     </div>;
 
     RenderFragment Explicit => @<div class="help-sec">
         <h3>Scoring explicit content</h3>
-        <p>Press <b>Score NSFW</b>. This is the one feature that needs an optional download — see <b>Setup</b> if the button is greyed out. Everything else in SnapZap works without it.</p>
+        <p>Press <b>Run</b> under <b>Content review</b> (Plan tab, or the same facet in the Filters tab). This is the one feature that needs an optional download — see <b>Setup</b> if the button is greyed out. Everything else in SnapZap works without it.</p>
         <p>Every photo gets one score from 0.00 to 1.00 and lands in a band:</p>
 
         <table class="help-table">
@@ -241,23 +241,22 @@
         </dl>
 
         <h3>By command</h3>
-        <p>The <b>Select</b> commands sit in the filter bar. Each shows how many photos it would pick, and hovering explains it.</p>
+        <p><b>Select all N shown</b> sits at the top of the grid — it picks everything the current filters show (<kbd>@ModKey</kbd><kbd>A</kbd>). Its own chevron opens a menu for a few other scopes; each shows how many photos it would pick.</p>
         <table class="help-table">
             <tbody>
                 <tr><td><b>All shown</b></td><td>Everything the current filters show (<kbd>@ModKey</kbd><kbd>A</kbd>)</td></tr>
                 <tr><td><b>Flagged</b></td><td>Photos the model called likely explicit</td></tr>
-                <tr><td><b>Extras</b></td><td>Every extra copy — identical and same-shot only, <b>never burst frames</b></td></tr>
-                <tr><td><b>Invert</b></td><td>Everything shown that is not selected now</td></tr>
-                <tr><td><b>Clear</b></td><td>Deselect everything (<kbd>@ModKey</kbd><kbd>D</kbd>)</td></tr>
-                <tr><td><b>More → Not sure</b></td><td>Photos the model was unsure about</td></tr>
-                <tr><td><b>More → Keepers</b></td><td>The one copy being kept from each duplicate group</td></tr>
+                <tr><td><b>Not sure</b></td><td>Photos the model was unsure about</td></tr>
+                <tr><td><b>Keepers</b></td><td>The one copy being kept from each duplicate group</td></tr>
             </tbody>
         </table>
+        <p>The Filters tab's <b>Duplicates</b> facet has an <b>Extra copies only</b> row — narrow to it, then <b>Select all N shown</b> picks every extra copy: identical and same-shot only, <b>never burst frames</b>.</p>
+        <p>Once something is selected, <b>Invert</b> and <b>Clear</b> appear in the bar at the bottom of the grid, next to the count (<kbd>@ModKey</kbd><kbd>D</kbd> also clears).</p>
         <p class="hint">A command that cannot do anything stays visible but greyed, and its tooltip says which step is actually missing.</p>
 
         <div class="help-note warn">
             <b>The selection is shared by every SnapZap window</b>
-            <p>A command like <b>Extras</b> <i>replaces</i> the selection rather than adding to it, so a press in one window changes what the other is about to export or delete.</p>
+            <p>Picking a scope <i>replaces</i> the selection rather than adding to it, so a press in one window changes what the other is about to export or delete.</p>
         </div>
     </div>;
 
@@ -300,7 +299,7 @@
         <p>Confirming moves them to the <b>Recycle Bin</b> — never a hard delete. A message appears with an <b>Undo</b> button that puts them straight back.</p>
 
         <h3>History</h3>
-        <p>If that message has gone, everything is still there. <b>History</b> in the filter bar lists every batch SnapZap has recycled or moved, newest first, each with a <b>Restore</b> button that puts the files back where they came from.</p>
+        <p>If that message has gone, everything is still there. <b>History</b>, in the top bar, lists every batch SnapZap has recycled or moved, newest first, each with a <b>Restore</b> button that puts the files back where they came from.</p>
         <table class="help-table">
             <thead><tr><th>Entry</th><th>What it was</th></tr></thead>
             <tbody>
@@ -352,7 +351,7 @@
             <div><span>Close the open dialog or menu</span> <kbd>Esc</kbd></div>
         </div>
 
-        <p class="hint">Press <kbd>Tab</kbd> from the toolbar to reach the grid — it is a single tab stop, and the arrows move within it.</p>
+        <p class="hint">The grid is a single tab stop — <kbd>Tab</kbd> reaches it and moves on, and the arrows move within it.</p>
         <p class="hint">
             <kbd>@ModKey</kbd><kbd>A</kbd> and <kbd>@ModKey</kbd><kbd>D</kbd> are ignored while a
             dialog is open, so a stray keypress cannot re-aim a delete confirmation already on screen.
@@ -378,13 +377,13 @@
         </details>
 
         <details>
-            <summary>"Score NSFW" is greyed out.</summary>
+            <summary>"Run" is greyed out under Content review.</summary>
             <p>The optional model is not installed. Open <b>Setup</b> (the gear, top right) — it shows the exact command to install it, and a <b>Check again</b> button that picks it up without a restart. Everything else in SnapZap works without it.</p>
         </details>
 
         <details>
-            <summary>"Find duplicates" is greyed out.</summary>
-            <p>Scan a folder first. Duplicate detection itself needs no download and no setup — all three kinds are built in.</p>
+            <summary>Where's the "Find duplicates" button?</summary>
+            <p>There isn't one to press the first time — duplicate detection runs automatically the moment a scan finishes, no download or setup needed. To re-run it later (after changing a setting in <b>Setup → Duplicates</b>, say), use <b>Find again</b> under the Duplicates step in the Plan tab.</p>
         </details>
 
         <details>
@@ -414,7 +413,7 @@
 
         <details>
             <summary>The filters are showing nothing.</summary>
-            <p>The message in the empty grid names the reason. The usual one: an explicit-content filter over a library that has not been scored matches nothing, because every photo is still "Not checked". Either run <b>Score NSFW</b> or clear the filter.</p>
+            <p>The message in the empty grid names the reason. The usual one: an explicit-content filter over a library that has not been scored matches nothing, because every photo is still "Not checked". Either press <b>Run</b> under Content review or clear the filter.</p>
         </details>
 
         <details>

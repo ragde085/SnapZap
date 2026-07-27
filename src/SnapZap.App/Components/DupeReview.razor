@@ -26,7 +26,7 @@
                     </button>
                 }
             </div>
-            <button class="link" @onclick="() => _compare = false">Close</button>
+            <button class="btn btn-ghost" @onclick="() => _compare = false">Close</button>
         </div>
 
         <div class="cmp-panes" @ref="_panesRef">
@@ -48,7 +48,7 @@
                     <div class="cmp-meta">
                         <b>@m.FileName</b>
                         <span>@m.Dimensions · @m.SizeLabel</span>
-                        <button class="@(isKeeper ? "primary" : "")"
+                        <button class="btn @(isKeeper ? "btn-primary" : "btn-secondary")"
                                 disabled="@(isKeeper && KeeperCountInGroup <= 1)"
                                 title="@(isKeeper && KeeperCountInGroup <= 1 ? "A group always keeps at least one copy." : null)"
                                 @onclick="() => ToggleKeeper(m.Id)">
@@ -69,14 +69,15 @@
         <div class="dlg-box review">
             <div class="review-head">
                 <div>
-                    <h2>Review duplicates</h2>
+                    <span class="eyeb">Duplicate review</span>
+                    <h2 style="margin-top:4px">Group @(_index + 1) of @Groups.Count</h2>
                     <p class="dlg-sub">
-                        Group @(_index + 1) of @Groups.Count · @Members.Count cop@(Members.Count == 1 ? "y" : "ies") · @Distinguisher
+                        @Members.Count cop@(Members.Count == 1 ? "y" : "ies") · @Distinguisher
                     </p>
                 </div>
                 <div class="review-nav">
-                    <button disabled="@(_index == 0)" @onclick="Prev" aria-label="Previous group">‹</button>
-                    <button disabled="@(_index >= Groups.Count - 1)" @onclick="Next" aria-label="Next group">›</button>
+                    <button class="btn btn-secondary btn-icon" disabled="@(_index == 0)" @onclick="Prev" aria-label="Previous group">‹</button>
+                    <button class="btn btn-secondary btn-icon" disabled="@(_index >= Groups.Count - 1)" @onclick="Next" aria-label="Next group">›</button>
                 </div>
             </div>
 
@@ -110,12 +111,12 @@
             </div>
 
             <div class="dlg-actions">
-                <button class="primary" @onclick="Next" disabled="@(_index >= Groups.Count - 1)">Next group</button>
-                <button @onclick="() => _compare = true">Compare full size</button>
-                <button @onclick="SelectExtrasAndClose">
+                <button class="btn btn-primary" @onclick="Next" disabled="@(_index >= Groups.Count - 1)">Next group</button>
+                <button class="btn btn-secondary" @onclick="() => _compare = true">Compare full size</button>
+                <button class="btn btn-secondary" @onclick="SelectExtrasAndClose">
                     Select all @ExtraCount extras (@AppState.FormattedReclaimable)
                 </button>
-                <button class="link" @onclick="Close">Done</button>
+                <button class="btn btn-ghost" @onclick="Close">Done</button>
             </div>
             <p class="hint">
                 <kbd>←</kbd> <kbd>→</kbd> move between groups · <kbd>1</kbd>–<kbd>9</kbd> toggle a keeper

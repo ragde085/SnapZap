@@ -1,0 +1,46 @@
+@*
+    The one screen every new user sees, and the only one with room to say where the
+    instructions live and what the app promises before it touches anything. Once a folder has
+    been scanned this never shows again — the rail's Plan tab takes over.
+*@
+<div class="firstrun">
+    <div class="firstrun-scan">
+        <span class="eyeb">Nothing scanned yet</span>
+        <h1>Point SnapZap at a folder.</h1>
+        <p class="lede">
+            It reads everything underneath, works out which photos are copies of each other,
+            and hands you a clean library to export. All of it on this machine.
+        </p>
+        <ScanForm />
+        <div class="hint" style="margin-top:10px">Enter scans. A leading ~ expands to your home folder.</div>
+        <hr class="hr" />
+        <div class="formats">
+            Reads JPEG · PNG · WebP · GIF · TIFF · BMP. HEIC/HEIF, AVIF and camera RAW are
+            counted and reported, never touched — so a folder of iPhone photos never looks
+            like an empty scan.
+        </div>
+        <p style="margin-top:20px"><button class="btn btn-ghost" @onclick="() => OnOpenHelp.InvokeAsync()">How SnapZap works</button></p>
+    </div>
+    <div class="firstrun-promises">
+        <span class="eyeb">Two promises</span>
+        <div class="promise">
+            <h4>Your originals stay put</h4>
+            <p>
+                Scanning only reads. Files move in exactly two cases, both of which you have to
+                ask for: an export in Move mode, or ticking "also recycle what I didn't pick".
+            </p>
+        </div>
+        <div class="promise">
+            <h4>Nothing is ever hard-deleted</h4>
+            <p>
+                Delete means the Recycle Bin. Every batch lands in History with a Restore next
+                to it, for as long as the bin holds it.
+            </p>
+        </div>
+        <div class="firstrun-shown-once">SHOWN ONCE. NOT REPEATED LATER.</div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public EventCallback OnOpenHelp { get; set; }
+}
