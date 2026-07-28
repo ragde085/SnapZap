@@ -287,20 +287,11 @@
                         <span style="color:var(--color-neutral-700);font-size:11px">set in Folders</span>
                     }
                 </div>
-                @* Only meaningful once a folder is chosen — with no folder there is nothing for
-                   "subfolders" to be relative to. *@
-                @if (AppState.Folder.Length > 0)
+                @* Read-only here, same as the folder name above — the checkbox lives in Folders,
+                   next to the folder it modifies, not duplicated as a second editable control. *@
+                @if (AppState.Folder.Length > 0 && !AppState.IncludeSubfolders)
                 {
-                    <label class="radio" style="margin-top:8px;font-size:12.5px">
-                        <input type="checkbox" checked="@AppState.IncludeSubfolders"
-                               @onchange="e => AppState.IncludeSubfolders = (bool)e.Value!" />
-                        <span class="dot"></span>
-                        Include subfolders
-                    </label>
-                    @if (!AppState.IncludeSubfolders)
-                    {
-                        <div class="facet-note quiet">Off, the folder matches exactly — nothing under it is included.</div>
-                    }
+                    <div class="facet-note quiet">Subfolders excluded — only files directly in this folder. Change it in Folders.</div>
                 }
             </div>
 

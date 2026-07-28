@@ -13,6 +13,23 @@ else
                @bind="_query" @bind:event="oninput" />
     </div>
 
+    @* Only meaningful once a folder is picked — with "All folders" there is nothing for
+       "subfolders" to be relative to. Lives here rather than only in Filters because this is
+       where the folder itself gets picked; the Filters tab shows the same state read-only. *@
+    @if (AppState.Folder.Length > 0)
+    {
+        <label class="radio" style="padding:0 16px 10px;font-size:12.5px">
+            <input type="checkbox" checked="@AppState.IncludeSubfolders"
+                   @onchange="e => AppState.IncludeSubfolders = (bool)e.Value!" />
+            <span class="dot"></span>
+            Include subfolders
+        </label>
+        @if (!AppState.IncludeSubfolders)
+        {
+            <p class="hint" style="padding:0 16px 10px">Only files directly in this folder — nothing in its subfolders.</p>
+        }
+    }
+
     @* Roving tabindex, as the ARIA tree pattern requires. Without it every folder is its own
        tab stop: a library of a thousand directories put a thousand stops between the rail and
        the photos, and the shortcut list's promise that Tab reaches the grid became a thousand
