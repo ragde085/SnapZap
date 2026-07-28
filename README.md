@@ -13,6 +13,8 @@ No cloud, no subscriptions, no paid dependencies. Two promises hold throughout:
 - **Nothing is ever hard-deleted.** Deleting goes to the Recycle Bin, and every batch is
   reversible from **History**.
 
+See [CHANGELOG.md](CHANGELOG.md) for what's new in each release.
+
 <img src="assets/screenshots/first-run.png" alt="SnapZap's first-run screen: a folder-to-scan field on the left and the two safety promises on the right" width="100%" />
 
 ---

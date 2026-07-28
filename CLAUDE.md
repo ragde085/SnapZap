@@ -149,6 +149,7 @@ The sidecars are excluded from publish output (`CopyToPublishDirectory="Never"`)
 | `src/SnapZap.Core/` | Portable core logic: scanning, hashing, dedup, NSFW, blur/EXIF, export, delete, platform interfaces |
 | `src/SnapZap.App/` | ASP.NET Core host + Blazor Server UI (`Components/`, `Services/`, `wwwroot/`) |
 | `tests/SnapZap.Tests/` | xUnit test suite + fixtures |
+| `CHANGELOG.md` | User-facing release notes, one section per version — update it alongside every version bump |
 | `docs/DESIGN.md` | Architecture, decisions, data model, pipeline, safety invariants |
 | `docs/ROADMAP.md` | Current status + prioritized next steps |
 | `docs/BLAZOR-MIGRATION.md` | The SPA → Blazor Server migration (completed) |
@@ -419,7 +420,8 @@ Full rationale in [docs/DEDUP-V2.md](docs/DEDUP-V2.md). The short version:
     greps it straight out of the csproj, so both installer filenames follow automatically. The
     example paths in `README.md`'s installer walkthroughs are illustrative only (not read by any
     script) — update them for freshness when you bump the version, but they're cosmetic, not a
-    second source of truth.
+    second source of truth. Add a matching entry to [`CHANGELOG.md`](CHANGELOG.md) in the same
+    change — it has no automation behind it and goes stale the moment a version bump skips it.
 
 ---
 
