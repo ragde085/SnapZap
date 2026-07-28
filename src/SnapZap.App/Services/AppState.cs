@@ -1259,37 +1259,30 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
     {
         if (Busy || imageIds.Count == 0) return;
 
-        // Goes through the shared busy path like every other long operation: recycling
-        // thousands of photos used to show nothing at all and left the button double-clickable.
-        Busy = true;
-        BusyLabel = "Moving to the Recycle Bin";
-        BusyDone = 0;
-        BusyTotal = imageIds.Count;
-        Notify();
-
-        DeleteResult result;
-        try
+        // Goes through the shared busy/progress path like Scan, Dedup and NSFW: recycling
+        // thousands of photos used to show nothing but a static label and left Stop dead
+        // (RunAsync is what wires up the live counter, the progress bar and cancellation).
+        DeleteResult? result = null;
+        await RunAsync("Moving to the Recycle Bin", async (report, ct) =>
         {
-            result = await new DeleteService(catalog.Db, trash).RecycleAsync(imageIds);
-        }
-        finally
-        {
-            Busy = false;
-            BusyLabel = null;
-        }
+            var progress = new Progress<DeleteProgress>(p => report(p.Done, p.Total, p.Current));
+            result = await new DeleteService(catalog.Db, trash).RecycleAsync(imageIds, progress, ct);
 
-        session.Mutate(sel => sel.ExceptWith(imageIds));
-        await LoadAsync();
+            session.Mutate(sel => sel.ExceptWith(imageIds));
+            await LoadAsync();
 
-        Status = $"Recycled {result.Recycled}" + (result.Failed > 0 ? $", {result.Failed} failed" : "");
+            return $"Recycled {result.Recycled}" + (result.Failed > 0 ? $", {result.Failed} failed" : "");
+        });
+
+        if (result is not { } r) return;   // stopped before a single file was touched
 
         // The common case is "undo what I just did" — offer it inline rather than
         // making the user open the history dialog and find the batch.
-        var n = result.Recycled;
+        var n = r.Recycled;
         ShowToast(
             $"Recycled {n} photo{(n == 1 ? "" : "s")} to the Recycle Bin.",
             "Undo",
-            () => RestoreAndReloadAsync(result.BatchId));
+            () => RestoreAndReloadAsync(r.BatchId));
     }
 
     public IReadOnlyList<UndoBatch> Batches() => new DeleteService(catalog.Db, trash).Batches();

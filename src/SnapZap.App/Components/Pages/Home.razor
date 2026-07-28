@@ -94,6 +94,10 @@ else
                             left off. Duplicate detection starts by itself the moment this finishes.
                         </div>
                     }
+                    else if (AppState.BusyLabel == "Moving to the Recycle Bin")
+                    {
+                        <div class="scan-hint">Every photo already moved is safely in the Recycle Bin and undoable from History — stopping just leaves the rest where they are.</div>
+                    }
                     else
                     {
                         <div class="scan-hint">Stopping keeps everything scored so far — re-running picks up where this left off.</div>
@@ -294,14 +298,15 @@ else
 
     /// <summary>
     /// The noun for the big counter's "N of about M ___" line — null for operations that don't
-    /// get the rich progress block (Delete, Forget, Restore already have their own generic
-    /// mhead label + Stop button, which is all a one-shot batch needs).
+    /// get the rich progress block (Forget and Restore keep their generic mhead label + Stop
+    /// button, which is all those one-shot batches need).
     /// </summary>
     string? BusyProgressNoun => AppState.BusyLabel switch
     {
         "Scanning" => "photos read",
         "Finding duplicates" => "photos compared",
         "Scoring NSFW" => "photos scored",
+        "Moving to the Recycle Bin" => "photos moved",
         _ => null,
     };
 
