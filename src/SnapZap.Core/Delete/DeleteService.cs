@@ -105,28 +105,56 @@ public sealed class DeleteService(Database db, ITrashService trash)
         }
 
         int restored = 0, missing = 0;
-        foreach (var (id, op, original, loc) in rows)
+        foreach (var row in rows)
         {
             ct.ThrowIfCancellationRequested();
-
-            // A recycled file comes back out of the trash; a moved file is still on disk at the
-            // export destination and comes back by copying.
-            var ok = op == "move"
-                ? RestoreMoved(original, loc)
-                : await trash.RestoreAsync(original, loc, ct);
-
-            if (ok)
-            {
-                // The export repointed the catalog at the destination when it moved the file;
-                // putting the file back has to put the row back too, or undoing a move leaves
-                // the grid describing the copy the user was trying to walk away from.
-                if (op == "move") RepathByPath(loc, original);
-                MarkRestored(id);
-                restored++;
-            }
-            else missing++;
+            if (await RestoreRowAsync(row, ct)) restored++; else missing++;
         }
         return new RestoreResult(batchId, restored, missing);
+    }
+
+    /// <summary>
+    /// Restore one photo out of a batch (the History dialog's per-thumbnail Restore), rather than
+    /// waiting to undo everything the batch touched. A no-op (returns <see langword="false"/>)
+    /// if the row is already restored or doesn't exist — same "missing" outcome
+    /// <see cref="RestoreAsync"/> gives a row it can't put back.
+    /// </summary>
+    public async Task<bool> RestoreItemAsync(long undoLogId, CancellationToken ct = default)
+    {
+        (long id, string op, string original, string? loc)? row = null;
+        using (var c = db.OpenRead())
+        using (var cmd = c.CreateCommand())
+        {
+            cmd.CommandText = "SELECT id, op, original_path, new_location FROM undo_log WHERE id=$id AND restored=0";
+            cmd.Parameters.AddWithValue("$id", undoLogId);
+            using var r = cmd.ExecuteReader();
+            if (r.Read())
+                row = (r.GetInt64(0), r.GetString(1), r.GetString(2), r.IsDBNull(3) ? null : r.GetString(3));
+        }
+        return row is { } item && await RestoreRowAsync(item, ct);
+    }
+
+    /// <summary>Shared by both <see cref="RestoreAsync"/> and <see cref="RestoreItemAsync"/>: puts
+    /// one logged file back and marks it restored, or reports it missing.</summary>
+    async Task<bool> RestoreRowAsync((long id, string op, string original, string? loc) row, CancellationToken ct)
+    {
+        var (id, op, original, loc) = row;
+
+        // A recycled file comes back out of the trash; a moved file is still on disk at the
+        // export destination and comes back by copying.
+        var ok = op == "move"
+            ? RestoreMoved(original, loc)
+            : await trash.RestoreAsync(original, loc, ct);
+
+        if (ok)
+        {
+            // The export repointed the catalog at the destination when it moved the file;
+            // putting the file back has to put the row back too, or undoing a move leaves
+            // the grid describing the copy the user was trying to walk away from.
+            if (op == "move") RepathByPath(loc, original);
+            MarkRestored(id);
+        }
+        return ok;
     }
 
     /// <summary>

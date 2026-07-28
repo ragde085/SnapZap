@@ -23,6 +23,7 @@
   <data name="ButtonRestoring" xml:space="preserve"><value>Restaurando…</value></data>
   <data name="ButtonRestore" xml:space="preserve"><value>Restaurar</value></data>
   <data name="ThumbMoreCount" xml:space="preserve"><value>+{0}</value></data>
+  <data name="ButtonRestoreThisPhoto" xml:space="preserve"><value>Restaurar {0}</value></data>
   <data name="RightClickHint" xml:space="preserve"><value>También puedes restaurar desde el menú del botón derecho de la papelera de reciclaje.</value></data>
   <data name="CloseButton" xml:space="preserve"><value>Cerrar</value></data>
 </root>

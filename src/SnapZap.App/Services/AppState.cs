@@ -1400,6 +1400,22 @@ public sealed class AppState(
         await LoadAsync();
         return result;
     }
+
+    /// <summary>Restore a single photo out of a batch (History dialog's per-thumbnail Restore),
+    /// then reconcile the catalog the same way a full batch restore does.</summary>
+    public async Task<bool> RestoreItemAndReloadAsync(long undoLogId)
+    {
+        var restored = await new DeleteService(catalog.Db, trash).RestoreItemAsync(undoLogId);
+        Status = restored ? _loc["RestoredCount", 1] : _loc["RestoredCountWithMissing", 0, 1];
+
+        if (ScannedFolder is { } folder && Directory.Exists(folder))
+        {
+            var scanned = await catalog.ScanAsync(folder, null, CancellationToken.None);
+            _ = scanned;
+        }
+        await LoadAsync();
+        return restored;
+    }
 }
 
 /// <summary>The explicit-content states the grid can be limited to.</summary>

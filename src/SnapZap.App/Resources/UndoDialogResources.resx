@@ -23,6 +23,7 @@
   <data name="ButtonRestoring" xml:space="preserve"><value>Restoring…</value></data>
   <data name="ButtonRestore" xml:space="preserve"><value>Restore</value></data>
   <data name="ThumbMoreCount" xml:space="preserve"><value>+{0}</value></data>
+  <data name="ButtonRestoreThisPhoto" xml:space="preserve"><value>Restore {0}</value></data>
   <data name="RightClickHint" xml:space="preserve"><value>You can also restore from the Recycle Bin's own right-click menu.</value></data>
   <data name="CloseButton" xml:space="preserve"><value>Close</value></data>
 </root>
