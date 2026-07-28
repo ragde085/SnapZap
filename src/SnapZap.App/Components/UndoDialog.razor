@@ -37,6 +37,24 @@
                                             <text> @L["SubRestoredCount", b.Restored]</text>
                                         }
                                     </div>
+                                    @if (_previews.TryGetValue(b.BatchId, out var items) && items.Count > 0)
+                                    {
+                                        <div class="undo-thumbs">
+                                            @foreach (var it in items)
+                                            {
+                                                @if (it.ContentHash is not null)
+                                                {
+                                                    <img class="undo-thumb @(it.Restored ? "restored" : "")" loading="lazy"
+                                                         src="@($"/api/thumb/{it.ContentHash}")"
+                                                         alt="" title="@Path.GetFileName(it.OriginalPath)" />
+                                                }
+                                            }
+                                            @if (b.Total > items.Count)
+                                            {
+                                                <span class="undo-thumb-more">@L["ThumbMoreCount", b.Total - items.Count]</span>
+                                            }
+                                        </div>
+                                    }
                                 </td>
                                 <td style="text-align:right;font-variant-numeric:tabular-nums">@b.Total.ToString("N0")</td>
                                 <td style="text-align:right">
@@ -62,6 +80,7 @@
     [Parameter] public EventCallback OnClose { get; set; }
 
     List<UndoBatch> _batches = [];
+    Dictionary<string, IReadOnlyList<UndoItem>> _previews = [];
     string? _restoring;
     bool _wasShown;
     bool _needsFocus;
@@ -85,7 +104,11 @@
         }
     }
 
-    void Refresh() => _batches = AppState.Batches().ToList();
+    void Refresh()
+    {
+        _batches = AppState.Batches().ToList();
+        _previews = _batches.ToDictionary(b => b.BatchId, b => AppState.ItemsInBatch(b.BatchId));
+    }
 
     static bool WasMoved(UndoBatch b) => b.BatchId.StartsWith("move-");
 

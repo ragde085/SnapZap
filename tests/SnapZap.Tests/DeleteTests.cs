@@ -77,6 +77,27 @@ public class DeleteTests : IDisposable
         Assert.True(File.Exists(Path.Combine(_photos, "stay.png")));
     }
 
+    [SkippableFact]
+    public async Task Recycled_batch_items_carry_the_content_hash_for_preview()
+    {
+        Skip.IfNot(OperatingSystem.IsMacOS(), "uses the macOS Finder trash dev implementation");
+
+        WritePng(Path.Combine(_photos, "gone.png"), SKColors.Red);
+        using var db = Scan();
+        var expectedHash = new ImageRepository(db).All().Single().ContentHash;
+        var svc = new DeleteService(db, new MacOsTrashService());
+
+        var del = await svc.RecycleAsync(Ids(db, "gone.png"));
+
+        var items = svc.ItemsInBatch(del.BatchId);
+        Assert.Single(items);
+        Assert.Equal(expectedHash, items[0].ContentHash);
+        Assert.False(items[0].Restored);
+
+        await svc.RestoreAsync(del.BatchId);
+        Assert.True(svc.ItemsInBatch(del.BatchId).Single().Restored);
+    }
+
     public void Dispose()
     {
         try { if (Directory.Exists(_work)) Directory.Delete(_work, true); } catch { }

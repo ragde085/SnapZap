@@ -961,6 +961,16 @@ main { display: flex; flex: 1; min-height: 0; }
 .history-sub { font-size: 11px; color: var(--color-neutral-700); margin-top: 3px; }
 .history-hint { font-size: var(--t-xs); color: var(--color-neutral-700); margin-top: 14px; }
 
+.undo-thumbs { display: flex; align-items: center; gap: 4px; margin-top: var(--space-2); }
+.undo-thumb {
+  width: 36px; height: 36px; border-radius: 4px; object-fit: cover;
+  border: 1px solid var(--color-divider); flex: none;
+}
+.undo-thumb.restored { opacity: 0.45; }
+.undo-thumb-more {
+  font-size: 11px; color: var(--color-neutral-700); flex: none; padding: 0 2px;
+}
+
 /* ---------- duplicate review ---------- */
 
 .review-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); }

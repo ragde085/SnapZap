@@ -9,6 +9,11 @@ public sealed record UndoBatch(string BatchId, long Ts, int Total, int Restored)
 public sealed record RestoreResult(string BatchId, int Restored, int Missing);
 public sealed record DeleteProgress(int Done, int Total, string? Current);
 
+/// <summary>One recycled/moved photo within a batch, for the History dialog's preview strip.
+/// <see cref="ContentHash"/> is null for rows logged before this column existed — those items
+/// render without a thumbnail rather than a broken image.</summary>
+public sealed record UndoItem(long Id, string OriginalPath, string? ContentHash, bool Restored);
+
 /// <summary>
 /// In-place deletion as a separate mode (DESIGN §6/§7): recycle selected images, log every
 /// op to undo_log for one-click restore, and prune recycled rows from the catalog. Never a
@@ -32,7 +37,7 @@ public sealed class DeleteService(Database db, ITrashService trash)
                 if (File.Exists(img.Path))
                 {
                     var loc = await trash.SendToTrashAsync(img.Path, ct);
-                    LogUndo(batch, "recycle", img.Path, loc);
+                    LogUndo(batch, "recycle", img.Path, loc, img.ContentHash);
                 }
                 DeleteRow(img.Id);
                 recycled++;
@@ -62,6 +67,27 @@ public sealed class DeleteService(Database db, ITrashService trash)
         while (r.Read())
             list.Add(new UndoBatch(r.GetString(0), r.GetInt64(1), r.GetInt32(2),
                                    r.IsDBNull(3) ? 0 : r.GetInt32(3)));
+        return list;
+    }
+
+    /// <summary>Up to <paramref name="limit"/> items from a batch, oldest-logged first, for a
+    /// thumbnail preview strip. Callers compare against <see cref="UndoBatch.Total"/> to know
+    /// how many more were left out.</summary>
+    public IReadOnlyList<UndoItem> ItemsInBatch(string batchId, int limit = 8)
+    {
+        var list = new List<UndoItem>();
+        using var c = db.OpenRead();
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = """
+            SELECT id, original_path, content_hash, restored
+            FROM undo_log WHERE batch_id=$b ORDER BY id LIMIT $lim
+            """;
+        cmd.Parameters.AddWithValue("$b", batchId);
+        cmd.Parameters.AddWithValue("$lim", limit);
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+            list.Add(new UndoItem(r.GetInt64(0), r.GetString(1),
+                                  r.IsDBNull(2) ? null : r.GetString(2), r.GetInt32(3) != 0));
         return list;
     }
 
@@ -148,20 +174,21 @@ public sealed class DeleteService(Database db, ITrashService trash)
         }
     }
 
-    void LogUndo(string batch, string op, string original, string? loc)
+    void LogUndo(string batch, string op, string original, string? loc, string? contentHash)
     {
         lock (db.WriteLock)
         {
             using var cmd = db.Writer.CreateCommand();
             cmd.CommandText = """
-                INSERT INTO undo_log(batch_id, op, original_path, new_location, ts_utc)
-                VALUES ($b,$o,$p,$n,$t)
+                INSERT INTO undo_log(batch_id, op, original_path, new_location, ts_utc, content_hash)
+                VALUES ($b,$o,$p,$n,$t,$h)
                 """;
             cmd.Parameters.AddWithValue("$b", batch);
             cmd.Parameters.AddWithValue("$o", op);
             cmd.Parameters.AddWithValue("$p", original);
             cmd.Parameters.AddWithValue("$n", (object?)loc ?? DBNull.Value);
             cmd.Parameters.AddWithValue("$t", DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+            cmd.Parameters.AddWithValue("$h", (object?)contentHash ?? DBNull.Value);
             cmd.ExecuteNonQuery();
         }
     }

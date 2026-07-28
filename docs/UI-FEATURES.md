@@ -198,3 +198,31 @@ right below the search box whenever `AppState.Folder.Length > 0`.
 **Don't regress:** don't re-add an editable checkbox in the Filters tab — that reintroduces two
 places that can toggle the same state, which is exactly what this change removed. If Filters needs
 more detail than the current read-only note, extend the note, not add a second control.
+
+---
+
+## 9. History (undo) dialog shows thumbnails per batch
+
+**What:** `UndoDialog.razor`'s history table now renders a small thumbnail strip (up to 8, plus a
+"+N" overflow label) under each batch's description, so you can see what's in a batch before
+restoring it — instead of only a timestamp and a bare count.
+
+**Where:**
+- `undo_log` gained a nullable `content_hash` column (`Database.cs` `Schema` + `AddColumnIfMissing`,
+  since existing catalogues need the guarded `ALTER TABLE`, same pattern as `phash`/`nsfw_tile_mean`).
+  `DeleteService`/`ExportEngine`'s `LogUndo` now take the `ImageRecord.ContentHash` already in hand at
+  the recycle/move call site and persist it — no new decode or lookup.
+- `DeleteService.ItemsInBatch(batchId, limit = 8)` is the new per-item query (`UndoBatch` stays
+  aggregate-only, for the existing count/restored columns); `AppState.ItemsInBatch` just forwards it.
+- The strip reuses `/api/thumb/{hash}` unchanged — that endpoint reads straight from the on-disk
+  thumbnail cache keyed by content hash and never touches the `images` table, so it still resolves
+  after `RecycleAsync` deletes the row. A restored item's thumbnail is shown dimmed (`.undo-thumb.restored`)
+  rather than removed, so a partially-restored batch still shows the whole set.
+
+**Don't regress:**
+- Don't try to wire this into `PreviewModal`/`/api/full/{id}` — that endpoint requires a live `images`
+  row *and* the original file still at its original path, both of which a recycle/move breaks by
+  design. The thumbnail cache is the only asset guaranteed to survive past the catalog row's deletion.
+- Rows logged before this change have `content_hash = NULL` (migration doesn't backfill — the source
+  `ImageRecord` is long gone by the time the column exists) and are skipped in the strip rather than
+  rendering a broken `<img>`; keep that null-check when touching the loop.
