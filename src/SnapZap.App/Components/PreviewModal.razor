@@ -1,51 +1,73 @@
 @inject AppState AppState
+@inject IStringLocalizer<PreviewModalResources> L
 
 @if (Img is { } img)
 {
     <div class="modal @(AppState.PreviewDetails ? "details-open" : "")"
          role="dialog"
          aria-modal="true"
-         aria-label="Photo preview"
+         aria-label="@L["PreviewDialogLabel"]"
          tabindex="-1"
          @ref="_modalRef"
          @onkeydown="HandleKeyDown"
          @onclick="Close">
 
-        <button class="close" @onclick="Close" @onclick:stopPropagation="true">Close ✕</button>
+        <button class="close" @onclick="Close" @onclick:stopPropagation="true">@L["CloseButton"]</button>
 
         @* The panel covers part of the photo, so opening it is the user's call. Off by
            default: the point of opening a photo full size is to see the photo. *@
         <button class="details-toggle"
                 aria-pressed="@(AppState.PreviewDetails ? "true" : "false")"
-                title="Photo details (I)"
+                title="@L["DetailsButtonTitle"]"
                 @onclick="ToggleDetails" @onclick:stopPropagation="true">
-            @(AppState.PreviewDetails ? "Hide details" : "Details")
+            @(AppState.PreviewDetails ? L["DetailsToggleHide"] : L["DetailsToggleShow"])
         </button>
 
         @* Stepping between photos is the whole point of opening one full size — comparing this
            shot against the next. Without it the only way through a folder is close, find, reopen. *@
-        <button class="nav prev" disabled="@(Position <= 0)" aria-label="Previous photo"
-                title="Previous photo (←)"
+        <button class="nav prev" disabled="@(Position <= 0)" aria-label="@L["PrevPhotoAriaLabel"]"
+                title="@L["PrevPhotoTitle"]"
                 @onclick="() => Step(-1)" @onclick:stopPropagation="true">‹</button>
         <button class="nav next" disabled="@(Position < 0 || Position >= Order.Count - 1)"
-                aria-label="Next photo" title="Next photo (→)"
+                aria-label="@L["NextPhotoAriaLabel"]" title="@L["NextPhotoTitle"]"
                 @onclick="() => Step(1)" @onclick:stopPropagation="true">›</button>
 
-        <div class="frame" @onclick:stopPropagation="true">
-            <img src="@img.FullUrl" alt="@img.FileName" />
+        <div class="frame @(_zoom != 0 ? "zoomed" : "")" @onclick:stopPropagation="true">
+            @if (_zoom == 0)
+            {
+                <img src="@img.FullUrl" alt="@img.FileName" />
+            }
+            else
+            {
+                <img src="@img.FullUrl" alt="@img.FileName"
+                     style="width:@(img.Width is { } w ? w * _zoom / 100 : 0)px" />
+            }
+
+            @* Zoom past "fit" is the point when the photo is what's actually being judged —
+               a resized duplicate or a soft-focus call can hinge on detail "fit" quietly
+               shrinks away. Same Fit/100/200/400 steps as the duplicate compare view. *@
+            <div class="frame-zoom" role="group" aria-label="@L["ZoomGroupLabel"]">
+                @foreach (var z in Zooms)
+                {
+                    <button class="@(_zoom == z ? "on" : "")" title="@(z == 0 ? L["ZoomFitTitle"] : $"{z}%")"
+                            @onclick="() => SetZoom(z)" @onclick:stopPropagation="true">
+                        @(z == 0 ? L["ZoomFitButton"] : $"{z}%")
+                    </button>
+                }
+            </div>
 
             @* Selecting is the reason this screen exists, so it stays reachable whether or not
                the details panel is open — it used to live only inside the panel. *@
             <div class="frame-bar">
                 @if (Position >= 0)
                 {
-                    <span class="frame-pos">@(Position + 1) of @Order.Count</span>
+                    <span class="frame-pos">@L["PositionOfTotal", Position + 1, Order.Count]</span>
                 }
                 <button class="frame-select @(Selected ? "on" : "")"
                         aria-pressed="@(Selected ? "true" : "false")"
-                        title="Select or deselect this photo (X)"
+                        title="@L["ToggleSelectionTitle"]"
                         @onclick="ToggleSelection">
-                    @(Selected ? "✓ Selected" : "Select")
+                    @(Selected ? L["SelectedButton"] : L["SelectButton"])
                 </button>
             </div>
         </div>
@@ -54,25 +76,25 @@
         {
         <div class="panel" @onclick:stopPropagation="true">
             <div>
-                <div class="pk">File</div>
+                <div class="pk">@L["FieldFile"]</div>
                 <div class="pv">@img.FileName</div>
             </div>
             <div>
-                <div class="pk">Folder</div>
+                <div class="pk">@L["FieldFolder"]</div>
                 <div class="pv path">@img.Folder</div>
             </div>
             <div>
-                <div class="pk">Dimensions</div>
+                <div class="pk">@L["FieldDimensions"]</div>
                 <div class="pv">@img.Dimensions · @img.SizeLabel</div>
             </div>
             <div>
-                <div class="pk">Captured</div>
+                <div class="pk">@L["FieldCaptured"]</div>
                 <div class="pv @(img.ExifTaken is null ? "quiet" : "")">@img.CapturedLabel</div>
             </div>
             <div>
-                <div class="pk">Camera</div>
+                <div class="pk">@L["FieldCamera"]</div>
                 <div class="pv @(string.IsNullOrEmpty(img.ExifCamera) ? "quiet" : "")">
-                    @(string.IsNullOrEmpty(img.ExifCamera) ? "not recorded" : img.ExifCamera)
+                    @(string.IsNullOrEmpty(img.ExifCamera) ? L["CameraNotRecorded"] : img.ExifCamera)
                 </div>
             </div>
             <div>
@@ -80,7 +102,7 @@
                    the number supports it: three decimals implied a precision the model does not
                    have (DESIGN §8 records ±0.005 reproduction error and no labelled fixtures at
                    all), and "below threshold" named a threshold shown nowhere. *@
-                <div class="pk">Explicit content</div>
+                <div class="pk">@L["FieldExplicitContent"]</div>
                 @{ var band = AppState.BandOf(img); }
                 <div class="pv @BandTone(band)">@AppState.BandLabel(band)</div>
                 @if (img.NsfwScore is not null)
@@ -89,32 +111,32 @@
                 }
                 else
                 {
-                    <div class="pv-sub">Run Score NSFW to check this photo.</div>
+                    <div class="pv-sub">@L["NsfwRunHint"]</div>
                 }
             </div>
             <div>
-                <div class="pk">Focus</div>
+                <div class="pk">@L["FieldFocus"]</div>
                 @if (img.BlurScore is { } b)
                 {
-                    <div class="pv @(AppState.IsSoft(img) ? "warn" : "ok")">@b.ToString("F1") — @(AppState.IsSoft(img) ? "soft" : "sharp")</div>
+                    <div class="pv @(AppState.IsSoft(img) ? "warn" : "ok")">@(AppState.IsSoft(img) ? L["FocusValueSoft", b.ToString("F1")] : L["FocusValueSharp", b.ToString("F1")])</div>
                 }
                 else
                 {
-                    <div class="pv quiet">not measured</div>
+                    <div class="pv quiet">@L["FocusNotMeasured"]</div>
                 }
             </div>
             <div>
-                <div class="pk">Duplicates</div>
+                <div class="pk">@L["FieldDuplicates"]</div>
                 @if (img.Dupe is { } d)
                 {
                     <div class="pv accent">
-                        @d.Kind.Label() group #@d.GroupId<br />
-                        @(d.IsKeeper ? "keeping this one" : "extra copy")
+                        @L["DupeGroupLabel", d.Kind.Label(), d.GroupId]<br />
+                        @(d.IsKeeper ? L["DupeKeeperYes"] : L["DupeKeeperNo"])
                     </div>
                 }
                 else
                 {
-                    <div class="pv quiet">no duplicates found</div>
+                    <div class="pv quiet">@L["NoDuplicatesFound"]</div>
                 }
             </div>
 
@@ -132,6 +154,11 @@
 
     ElementReference _modalRef;
     bool _wasOpen;
+
+    // 0 = fit to window — same steps as the duplicate compare view (DupeReview), so zoom means
+    // the same thing everywhere a photo gets looked at full size.
+    int _zoom;
+    static readonly int[] Zooms = [0, 100, 200, 400];
 
     bool Selected => Img is { } img && AppState.Selected.Contains(img.Id);
 
@@ -171,8 +198,30 @@
         "ArrowRight" => Step(1),
         "x" or "X" => ToggleSelection(),
         "i" or "I" => ToggleDetails(),
+        "+" or "=" => ZoomStep(1),
+        "-" or "_" => ZoomStep(-1),
+        "0" => SetZoomTask(0),
         _ => Task.CompletedTask,
     };
+
+    void SetZoom(int z) => _zoom = z;
+
+    Task SetZoomTask(int z)
+    {
+        SetZoom(z);
+        return Task.CompletedTask;
+    }
+
+    /// <summary>Step to the next/previous rung on the same Fit/100/200/400 ladder the zoom
+    /// toolbar shows, rather than a free-form increment — so <kbd>+</kbd>/<kbd>-</kbd> can never
+    /// land on a percentage the toolbar itself doesn't have a button for.</summary>
+    Task ZoomStep(int delta)
+    {
+        var i = Array.IndexOf(Zooms, _zoom);
+        var next = Math.Clamp(i + delta, 0, Zooms.Length - 1);
+        SetZoom(Zooms[next]);
+        return Task.CompletedTask;
+    }
 
     static string BandTone(AppState.NsfwBand band) => band switch
     {

@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
+using SnapZap.Core.Resources;
 
 namespace SnapZap.Core.Platform;
 
@@ -23,7 +24,7 @@ public sealed class WindowsTrashService : ITrashService
             fFlags = FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_SILENT | FOF_NOERRORUI,
         };
         int rc = SHFileOperation(ref op);
-        if (rc != 0) throw new IOException($"Recycle failed for {path} (SHFileOperation {rc})");
+        if (rc != 0) throw new IOException(CoreStrings.Get("RecycleFailed", path, rc));
         // The Recycle Bin does not expose a stable post-move path; restore is by original path.
         return Task.FromResult<string?>(null);
     }
@@ -100,8 +101,7 @@ public sealed class WindowsLinkService : ILinkService
     public void CreateHardLink(string linkPath, string targetPath)
     {
         if (!CreateHardLinkW(linkPath, targetPath, IntPtr.Zero))
-            throw new IOException($"CreateHardLink {linkPath} -> {targetPath} failed " +
-                                  $"(win32 {Marshal.GetLastWin32Error()})");
+            throw new IOException(CoreStrings.Get("CreateHardLinkFailed", linkPath, targetPath, Marshal.GetLastWin32Error()));
     }
 
     static string NearestExisting(string path)

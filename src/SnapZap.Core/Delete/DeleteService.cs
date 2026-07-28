@@ -7,6 +7,7 @@ namespace SnapZap.Core.Delete;
 public sealed record DeleteResult(string BatchId, int Recycled, int Failed);
 public sealed record UndoBatch(string BatchId, long Ts, int Total, int Restored);
 public sealed record RestoreResult(string BatchId, int Restored, int Missing);
+public sealed record DeleteProgress(int Done, int Total, string? Current);
 
 /// <summary>
 /// In-place deletion as a separate mode (DESIGN §6/§7): recycle selected images, log every
@@ -16,12 +17,12 @@ public sealed record RestoreResult(string BatchId, int Restored, int Missing);
 public sealed class DeleteService(Database db, ITrashService trash)
 {
     public async Task<DeleteResult> RecycleAsync(
-        IReadOnlyList<long> imageIds, CancellationToken ct = default)
+        IReadOnlyList<long> imageIds, IProgress<DeleteProgress>? progress = null, CancellationToken ct = default)
     {
         var repo = new ImageRepository(db);
         var imgs = repo.ByIds(imageIds);
         var batch = "delete-" + DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-        int recycled = 0, failed = 0;
+        int recycled = 0, failed = 0, done = 0;
 
         foreach (var img in imgs)
         {
@@ -38,6 +39,11 @@ public sealed class DeleteService(Database db, ITrashService trash)
             }
             catch (OperationCanceledException) { throw; }
             catch { failed++; }
+            finally
+            {
+                done++;
+                progress?.Report(new DeleteProgress(done, imageIds.Count, img.Path));
+            }
         }
         return new DeleteResult(batch, recycled, failed);
     }

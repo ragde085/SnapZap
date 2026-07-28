@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <data name="UnsupportedFormatsHeading" xml:space="preserve"><value>SnapZap can't read these formats yet</value></data>
+  <data name="FileCountSingular" xml:space="preserve"><value>{0} file</value></data>
+  <data name="FileCountPlural" xml:space="preserve"><value>{0} files</value></data>
+  <data name="UnsupportedFilesUntouchedNote" xml:space="preserve"><value>They were left untouched, not deleted or altered.</value></data>
+  <data name="AndMoreCount" xml:space="preserve"><value>…and {0} more</value></data>
+  <data name="DismissButton" xml:space="preserve"><value>Dismiss</value></data>
+  <data name="HeadlineBothCounts" xml:space="preserve"><value>{0} in unreadable formats · {1} skipped</value></data>
+  <data name="HeadlineUnsupportedSingular" xml:space="preserve"><value>{0} photo in a format SnapZap can't read yet</value></data>
+  <data name="HeadlineUnsupportedPlural" xml:space="preserve"><value>{0} photos in a format SnapZap can't read yet</value></data>
+  <data name="HeadlineSkippedSingular" xml:space="preserve"><value>{0} file skipped</value></data>
+  <data name="HeadlineSkippedPlural" xml:space="preserve"><value>{0} files skipped</value></data>
+</root>

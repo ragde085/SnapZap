@@ -1,6 +1,7 @@
 using Microsoft.ML.OnnxRuntime;
 using Microsoft.ML.OnnxRuntime.Tensors;
 using SkiaSharp;
+using SnapZap.Core.Resources;
 
 namespace SnapZap.Core.Nsfw;
 
@@ -22,7 +23,7 @@ public sealed class OnnxNsfwClassifier : IDisposable
     public OnnxNsfwClassifier(string modelPath, SessionOptions? options = null)
     {
         if (!File.Exists(modelPath))
-            throw new FileNotFoundException("NSFW ONNX model not found", modelPath);
+            throw new FileNotFoundException(CoreStrings.Get("NsfwModelNotFound"), modelPath);
 
         _session = options is null ? new InferenceSession(modelPath) : new InferenceSession(modelPath, options);
         _cfg = PreprocessConfig.ForModel(modelPath, out var fromFile);
@@ -47,7 +48,7 @@ public sealed class OnnxNsfwClassifier : IDisposable
     public float ScoreFile(string imagePath)
     {
         using var bmp = SKBitmap.Decode(imagePath)
-            ?? throw new InvalidOperationException($"cannot decode {imagePath}");
+            ?? throw new InvalidOperationException(CoreStrings.Get("CannotDecode", imagePath));
         return ScoreBitmap(bmp);
     }
 
@@ -84,7 +85,7 @@ public sealed class OnnxNsfwClassifier : IDisposable
     public NsfwVerdict ScoreFile(string imagePath, NsfwDepth depth)
     {
         using var bmp = SKBitmap.Decode(imagePath)
-            ?? throw new InvalidOperationException($"cannot decode {imagePath}");
+            ?? throw new InvalidOperationException(CoreStrings.Get("CannotDecode", imagePath));
         return Score(bmp, depth);
     }
 

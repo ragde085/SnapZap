@@ -1,24 +1,42 @@
 @implements IDisposable
 @inject AppState AppState
 @inject IJSRuntime JS
+@inject IStringLocalizer<FolderTreeViewResources> L
 
 @if (AppState.Tree is not { } root)
 {
-    <p class="hint" style="padding:11px 16px">Scan a folder to see its structure.</p>
+    <p class="hint" style="padding:11px 16px">@L["EmptyStateHint"]</p>
 }
 else
 {
     <div class="rail-search">
-        <input class="input" placeholder="Find a folder…" aria-label="Find a folder"
+        <input class="input" placeholder="@L["FindFolderPlaceholder"]" aria-label="@L["FindFolderAriaLabel"]"
                @bind="_query" @bind:event="oninput" />
     </div>
+
+    @* Only meaningful once a folder is picked — with "All folders" there is nothing for
+       "subfolders" to be relative to. Lives here rather than only in Filters because this is
+       where the folder itself gets picked; the Filters tab shows the same state read-only. *@
+    @if (AppState.Folder.Length > 0)
+    {
+        <label class="radio" style="padding:0 16px 10px;font-size:12.5px">
+            <input type="checkbox" checked="@AppState.IncludeSubfolders"
+                   @onchange="e => AppState.IncludeSubfolders = (bool)e.Value!" />
+            <span class="dot"></span>
+            @L["IncludeSubfoldersLabel"]
+        </label>
+        @if (!AppState.IncludeSubfolders)
+        {
+            <p class="hint" style="padding:0 16px 10px">@L["SubfoldersOffNote"]</p>
+        }
+    }
 
     @* Roving tabindex, as the ARIA tree pattern requires. Without it every folder is its own
        tab stop: a library of a thousand directories put a thousand stops between the rail and
        the photos, and the shortcut list's promise that Tab reaches the grid became a thousand
        keypresses. The stop is the selected folder, or "All folders" when nothing is chosen, so
        it always exists. *@
-    <div class="tree" role="tree" aria-label="Scanned folders" @onkeydown="TreeKey">
+    <div class="tree" role="tree" aria-label="@L["TreeAriaLabel"]" @onkeydown="TreeKey">
         <button class="trow @(AppState.Folder.Length == 0 ? "on" : "")"
                 role="treeitem"
                 data-tree-path=""
@@ -26,7 +44,7 @@ else
                 aria-selected="@(AppState.Folder.Length == 0 ? "true" : "false")"
                 @onclick="() => Select(string.Empty)">
             <span class="tw" aria-hidden="true"></span>
-            <span class="tname">All folders</span>
+            <span class="tname">@L["AllFoldersLabel"]</span>
             <span class="tcount">@root.TotalCount.ToString("N0")</span>
         </button>
 
@@ -38,11 +56,11 @@ else
 
     <div class="rail-legend">
         <span class="tdupes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2" /><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" /></svg></span>
-        photos here are in a duplicate group ·
+        @L["DupeGroupLegend"]
         <span class="tdupes clean"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2" /><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" /></svg></span>
-        checked, none found<br />
-        <span class="tpending">●</span> some analysis hasn't reached this folder yet<br />
-        ↑ ↓ move · → expand · ← collapse · Home / End jump
+        @L["CleanLegend"]<br />
+        <span class="tpending">●</span> @L["PendingLegend"]<br />
+        @L["KeyboardLegend"]
     </div>
 }
 
@@ -127,12 +145,14 @@ else
         await OnPicked.InvokeAsync();
     }
 
-    static string StatusTitle(FolderNode n)
+    Task Rescan(string path) => AppState.Busy ? Task.CompletedTask : AppState.RescanFolderAsync(path);
+
+    string StatusTitle(FolderNode n)
     {
         var pending = n.PendingSteps().ToList();
         return pending.Count == 0
-            ? $"{n.TotalCount:N0} photos — all steps complete"
-            : $"{n.TotalCount:N0} photos — {string.Join(", ", pending)}";
+            ? L["StatusTitleComplete", n.TotalCount].ToString()
+            : L["StatusTitlePending", n.TotalCount, string.Join(", ", pending)].ToString();
     }
 
     RenderFragment RenderNode(FolderNode node) => __builder =>
@@ -151,7 +171,7 @@ else
                        ← / → expand and collapse from there. *@
                     <button style="all:unset;cursor:pointer;width:16px;flex:none;display:grid;place-items:center;color:var(--color-neutral-600)"
                             tabindex="-1"
-                            aria-label="@(expanded ? "Collapse" : "Expand") @node.Name"
+                            aria-label="@(expanded ? L["CollapseFolderLabel", node.Name] : L["ExpandFolderLabel", node.Name])"
                             @onclick="() => Toggle(node)">
                         <span class="tw"><svg class="@(expanded ? "open" : "")" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6" /></svg></span>
                     </button>
@@ -175,17 +195,26 @@ else
                        "nobody has looked", which is the distinction the check tracks. *@
                     @if (node.InDupeGroup > 0)
                     {
-                        <span class="tdupes" title="@node.InDupeGroup in duplicate groups"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2" /><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" /></svg></span>
+                        <span class="tdupes" title="@L["DupeCountTitle", node.InDupeGroup]"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2" /><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" /></svg></span>
                     }
                     else if (node.TotalCount > 0 && node.DupeCheckComplete)
                     {
-                        <span class="tdupes clean" title="Checked for duplicates — none found"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2" /><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" /></svg></span>
+                        <span class="tdupes clean" title="@L["CleanTitle"]"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2" /><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" /></svg></span>
                     }
                     @if (pending)
                     {
                         <span class="tpending" aria-hidden="true">●</span>
                     }
                     <span class="tcount">@node.TotalCount.ToString("N0")</span>
+                </button>
+
+                @* A sibling of the row button, not nested in it — a button can't contain another
+                   button. Mouse/pointer affordance only (tabindex="-1"), same treatment as the
+                   expand chevron above: the row itself is the tree's one keyboard stop. *@
+                <button class="trow-action" tabindex="-1" disabled="@AppState.Busy"
+                        title="@L["RescanFolderLabel", node.Name]" aria-label="@L["RescanFolderLabel", node.Name]"
+                        @onclick="() => Rescan(node.Path)">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.65-6.36" /><path d="M21 4v6h-6" /></svg>
                 </button>
             </div>
 

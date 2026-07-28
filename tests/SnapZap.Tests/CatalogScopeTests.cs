@@ -1,4 +1,5 @@
 using SnapZap.App;
+using SnapZap.App.Resources;
 using SnapZap.App.Services;
 using SnapZap.Core;
 using SnapZap.Core.Platform;
@@ -32,7 +33,8 @@ public class CatalogScopeTests : IDisposable
 
         _catalog = new CatalogService(_work);
         _session = new SessionStore(_catalog, TimeSpan.FromMilliseconds(50));
-        _state = new AppState(_catalog, new MacOsTrashService(), _session, new DependencyChecker(_catalog));
+        _state = new AppState(_catalog, new MacOsTrashService(), _session, new DependencyChecker(_catalog),
+            new TestStringLocalizer<AppStateResources>());
     }
 
     long Add(string folder, string name)

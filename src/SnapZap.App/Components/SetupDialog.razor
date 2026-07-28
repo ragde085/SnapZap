@@ -1,4 +1,5 @@
 @implements IDisposable
+@inject IStringLocalizer<SetupDialogResources> L
 @inject DependencyChecker Checker
 @inject CatalogService Catalog
 @inject AppState AppState
@@ -20,13 +21,13 @@
 *@
 @if (Show)
 {
-    <div class="dlg" role="dialog" aria-modal="true" aria-label="Setup"
+    <div class="dlg" role="dialog" aria-modal="true" aria-label="@L["DialogAriaLabel"]"
          tabindex="-1" @ref="_ref" @onkeydown="HandleKeyDown">
         <div class="dlg-box wide">
-            <h2>Setup</h2>
+            <h2>@L["Title"]</h2>
 
             <div class="setup-layout">
-                <nav class="setup-rail" aria-label="Setup sections">
+                <nav class="setup-rail" aria-label="@L["SectionsNavLabel"]">
                     @foreach (var (pane, label, badge) in Panes)
                     {
                         <button type="button" class="setup-rail-item @(_pane == pane ? "on" : "")"
@@ -46,55 +47,49 @@
                     {
                         case Pane.AddOns:
                             <p class="setup-lede">
-                                One optional add-on. SnapZap scans, finds duplicates, exports and
-                                deletes without it.
+                                @L["AddOnsLede"]
                             </p>
                             <DependencyList Items="Checker.Current" Detailed="true" />
                             <div class="setup-actions">
-                                <button class="btn btn-secondary" @onclick="Recheck">@(_checking ? "Checking…" : "Check again")</button>
-                                <span class="hint">Drop a file in and press Check again — no restart needed.</span>
+                                <button class="btn btn-secondary" @onclick="Recheck">@(_checking ? L["CheckingButton"] : L["CheckAgainButton"])</button>
+                                <span class="hint">@L["AddOnsHint"]</span>
                             </div>
                             break;
 
                         case Pane.Explicit:
                             <p class="setup-lede">
-                                How hard SnapZap looks, and how sure it has to be before it says
-                                a photo is explicit.
+                                @L["ExplicitLede"]
                             </p>
 
                             <div class="setup-field">
-                                <h3>How hard it looks</h3>
+                                <h3>@L["DepthHeading"]</h3>
                                 <label class="setup-check">
                                     <input type="checkbox" checked="@(_nsfw.Depth == NsfwDepth.Tiled)"
                                            @onchange="e => SetNsfw(_nsfw with { Depth = (bool)e.Value! ? NsfwDepth.Tiled : NsfwDepth.WholeFrame })" />
                                     <span>
-                                        <b>Also look closely, in nine overlapping pieces</b>
+                                        <b>@L["TiledCheckboxLabel"]</b>
                                         <span class="quiet">
-                                            The model only ever sees a small thumbnail of what it is
-                                            given, so a person who takes up part of a wide photo can
-                                            vanish before it looks. Ten times slower.
+                                            @L["TiledCheckboxDetail"]
                                         </span>
                                     </span>
                                 </label>
                                 @if (_nsfw.Depth == NsfwDepth.WholeFrame)
                                 {
                                     <p class="hint">
-                                        Off, expect misses. On one test folder this found 17 of 41;
-                                        with it on, 25.
+                                        @L["WholeFrameHint"]
                                     </p>
                                 }
                                 else
                                 {
                                     <p class="hint">
-                                        Photos scored the quick way are re-scored next time you press
-                                        <b>Score NSFW</b> — the two answers aren't comparable.
+                                        @((MarkupString)L["TiledHint"].Value)
                                     </p>
                                 }
                             </div>
 
                             <div class="setup-field">
-                                <h3>How sure it has to be</h3>
-                                <div class="seg" role="group" aria-label="Sensitivity">
+                                <h3>@L["SensitivityHeading"]</h3>
+                                <div class="seg" role="group" aria-label="@L["SensitivityGroupLabel"]">
                                     @foreach (var s in Sensitivities)
                                     {
                                         <label class="seg-opt">
@@ -104,24 +99,24 @@
                                     }
                                     @if (_nsfw.Sensitivity == NsfwSensitivity.Custom)
                                     {
-                                        <span class="seg-custom">Custom</span>
+                                        <span class="seg-custom">@L["SensitivityCustom"]</span>
                                     }
                                 </div>
                                 <p class="hint">@SensitivityBlurb(_nsfw.Sensitivity)</p>
 
                                 <details class="setup-advanced" open="@(_nsfw.Sensitivity == NsfwSensitivity.Custom)">
-                                    <summary>Set the levels myself</summary>
+                                    <summary>@L["CustomSummary"]</summary>
 
                                     <div class="setup-nested">
                                         <label class="setup-range">
-                                            <span>Explicit, on the whole photo</span>
+                                            <span>@L["WholeFlagLabel"]</span>
                                             <input type="range" min="5" max="100" step="5" value="@Pct(_nsfw.WholeFlag)"
                                                    @onchange="e => SetNsfw(_nsfw with { WholeFlag = FromPct(e.Value, _nsfw.WholeFlag) })" />
                                             <b>@_nsfw.WholeFlag.ToString("F2")</b>
                                         </label>
 
                                         <label class="setup-range">
-                                            <span>Explicit, averaged over the nine pieces</span>
+                                            <span>@L["TileMeanFlagLabel"]</span>
                                             <input type="range" min="5" max="100" step="5" value="@Pct(_nsfw.TileMeanFlag)"
                                                    disabled="@(_nsfw.Depth != NsfwDepth.Tiled)"
                                                    @onchange="e => SetNsfw(_nsfw with { TileMeanFlag = FromPct(e.Value, _nsfw.TileMeanFlag) })" />
@@ -133,31 +128,24 @@
                                         @if (_nsfw.TileMeanFlag < NsfwSettings.SafeTileMeanFloor)
                                         {
                                             <p class="setup-warn">
-                                                Below @NsfwSettings.SafeTileMeanFloor.ToString("F2") this starts
-                                                flagging ordinary photographs of people: one close-up of a
-                                                face is mostly skin, and the model reads skin. Measured on a
-                                                17-photo family album — none flagged at
-                                                @NsfwSettings.SafeTileMeanFloor.ToString("F2"), six at 0.40.
+                                                @L["SafeFloorWarning", NsfwSettings.SafeTileMeanFloor]
                                             </p>
                                         }
 
                                         <label class="setup-range">
-                                            <span>Worth a second look</span>
+                                            <span>@L["UnsureLabel"]</span>
                                             <input type="range" min="5" max="100" step="5" value="@Pct(_nsfw.Unsure)"
                                                    @onchange="e => SetNsfw(_nsfw with { Unsure = FromPct(e.Value, _nsfw.Unsure) })" />
                                             <b>@_nsfw.Unsure.ToString("F2")</b>
                                         </label>
                                         <p class="hint">
-                                            The <b>Not sure</b> band is a queue for you to read. Set it low and
-                                            it fills with photographs of faces — the model gives an ordinary
-                                            portrait about 0.40 on skin tone alone.
+                                            @((MarkupString)L["UnsureHint"].Value)
                                         </p>
                                     </div>
                                 </details>
 
                                 <p class="hint">
-                                    Levels apply immediately to photos already scored — nothing is
-                                    re-scored, only re-judged.
+                                    @L["LevelsApplyHint"]
                                 </p>
                             </div>
                             break;
@@ -166,13 +154,13 @@
                             @* Each check costs time on a large library and each has a different
                                tolerance for being wrong, so which ones run is the user's call
                                rather than a constant. *@
-                            <p class="setup-lede">What <b>Find duplicates</b> checks for.</p>
+                            <p class="setup-lede">@((MarkupString)L["DuplicatesLede"].Value)</p>
 
                             <label class="setup-check">
                                 <input type="checkbox" checked disabled />
                                 <span>
-                                    <b>Identical files</b>
-                                    <span class="quiet">Byte-for-byte copies, by checksum. Always on — free and exact.</span>
+                                    <b>@L["IdenticalFilesLabel"]</b>
+                                    <span class="quiet">@L["IdenticalFilesDetail"]</span>
                                 </span>
                             </label>
 
@@ -180,9 +168,9 @@
                                 <input type="checkbox" checked="@_dedup.VariantEnabled"
                                        @onchange="e => Set(_dedup with { VariantEnabled = (bool)e.Value! })" />
                                 <span>
-                                    <b>The same shot at another size</b>
+                                    <b>@L["VariantLabel"]</b>
                                     <span class="quiet">
-                                        Resized, re-saved or converted copies of one photo. Safe to bulk-select.
+                                        @L["VariantDetail"]
                                     </span>
                                 </span>
                             </label>
@@ -193,20 +181,19 @@
                                     <label class="setup-check">
                                         <input type="checkbox" checked="@_dedup.VariantRotations"
                                                @onchange="e => Set(_dedup with { VariantRotations = (bool)e.Value! })" />
-                                        <span>Also match rotated copies <span class="quiet">(slower)</span></span>
+                                        <span>@L["RotationsLabel"] <span class="quiet">@L["SlowerNote"]</span></span>
                                     </label>
 
                                     <label class="setup-range">
-                                        <span>How different they may look</span>
+                                        <span>@L["VariantBitsLabel"]</span>
                                         <input type="range" min="4" max="60" step="2" value="@_dedup.VariantMaxBits"
                                                @onchange="e => Set(_dedup with { VariantMaxBits = ToInt(e.Value, _dedup.VariantMaxBits) })" />
                                         @* Shown with its scale, because the number is meaningless without one —
                                            and it is NOT the old czkawka --max-difference value. *@
-                                        <b>@_dedup.VariantMaxBits of @PerceptualHash.Bits</b>
+                                        <b>@L["VariantBitsValue", _dedup.VariantMaxBits, PerceptualHash.Bits]</b>
                                     </label>
                                     <p class="hint">
-                                        Lower is stricter. Raising it finds more, and eventually starts calling
-                                        two different photos the same one.
+                                        @L["VariantBitsHint"]
                                     </p>
                                 </div>
                             }
@@ -218,30 +205,28 @@
                                selectable. Only the window is tunable. *@
                             <div class="setup-check setup-check--fixed">
                                 <span>
-                                    <b>Bursts — the same scene, seconds apart</b>
+                                    <b>@L["BurstLabel"]</b>
                                     <span class="quiet">
-                                        Always detected. These are different photographs, so they are grouped
-                                        for review and never picked up by "Select duplicate extras".
+                                        @L["BurstDetail"]
                                     </span>
                                 </span>
                             </div>
 
                             <div class="setup-nested">
                                 <label class="setup-range">
-                                    <span>Frames within</span>
+                                    <span>@L["BurstWindowLabel"]</span>
                                     <input type="range" min="1" max="30" step="1" value="@_dedup.BurstWindowSeconds"
                                            @onchange="e => Set(_dedup with { BurstWindowSeconds = ToInt(e.Value, _dedup.BurstWindowSeconds) })" />
-                                    <b>@_dedup.BurstWindowSeconds s</b>
+                                    <b>@L["BurstWindowValue", _dedup.BurstWindowSeconds]</b>
                                 </label>
                                 <p class="hint">
-                                    Needs an EXIF capture time — photos without one are skipped, so a burst
-                                    with no timestamps is not protected from bulk selection.
+                                    @L["BurstWindowHint"]
                                 </p>
                             </div>
 
                             @if (_settingsChanged)
                             {
-                                <p class="hint">Saved. Run <b>Find duplicates</b> again to apply it.</p>
+                                <p class="hint">@((MarkupString)L["SettingsSavedHint"].Value)</p>
                             }
                             break;
 
@@ -251,42 +236,38 @@
                                acted on, but the disk it occupies is real and there was previously no
                                way to reclaim it without deleting files by hand. *@
                             <p class="setup-lede">
-                                What SnapZap remembers about the photos it has looked at.
+                                @L["CatalogueLede"]
                             </p>
 
                             <div class="setup-stat">
-                                <b>@_footprint.Photos.ToString("N0")</b> photo@(_footprint.Photos == 1 ? "" : "s") analysed
+                                @((MarkupString)L[_footprint.Photos == 1 ? "PhotosAnalysedOne" : "PhotosAnalysedOther", _footprint.Photos.ToString("N0")].Value)
                                 <span class="quiet">
-                                    @AppState.FormatBytes(_footprint.DbBytes) database ·
-                                    @AppState.FormatBytes(_footprint.ThumbBytes) thumbnails
+                                    @L["FootprintDetail", AppState.FormatBytes(_footprint.DbBytes), AppState.FormatBytes(_footprint.ThumbBytes)]
                                 </span>
                             </div>
                             @if (Catalog.ScanRoot is { } root)
                             {
-                                <div class="setup-stat quiet">Showing <code class="dep-path">@root</code></div>
+                                <div class="setup-stat quiet">@L["ShowingFolderPrefix"] <code class="dep-path">@root</code></div>
                             }
 
                             @if (!_confirmForget)
                             {
                                 <button class="btn btn-danger" disabled="@(_footprint.Photos == 0 || AppState.Busy)"
-                                        @onclick="ArmForget">Forget everything…</button>
+                                        @onclick="ArmForget">@L["ForgetButton"]</button>
                             }
                             else
                             {
-                                <div class="confirm" role="alertdialog" aria-modal="true" aria-label="Confirm forget"
+                                <div class="confirm" role="alertdialog" aria-modal="true" aria-label="@L["ConfirmForgetAriaLabel"]"
                                      tabindex="-1" @ref="_forgetRef">
                                     <p>
-                                        Discard the analysis of all <b>@_footprint.Photos.ToString("N0")</b> photos
-                                        and @AppState.FormatBytes(_footprint.ThumbBytes) of thumbnails?
+                                        @((MarkupString)L["ConfirmForgetBody", _footprint.Photos.ToString("N0"), AppState.FormatBytes(_footprint.ThumbBytes)].Value)
                                     </p>
                                     <p class="hint">
-                                        No photo is deleted or moved — only hashes, scores, dates and thumbnails,
-                                        all of which a scan rebuilds. Anything already in the Recycle Bin stays
-                                        restorable from History.
+                                        @L["ForgetHint"]
                                     </p>
                                     <div class="row">
-                                        <button class="btn btn-danger" @onclick="Forget">Forget everything</button>
-                                        <button class="btn btn-ghost" @onclick="DeclineForget">Cancel</button>
+                                        <button class="btn btn-danger" @onclick="Forget">@L["ForgetConfirmButton"]</button>
+                                        <button class="btn btn-ghost" @onclick="DeclineForget">@L["CancelButton"]</button>
                                     </div>
                                 </div>
                             }
@@ -296,7 +277,7 @@
             </div>
 
             <div class="dlg-actions">
-                <button class="btn btn-primary" @onclick="Close">Done</button>
+                <button class="btn btn-primary" @onclick="Close">@L["DoneButton"]</button>
             </div>
         </div>
     </div>
@@ -332,37 +313,34 @@
         get
         {
             var missing = Checker.MissingCount;
-            yield return (Pane.AddOns, "Add-ons", missing > 0 ? missing.ToString() : null);
-            yield return (Pane.Explicit, "Explicit content", null);
-            yield return (Pane.Duplicates, "Duplicates", null);
-            yield return (Pane.Catalogue, "Catalogue", null);
+            yield return (Pane.AddOns, L["PaneAddOns"], missing > 0 ? missing.ToString() : null);
+            yield return (Pane.Explicit, L["PaneExplicit"], null);
+            yield return (Pane.Duplicates, L["PaneDuplicates"], null);
+            yield return (Pane.Catalogue, L["PaneCatalogue"], null);
         }
     }
 
     static readonly NsfwSensitivity[] Sensitivities =
         [NsfwSensitivity.Cautious, NsfwSensitivity.Balanced, NsfwSensitivity.Eager];
 
-    static string SensitivityLabel(NsfwSensitivity s) => s switch
+    LocalizedString SensitivityLabel(NsfwSensitivity s) => s switch
     {
-        NsfwSensitivity.Cautious => "Cautious",
-        NsfwSensitivity.Eager => "Eager",
-        NsfwSensitivity.Custom => "Custom",
-        _ => "Balanced",
+        NsfwSensitivity.Cautious => L["SensitivityCautious"],
+        NsfwSensitivity.Eager => L["SensitivityEager"],
+        NsfwSensitivity.Custom => L["SensitivityCustom"],
+        _ => L["SensitivityBalanced"],
     };
 
     /// <summary>
     /// What each level costs, in the terms the user will actually notice — missed photos, or
     /// content warnings on photos of their family. Numbers are measured, not estimated.
     /// </summary>
-    static string SensitivityBlurb(NsfwSensitivity s) => s switch
+    LocalizedString SensitivityBlurb(NsfwSensitivity s) => s switch
     {
-        NsfwSensitivity.Cautious =>
-            "Flags only what is unmistakable. Fewest false alarms, most missed.",
-        NsfwSensitivity.Eager =>
-            "Flags more, and puts more borderline photos in front of you. Still avoids the level where ordinary photos of people start getting flagged.",
-        NsfwSensitivity.Custom =>
-            "Your own levels. The measured safe floor is 0.50 averaged over the pieces.",
-        _ => "Recommended. On the folders this was measured against: 25 of 41 explicit photos flagged, and none of 263 ordinary ones.",
+        NsfwSensitivity.Cautious => L["BlurbCautious"],
+        NsfwSensitivity.Eager => L["BlurbEager"],
+        NsfwSensitivity.Custom => L["BlurbCustom"],
+        _ => L["BlurbBalanced"],
     };
 
     // Sliders post strings, and a decimal here would be parsed against the browser's locale —

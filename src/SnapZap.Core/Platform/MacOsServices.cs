@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using SnapZap.Core.Resources;
 
 namespace SnapZap.Core.Platform;
 
@@ -20,7 +21,7 @@ public sealed class MacOsTrashService : ITrashService
             "end tell";
         var (code, stdout, stderr) = await RunOsa(script, ct);
         if (code != 0)
-            throw new IOException($"Trash failed for {path}: {stderr}");
+            throw new IOException(CoreStrings.Get("TrashFailed", path, stderr));
         var loc = stdout.Trim();
         return string.IsNullOrEmpty(loc) ? null : loc;
     }
@@ -76,7 +77,7 @@ public sealed class MacOsLinkService : ILinkService
     {
         var rc = link(targetPath, linkPath);
         if (rc != 0)
-            throw new IOException($"hard link {linkPath} -> {targetPath} failed (errno via link())");
+            throw new IOException(CoreStrings.Get("HardLinkFailedErrno", linkPath, targetPath));
     }
 
     static string DirectoryOf(string p) =>

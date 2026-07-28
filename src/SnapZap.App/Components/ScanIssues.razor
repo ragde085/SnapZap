@@ -1,5 +1,6 @@
 @implements IDisposable
 @inject AppState AppState
+@inject IStringLocalizer<ScanIssuesResources> L
 @using SnapZap.Core.Scanning
 
 @if (AppState.LastFailures.Count > 0 || AppState.LastUnsupportedTotal > 0)
@@ -18,14 +19,14 @@
                 {
                     <div class="issues-group">
                         <div class="issues-reason unsupported">
-                            SnapZap can't read these formats yet <span>· @AppState.LastUnsupportedTotal.ToString("N0")</span>
+                            @L["UnsupportedFormatsHeading"] <span>· @AppState.LastUnsupportedTotal.ToString("N0")</span>
                         </div>
                         @foreach (var (format, count) in AppState.LastUnsupported.OrderByDescending(k => k.Value))
                         {
-                            <div class="issues-file">@format — @count.ToString("N0") file@(count == 1 ? "" : "s")</div>
+                            <div class="issues-file">@format — @(count == 1 ? L["FileCountSingular", count.ToString("N0")] : L["FileCountPlural", count.ToString("N0")])</div>
                         }
                         <div class="issues-file quiet">
-                            They were left untouched, not deleted or altered.
+                            @L["UnsupportedFilesUntouchedNote"]
                         </div>
                     </div>
                 }
@@ -40,11 +41,11 @@
                         }
                         @if (group.Count() > 8)
                         {
-                            <div class="issues-file quiet">…and @(group.Count() - 8) more</div>
+                            <div class="issues-file quiet">@L["AndMoreCount", group.Count() - 8]</div>
                         }
                     </div>
                 }
-                <button class="btn btn-ghost" @onclick="() => AppState.ClearFailures()">Dismiss</button>
+                <button class="btn btn-ghost" @onclick="() => AppState.ClearFailures()">@L["DismissButton"]</button>
             </div>
         }
     </div>
@@ -66,10 +67,14 @@
             var unsupported = AppState.LastUnsupportedTotal;
 
             if (skipped > 0 && unsupported > 0)
-                return $"{unsupported:N0} in unreadable formats · {skipped} skipped";
+                return L["HeadlineBothCounts", unsupported.ToString("N0"), skipped];
             if (unsupported > 0)
-                return $"{unsupported:N0} photo{(unsupported == 1 ? "" : "s")} in a format SnapZap can't read yet";
-            return $"{skipped} file{(skipped == 1 ? "" : "s")} skipped";
+                return unsupported == 1
+                    ? L["HeadlineUnsupportedSingular", unsupported.ToString("N0")]
+                    : L["HeadlineUnsupportedPlural", unsupported.ToString("N0")];
+            return skipped == 1
+                ? L["HeadlineSkippedSingular", skipped]
+                : L["HeadlineSkippedPlural", skipped];
         }
     }
 

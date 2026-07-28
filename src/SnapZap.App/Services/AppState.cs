@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Localization;
+using SnapZap.App.Resources;
 using SnapZap.Core;
 using SnapZap.Core.Data;
 using SnapZap.Core.Dedup;
@@ -21,11 +23,23 @@ public enum SortKey { Scanned, Captured, Name, Size, Blur, Nsfw }
 /// object and top-level functions in the old app.js. Components subscribe to <see cref="Changed"/>
 /// and re-render; this class never touches the DOM/UI directly.
 /// </summary>
-public sealed class AppState(CatalogService catalog, ITrashService trash, SessionStore session, DependencyChecker deps)
+public sealed class AppState(
+    CatalogService catalog, ITrashService trash, SessionStore session, DependencyChecker deps,
+    IStringLocalizer<AppStateResources> localizer)
 {
+    readonly IStringLocalizer<AppStateResources> _loc = localizer;
+
     public event Action? Changed;
 
     public void Notify() => Changed?.Invoke();
+
+    /// <summary>
+    /// Fires once an NSFW scoring run ends — success, stopped, or failed alike, since even a
+    /// partial run leaves newly-scored photos worth looking at. Home.razor uses it to bring the
+    /// Filters tab forward, so the flagged/not-sure results are the next thing on screen instead
+    /// of requiring a second click.
+    /// </summary>
+    public event Action? NsfwScoringFinished;
 
     /// <summary>
     /// Notify *and* record that the selection moved. Kept separate from <see cref="Notify"/>
@@ -154,16 +168,16 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
     public string Status { get; private set; } = "";
 
     /// <summary>"2 min ago" / "yesterday" / etc., for the rail's library summary and Plan tab.</summary>
-    public static string TimeAgo(DateTimeOffset when)
+    public string TimeAgo(DateTimeOffset when)
     {
         var span = DateTimeOffset.UtcNow - when;
-        if (span < TimeSpan.FromSeconds(45)) return "just now";
-        if (span < TimeSpan.FromMinutes(1.5)) return "1 min ago";
-        if (span < TimeSpan.FromMinutes(59.5)) return $"{(int)Math.Round(span.TotalMinutes)} min ago";
-        if (span < TimeSpan.FromHours(1.5)) return "1 hour ago";
-        if (span < TimeSpan.FromHours(23.5)) return $"{(int)Math.Round(span.TotalHours)} hours ago";
-        if (span < TimeSpan.FromHours(36)) return "yesterday";
-        return $"{(int)Math.Round(span.TotalDays)} days ago";
+        if (span < TimeSpan.FromSeconds(45)) return _loc["TimeJustNow"];
+        if (span < TimeSpan.FromMinutes(1.5)) return _loc["TimeOneMinAgo"];
+        if (span < TimeSpan.FromMinutes(59.5)) return _loc["TimeMinutesAgo", (int)Math.Round(span.TotalMinutes)];
+        if (span < TimeSpan.FromHours(1.5)) return _loc["TimeOneHourAgo"];
+        if (span < TimeSpan.FromHours(23.5)) return _loc["TimeHoursAgo", (int)Math.Round(span.TotalHours)];
+        if (span < TimeSpan.FromHours(36)) return _loc["TimeYesterday"];
+        return _loc["TimeDaysAgo", (int)Math.Round(span.TotalDays)];
     }
 
     // ---- Busy / progress -------------------------------------------------
@@ -363,25 +377,25 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
     /// </remarks>
     public string NsfwEvidence(ImageView img)
     {
-        if (img.NsfwScore is not { } whole) return "Not scored yet.";
+        if (img.NsfwScore is not { } whole) return _loc["EvidenceNotScored"];
 
         var rule = NsfwRule;
         var closer = img.NsfwTileMean;
         if (closer is null)
-            return $"{whole:F2} of 1.00 · flagged at {rule.WholeFlag:F2} and above";
+            return _loc["EvidenceWholeOnly", whole, rule.WholeFlag];
 
-        return $"{whole:F2} looking at the whole photo, {closer:F2} looking closer"
-            + (closer >= rule.TileMeanFlag ? " — flagged on the closer look" : "")
-            + $" · flagged at {rule.WholeFlag:F2} overall or {rule.TileMeanFlag:F2} closer";
+        return closer >= rule.TileMeanFlag
+            ? _loc["EvidenceTiledFlagged", whole, closer, rule.WholeFlag, rule.TileMeanFlag]
+            : _loc["EvidenceTiled", whole, closer, rule.WholeFlag, rule.TileMeanFlag];
     }
 
     /// <summary>Plain-language name for a band; the primary reading everywhere a score shows.</summary>
-    public static string BandLabel(NsfwBand band) => band switch
+    public string BandLabel(NsfwBand band) => band switch
     {
-        NsfwBand.Likely => "Likely explicit",
-        NsfwBand.Unsure => "Not sure",
-        NsfwBand.Clean => "Looks clean",
-        _ => "Not checked",
+        NsfwBand.Likely => _loc["BandLikely"],
+        NsfwBand.Unsure => _loc["BandUnsure"],
+        NsfwBand.Clean => _loc["BandClean"],
+        _ => _loc["BandUnchecked"],
     };
 
     /// <summary>
@@ -458,6 +472,33 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
         _filtered = null;          // deliberately NOT _selectableCounts
         Notify();
     }
+
+    // ---- Thumbnail size ------------------------------------------------------
+    ThumbSize _thumbSize = ThumbSize.Medium;
+
+    /// <summary>Doesn't touch <c>_filtered</c> — this changes how photos are displayed, not
+    /// which ones match, so the count caches stay valid.</summary>
+    public ThumbSize ThumbSize
+    {
+        get => _thumbSize;
+        set
+        {
+            if (_thumbSize == value) return;
+            _thumbSize = value;
+            Notify();
+        }
+    }
+
+    /// <summary>Target minimum card width in CSS pixels — passed to interop.js's
+    /// <c>snapzap.setCardSize</c>, which is what actually decides how many columns fit.
+    /// Instance method (not static) purely so callers can reach it off the injected
+    /// <c>AppState</c> instance without a type-qualified call.</summary>
+    public int ThumbSizePixels(ThumbSize size) => size switch
+    {
+        ThumbSize.Small => 110,
+        ThumbSize.Large => 220,
+        _ => 150,
+    };
 
     public bool HasActiveFilter =>
         _nsfw != NsfwFilter.Any || _blurMax > 0 || _dupeFilter != DupeFilter.Any || _folder.Length > 0
@@ -935,57 +976,72 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
     {
         get
         {
-            var scanning = Busy && BusyLabel == "Scanning";
-            var dedupRunning = Busy && BusyLabel == "Finding duplicates";
-            var scoringNsfw = Busy && BusyLabel == "Scoring NSFW";
+            var scanLabel = _loc["ScanBusyLabel"];
+            var dedupLabel = _loc["DedupBusyLabel"];
+            var nsfwLabel = _loc["NsfwBusyLabel"];
+
+            var scanning = Busy && BusyLabel == scanLabel;
+            var dedupRunning = Busy && BusyLabel == dedupLabel;
+            var scoringNsfw = Busy && BusyLabel == nsfwLabel;
             var everScanned = ScannedFolder is not null;
             var stillWaitingOnScan = !everScanned || scanning;
 
             // Mirrors the Scan step's own wording ("N so far") — the rail keeps this compact;
             // the full "N of about M" line with a bar lives in the main content area (see
             // Home.razor's scan-stats block, which reads the same BusyDone/BusyTotal).
-            var busyProgressLabel = BusyTotal > 0 ? $"{BusyDone:N0} of {BusyTotal:N0}" : $"{BusyDone:N0} so far";
+            string busyProgressLabel = BusyTotal > 0
+                ? _loc["ProgressOfTotal", BusyDone, BusyTotal]
+                : _loc["ProgressSoFar", BusyDone];
+
+            var scanTitle = _loc["PlanStepScan"];
+            var dupesTitle = _loc["PlanStepDuplicates"];
+            var contentTitle = _loc["PlanStepContentReview"];
+            var sharpTitle = _loc["PlanStepSharpness"];
+            var exportTitle = _loc["PlanStepExport"];
+            var waitsForScan = _loc["WaitsForScan"];
 
             var scan = scanning
-                ? new PlanStep(1, "Scan", $"Reading… {busyProgressLabel}", PlanStepState.Active, true)
+                ? new PlanStep(1, scanTitle, _loc["ReadingProgress", busyProgressLabel], PlanStepState.Active, true)
                 : everScanned
-                    ? new PlanStep(1, "Scan",
-                        $"{Images.Count:N0} photos" + (ScannedAt is { } at ? $" · {TimeAgo(at)}" : ""),
+                    ? new PlanStep(1, scanTitle,
+                        ScannedAt is { } at
+                            ? _loc["PhotosCountWithTime", Images.Count, TimeAgo(at)]
+                            : _loc["PhotosCountOnly", Images.Count],
                         PlanStepState.Done, false)
-                    : new PlanStep(1, "Scan", "Nothing scanned yet", PlanStepState.Waiting, false);
+                    : new PlanStep(1, scanTitle, _loc["NothingScannedYet"], PlanStepState.Waiting, false);
 
             var dupes = dedupRunning
-                ? new PlanStep(2, "Duplicates", $"Grouping… {busyProgressLabel}", PlanStepState.Active, true)
+                ? new PlanStep(2, dupesTitle, _loc["GroupingProgress", busyProgressLabel], PlanStepState.Active, true)
                 : scanning
-                    ? new PlanStep(2, "Duplicates", "Queued — starts on its own when the scan ends", PlanStepState.Queued, false)
+                    ? new PlanStep(2, dupesTitle, _loc["DedupQueued"], PlanStepState.Queued, false)
                     : everScanned
-                        ? new PlanStep(2, "Duplicates",
+                        ? new PlanStep(2, dupesTitle,
                             DupeGroups.Count > 0
-                                ? $"{DupeGroups.Count:N0} groups · {DupeExtraCount:N0} extras · {FormattedReclaimable}"
-                                : "No duplicates found",
+                                ? _loc["DupeGroupsSummary", DupeGroups.Count, DupeExtraCount, FormattedReclaimable]
+                                : _loc["NoDuplicatesFound"],
                             PlanStepState.Done, DupeGroups.Count > 0)
-                        : new PlanStep(2, "Duplicates", "Waits for the scan", PlanStepState.Waiting, false);
+                        : new PlanStep(2, dupesTitle, waitsForScan, PlanStepState.Waiting, false);
 
             var unchecked_ = CountInBand(NsfwBand.Unchecked);
             var content = scoringNsfw
-                ? new PlanStep(3, "Content review", $"Scoring… {busyProgressLabel}", PlanStepState.Active, true)
+                ? new PlanStep(3, contentTitle, _loc["ScoringProgress", busyProgressLabel], PlanStepState.Active, true)
                 : stillWaitingOnScan
-                    ? new PlanStep(3, "Content review", "Waits for the scan", PlanStepState.Waiting, false)
+                    ? new PlanStep(3, contentTitle, waitsForScan, PlanStepState.Waiting, false)
                     : unchecked_ == 0 && Images.Count > 0
-                        ? new PlanStep(3, "Content review", "All photos checked", PlanStepState.Done, false)
-                        : new PlanStep(3, "Content review", "Nothing scored yet", PlanStepState.Available, false);
+                        ? new PlanStep(3, contentTitle, _loc["AllPhotosChecked"], PlanStepState.Done, false)
+                        : new PlanStep(3, contentTitle, _loc["NothingScoredYet"], PlanStepState.Available, false);
 
             var softCount = Images.Count(IsSoft);
             var sharp = stillWaitingOnScan
-                ? new PlanStep(4, "Sharpness", "Waits for the scan", PlanStepState.Waiting, false)
-                : new PlanStep(4, "Sharpness",
-                    softCount > 0 ? $"{softCount:N0} soft shots found" : "Nothing soft found",
+                ? new PlanStep(4, sharpTitle, waitsForScan, PlanStepState.Waiting, false)
+                : new PlanStep(4, sharpTitle,
+                    softCount > 0 ? _loc["SoftShotsFound", softCount] : _loc["NothingSoftFound"],
                     PlanStepState.Done, false);
 
             var export = stillWaitingOnScan
-                ? new PlanStep(5, "Export a clean library", "Waits for the scan", PlanStepState.Waiting, false)
-                : new PlanStep(5, "Export a clean library",
-                    HasExportedThisSession ? "Exported this session" : "Nothing exported yet",
+                ? new PlanStep(5, exportTitle, waitsForScan, PlanStepState.Waiting, false)
+                : new PlanStep(5, exportTitle,
+                    HasExportedThisSession ? _loc["ExportedThisSession"] : _loc["NothingExportedYet"],
                     HasExportedThisSession ? PlanStepState.Done : PlanStepState.Available, false);
 
             return [scan, dupes, content, sharp, export];
@@ -1023,7 +1079,7 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
         // it needs the same busy state, the same render-before-work yield and the same error
         // containment. Doing it inline reintroduced exactly the frozen-but-still-clickable
         // window that the NSFW model load had just been fixed for.
-        await RunAsync("Emptying the catalogue", async (_, _) =>
+        await RunAsync(_loc["EmptyCatalogBusyLabel"], async (_, _) =>
         {
             await Task.Run(catalog.Forget);
             ScannedFolder = null;
@@ -1032,7 +1088,7 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
             ClearFilters();
             session.Mutate(sel => sel.Clear());
             await LoadAsync();
-            return "Catalogue emptied. Scan a folder to start again.";
+            return _loc["CatalogueEmptiedStatus"];
         });
     }
 
@@ -1061,59 +1117,87 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
     {
         if (Busy) return;
         folder = ExpandHome(folder);
-        await RunAsync("Scanning", async (report, ct) =>
+        await RunAsync(_loc["ScanBusyLabel"], (report, ct) => ScanBodyAsync(folder, isLibraryRoot: true, report, ct));
+    }
+
+    /// <summary>
+    /// Re-analyze one folder already inside the library — the folder tree's "Rescan" action —
+    /// without moving the library's scan root. Unlike <see cref="ScanAsync"/>, this never
+    /// changes <see cref="ScannedFolder"/>: the folder being rescanned is a subset of it, and
+    /// narrowing the whole library's scope to it would break every other view (the grid, the
+    /// tree, Export's Mirror structure) that reads ScannedFolder as "everything in scope".
+    /// Rows outside <paramref name="folder"/> are never touched — CatalogService.RescanFolderAsync
+    /// scopes both the cache probe and pruning to it (PathScope is a prefix match).
+    /// </summary>
+    public async Task RescanFolderAsync(string folder)
+    {
+        if (Busy) return;
+        await RunAsync(_loc["ScanBusyLabel"], (report, ct) => ScanBodyAsync(folder, isLibraryRoot: false, report, ct));
+    }
+
+    async Task<string> ScanBodyAsync(
+        string folder, bool isLibraryRoot, Action<int, int, string?> report, CancellationToken ct)
+    {
+        var progress = new Progress<ScanProgress>(p =>
         {
-            var progress = new Progress<ScanProgress>(p =>
-            {
-                BusyCached = p.Cached;
-                report(p.Seen, p.Total, p.Current);
-            });
-            string msg;
-            try
-            {
-                var result = await catalog.ScanAsync(folder, progress, ct);
-                ScannedFolder = folder;
-                ScannedAt = DateTimeOffset.UtcNow;
-                LastFailures = result.Failures;
-                LastUnsupported = result.UnsupportedByFormat;
-                await LoadAsync();
-
-                msg = $"Scanned {result.Analyzed} new, {result.Cached} cached";
-                if (result.Failed > 0)
-                {
-                    var folders = result.Failures.Select(f => f.Folder).Distinct().Count();
-                    msg += $" · {result.Failed} skipped"
-                         + (folders > 1 ? $" across {folders} folders" : "");
-                }
-                if (result.UnsupportedTotal > 0)
-                    msg += $" · {result.UnsupportedTotal:N0} in formats SnapZap can't read yet";
-
-                // Pruning drops catalog rows for files that have left the folder. That is the
-                // right behaviour, but it also drops their scores and keeper decisions, so it
-                // has to be said out loud rather than shown as a silently shorter grid.
-                if (result.Pruned > 0)
-                    msg += $" · {result.Pruned:N0} no longer in the folder, removed from the catalogue";
-            }
-            catch (DirectoryNotFoundException)
-            {
-                return $"Folder not found: {folder}";
-            }
-
-            // Chained here rather than through a call to DedupAsync(): that method's own Busy
-            // guard would just no-op, since we're still inside this run. Dedup used to be a
-            // separate, user-gated step because it was once a genuinely separate pass; now the
-            // perceptual hash rides on scan's own decode (see CLAUDE.md), so what is left for
-            // this to do — a SQL query plus in-memory grouping over hashes already on disk — is
-            // fast enough (docs/PERFORMANCE.md: under a second at 100k photos) that gating it
-            // behind a second click no longer earns its keep.
-            BusyLabel = "Finding duplicates";
-            BusyDone = 0;
-            BusyTotal = 0;
-            BusyDetail = null;
-            Notify();
-            var dedupMsg = await RunDedupAsync(folder, report, ct);
-            return $"{msg} · {dedupMsg}";
+            BusyCached = p.Cached;
+            report(p.Seen, p.Total, p.Current);
         });
+        string msg;
+        try
+        {
+            var result = isLibraryRoot
+                ? await catalog.ScanAsync(folder, progress, ct)
+                : await catalog.RescanFolderAsync(folder, progress, ct);
+            if (isLibraryRoot) ScannedFolder = folder;
+            ScannedAt = DateTimeOffset.UtcNow;
+            LastFailures = result.Failures;
+            LastUnsupported = result.UnsupportedByFormat;
+            await LoadAsync();
+
+            msg = isLibraryRoot
+                ? _loc["ScanSummary", result.Analyzed, result.Cached]
+                : _loc["RescanSummary", result.Analyzed, result.Cached];
+            if (result.Failed > 0)
+            {
+                var folders = result.Failures.Select(f => f.Folder).Distinct().Count();
+                msg += " · " + (folders > 1
+                    ? (string)_loc["ScanSkippedAcrossFolders", result.Failed, folders]
+                    : (string)_loc["ScanSkipped", result.Failed]);
+            }
+            if (result.UnsupportedTotal > 0)
+                msg += " · " + (string)_loc["ScanUnsupportedFormats", result.UnsupportedTotal];
+
+            // Pruning drops catalog rows for files that have left the folder. That is the
+            // right behaviour, but it also drops their scores and keeper decisions, so it
+            // has to be said out loud rather than shown as a silently shorter grid.
+            if (result.Pruned > 0)
+                msg += " · " + (string)_loc["ScanPruned", result.Pruned];
+        }
+        catch (DirectoryNotFoundException)
+        {
+            return _loc["FolderNotFound", folder];
+        }
+
+        // Chained here rather than through a call to DedupAsync(): that method's own Busy
+        // guard would just no-op, since we're still inside this run. Dedup used to be a
+        // separate, user-gated step because it was once a genuinely separate pass; now the
+        // perceptual hash rides on scan's own decode (see CLAUDE.md), so what is left for
+        // this to do — a SQL query plus in-memory grouping over hashes already on disk — is
+        // fast enough (docs/PERFORMANCE.md: under a second at 100k photos) that gating it
+        // behind a second click no longer earns its keep.
+        //
+        // Always against the whole library root, even for a subfolder rescan: a photo that
+        // changed in one folder can newly match (or stop matching) a duplicate anywhere else
+        // in the catalogue, and dedup's own cost is the same either way (docs/DEDUP-V2.md).
+        BusyLabel = _loc["DedupBusyLabel"];
+        BusyDone = 0;
+        BusyTotal = 0;
+        BusyDetail = null;
+        Notify();
+        var dedupRoot = isLibraryRoot ? folder : (ScannedFolder ?? folder);
+        var dedupMsg = await RunDedupAsync(dedupRoot, report, ct);
+        return $"{msg} · {dedupMsg}";
     }
 
     /// <summary>
@@ -1124,7 +1208,7 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
     public async Task DedupAsync()
     {
         if (Busy || ScannedFolder is not { } folder) return;
-        await RunAsync("Finding duplicates", (report, ct) => RunDedupAsync(folder, report, ct));
+        await RunAsync(_loc["DedupBusyLabel"], (report, ct) => RunDedupAsync(folder, report, ct));
     }
 
     async Task<string> RunDedupAsync(string folder, Action<int, int, string?> reportProgress, CancellationToken ct)
@@ -1143,7 +1227,9 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
             if (n > 0) counts.Add($"{n:N0} {kind.Label().ToLowerInvariant()}");
         }
 
-        var headline = counts.Count == 0 ? "No duplicates found" : string.Join(", ", counts) + " groups";
+        string headline = counts.Count == 0
+            ? _loc["NoDuplicatesFound"]
+            : _loc["DupeGroupsCount", string.Join(", ", counts)];
         // The note carries the partial-result warnings — unhashed photos, a truncated
         // comparison, detectors switched off. Appending it rather than replacing the count is
         // the point: "0 groups" and "0 groups, but half the library has no signature" have to
@@ -1170,7 +1256,7 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
                 ? Images.Where(InFolderScope).Select(i => i.Id).ToList()
                 : null;
 
-        await RunAsync("Scoring NSFW", async (report, ct) =>
+        await RunAsync(_loc["NsfwBusyLabel"], async (report, ct) =>
         {
             var progress = new Progress<NsfwProgress>(p => report(p.Done, p.Total, null));
             // Read once per run, not per photo: changing the setting mid-run would otherwise
@@ -1181,9 +1267,12 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
                 .ScoreAllAsync(catalog.ScanRoot, progress, imageIds: scope, depth: depth, ct: ct);
             await LoadAsync();
             return result.ModelAvailable
-                ? $"Scored {result.Scored}" + (result.Failed > 0 ? $", {result.Failed} failed" : "")
-                : "NSFW model not installed — scoring skipped";
+                ? (result.Failed > 0
+                    ? _loc["NsfwScoredWithFailed", result.Scored, result.Failed]
+                    : _loc["NsfwScored", result.Scored])
+                : _loc["NsfwModelNotInstalled"];
         });
+        NsfwScoringFinished?.Invoke();
     }
 
     /// <summary>
@@ -1235,12 +1324,12 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
             // folder, before file count is even known — so "of 0" would misreport, not just
             // look odd.
             Status = BusyTotal > 0
-                ? $"{label} stopped after {BusyDone:N0} of {BusyTotal:N0}"
-                : $"{label} stopped after {BusyDone:N0}";
+                ? _loc["OperationStoppedWithTotal", label, BusyDone, BusyTotal]
+                : _loc["OperationStoppedNoTotal", label, BusyDone];
         }
         catch (Exception ex)
         {
-            Status = $"Failed: {ex.Message}";
+            Status = _loc["FailedPrefix", ex.Message];
         }
         finally
         {
@@ -1259,37 +1348,32 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
     {
         if (Busy || imageIds.Count == 0) return;
 
-        // Goes through the shared busy path like every other long operation: recycling
-        // thousands of photos used to show nothing at all and left the button double-clickable.
-        Busy = true;
-        BusyLabel = "Moving to the Recycle Bin";
-        BusyDone = 0;
-        BusyTotal = imageIds.Count;
-        Notify();
-
-        DeleteResult result;
-        try
+        // Goes through the shared busy/progress path like Scan, Dedup and NSFW: recycling
+        // thousands of photos used to show nothing but a static label and left Stop dead
+        // (RunAsync is what wires up the live counter, the progress bar and cancellation).
+        DeleteResult? result = null;
+        await RunAsync(_loc["RecycleBusyLabel"], async (report, ct) =>
         {
-            result = await new DeleteService(catalog.Db, trash).RecycleAsync(imageIds);
-        }
-        finally
-        {
-            Busy = false;
-            BusyLabel = null;
-        }
+            var progress = new Progress<DeleteProgress>(p => report(p.Done, p.Total, p.Current));
+            result = await new DeleteService(catalog.Db, trash).RecycleAsync(imageIds, progress, ct);
 
-        session.Mutate(sel => sel.ExceptWith(imageIds));
-        await LoadAsync();
+            session.Mutate(sel => sel.ExceptWith(imageIds));
+            await LoadAsync();
 
-        Status = $"Recycled {result.Recycled}" + (result.Failed > 0 ? $", {result.Failed} failed" : "");
+            return result.Failed > 0
+                ? _loc["RecycledCountWithFailed", result.Recycled, result.Failed]
+                : _loc["RecycledCount", result.Recycled];
+        });
+
+        if (result is not { } r) return;   // stopped before a single file was touched
 
         // The common case is "undo what I just did" — offer it inline rather than
         // making the user open the history dialog and find the batch.
-        var n = result.Recycled;
+        var n = r.Recycled;
         ShowToast(
-            $"Recycled {n} photo{(n == 1 ? "" : "s")} to the Recycle Bin.",
-            "Undo",
-            () => RestoreAndReloadAsync(result.BatchId));
+            n == 1 ? _loc["RecycledToastSingular"] : _loc["RecycledToastPlural", n],
+            _loc["UndoActionLabel"],
+            () => RestoreAndReloadAsync(r.BatchId));
     }
 
     public IReadOnlyList<UndoBatch> Batches() => new DeleteService(catalog.Db, trash).Batches();
@@ -1298,7 +1382,9 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
     public async Task<RestoreResult> RestoreAndReloadAsync(string batchId)
     {
         var result = await new DeleteService(catalog.Db, trash).RestoreAsync(batchId);
-        Status = $"Restored {result.Restored}" + (result.Missing > 0 ? $", {result.Missing} missing" : "");
+        Status = result.Missing > 0
+            ? _loc["RestoredCountWithMissing", result.Restored, result.Missing]
+            : _loc["RestoredCount", result.Restored];
 
         // Restored files are back on disk but were removed from the catalog on delete —
         // re-scan so they reappear in the grid with fresh signals.
@@ -1341,6 +1427,11 @@ public enum DupeFilter
     /// <summary>Every member of a Burst group — separate photographs, never bulk-selectable.</summary>
     BurstOnly,
 }
+
+/// <summary>The grid's thumbnail-size preference — Home.razor's segmented control, applied by
+/// telling interop.js's column-fitting measurement a different target width
+/// (<see cref="AppState.ThumbSizePixels"/>).</summary>
+public enum ThumbSize { Small, Medium, Large }
 
 /// <summary>One row of the Plan tab's pipeline strip.</summary>
 public enum PlanStepState { Waiting, Queued, Available, Active, Done }

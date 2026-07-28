@@ -1,5 +1,6 @@
 using Microsoft.ML.OnnxRuntime.Tensors;
 using SkiaSharp;
+using SnapZap.Core.Resources;
 
 namespace SnapZap.Core.Nsfw;
 
@@ -25,7 +26,7 @@ public static class NsfwPreprocess
         using var resized = bitmap.Resize(
             new SKImageInfo(s, s, SKColorType.Rgba8888, SKAlphaType.Unpremul),
             SKSamplingOptions.Default)
-            ?? throw new InvalidOperationException("resize failed");
+            ?? throw new InvalidOperationException(CoreStrings.Get("ResizeFailed"));
 
         var tensor = new DenseTensor<float>([1, 3, s, s]);
         var buf = tensor.Buffer.Span;
@@ -52,7 +53,7 @@ public static class NsfwPreprocess
     public static DenseTensor<float> ToTensor(string imagePath, PreprocessConfig cfg)
     {
         using var bmp = SKBitmap.Decode(imagePath)
-            ?? throw new InvalidOperationException($"cannot decode {imagePath}");
+            ?? throw new InvalidOperationException(CoreStrings.Get("CannotDecode", imagePath));
         return ToTensor(bmp, cfg);
     }
 

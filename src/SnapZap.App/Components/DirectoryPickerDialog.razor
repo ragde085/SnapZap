@@ -1,0 +1,162 @@
+@*
+    A folder browser for the handful of places the app needs an absolute directory path (scan
+    source, export destination, extract output). Blazor Server runs on the same machine as the
+    files, so this walks the real filesystem server-side rather than asking the user to type or
+    paste a path blind.
+*@
+
+@inject IStringLocalizer<DirectoryPickerDialogResources> L
+
+@if (Show)
+{
+    <div class="dlg" role="dialog" aria-modal="true" aria-label="@L["DialogTitle"]"
+         tabindex="-1" @ref="_dlgRef" @onkeydown="HandleKeyDown">
+        <div class="dlg-box">
+            <h2>@L["DialogTitle"]</h2>
+            <hr class="hr" style="margin:0 0 14px" />
+
+            <div class="field">
+                <label>@L["PathLabel"]</label>
+                <div style="display:flex;gap:8px">
+                    <input class="input" style="flex:1;font-family:var(--font-mono);font-size:12.5px" spellcheck="false"
+                           @bind="_typedPath" @bind:event="oninput" @onkeydown="PathKeyDown" />
+                    <button class="btn btn-secondary" @onclick="GoToTyped">@L["GoButton"]</button>
+                </div>
+            </div>
+
+            @if (_error is { Length: > 0 })
+            {
+                <div class="hint" style="color:var(--color-danger)">@_error</div>
+            }
+
+            <div class="dir-roots">
+                @foreach (var r in Roots())
+                {
+                    <button class="btn btn-ghost" style="font-size:11.5px" @onclick="() => Navigate(r)">@RootLabel(r)</button>
+                }
+            </div>
+
+            <div class="dir-list" role="listbox" aria-label="@L["SubfoldersAriaLabel", _current]">
+                @if (_parent is { } parent)
+                {
+                    <button class="dir-row" @onclick="() => Navigate(parent)">
+                        <span class="dir-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5" /><path d="m5 12 7-7 7 7" /></svg></span>
+                        <span class="dir-name">@L["UpOneLevel"]</span>
+                    </button>
+                }
+                @foreach (var d in _subfolders)
+                {
+                    <button class="dir-row" @onclick="() => Navigate(d)">
+                        <span class="dir-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" /></svg></span>
+                        <span class="dir-name">@Path.GetFileName(d)</span>
+                    </button>
+                }
+                @if (_subfolders.Count == 0 && _parent is null && _error is null)
+                {
+                    <p class="hint" style="padding:10px 4px">@L["NoSubfoldersHint"]</p>
+                }
+            </div>
+
+            <div class="dlg-actions" style="margin-top:14px">
+                <button class="btn btn-primary" @onclick="Confirm">@L["UseFolderButton"]</button>
+                <span class="hint" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@_current</span>
+                <button class="btn btn-ghost" @onclick="Close">@L["CancelButton"]</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool Show { get; set; }
+
+    /// <summary>Where to start browsing — typically whatever the target field already holds.</summary>
+    [Parameter] public string? StartPath { get; set; }
+
+    [Parameter] public EventCallback<string> OnPicked { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    string _current = "";
+    string _typedPath = "";
+    string? _parent;
+    List<string> _subfolders = [];
+    string? _error;
+    bool _wasShown;
+    bool _needsFocus;
+    ElementReference _dlgRef;
+
+    protected override void OnParametersSet()
+    {
+        // Re-anchor on every open, not just the first — a second use of the same dialog instance
+        // (e.g. reopening Export after changing the destination by hand) should start from the
+        // field's current value, not wherever browsing left off last time.
+        if (Show && !_wasShown)
+        {
+            _needsFocus = true;
+            var start = StartPath?.Trim();
+            Navigate(start is { Length: > 0 } && Directory.Exists(start) ? start! : DefaultStart());
+        }
+        _wasShown = Show;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (Show && _needsFocus)
+        {
+            _needsFocus = false;
+            await _dlgRef.FocusAsync();
+        }
+    }
+
+    static string DefaultStart() => Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+
+    /// <summary>Quick-jump buttons: every drive on Windows, home + filesystem root elsewhere —
+    /// there's no single "root" on Windows and no drive letters to enumerate everywhere else.</summary>
+    static IReadOnlyList<string> Roots() => OperatingSystem.IsWindows()
+        ? DriveInfo.GetDrives().Where(d => d.IsReady).Select(d => d.RootDirectory.FullName).ToList()
+        : [Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "/"];
+
+    string RootLabel(string root) => root == "/" ? L["RootDirectoryLabel"] : root.TrimEnd('\\', '/');
+
+    void Navigate(string path)
+    {
+        try
+        {
+            var full = Path.GetFullPath(path);
+            var dirs = Directory.GetDirectories(full)
+                .Where(d => Path.GetFileName(d) is { Length: > 0 } name && name[0] != '.')
+                .OrderBy(d => Path.GetFileName(d), StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            _current = full;
+            _typedPath = full;
+            var parent = Path.GetDirectoryName(full);
+            _parent = parent is { Length: > 0 } && parent != full ? parent : null;
+            _subfolders = dirs;
+            _error = null;
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException or ArgumentException)
+        {
+            _error = L["OpenFolderError", ex.Message];
+        }
+    }
+
+    void GoToTyped()
+    {
+        var path = _typedPath.Trim();
+        if (path.Length == 0) return;
+        if (!Directory.Exists(path)) { _error = L["FolderNotFoundError"]; return; }
+        Navigate(path);
+    }
+
+    Task PathKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") GoToTyped();
+        return Task.CompletedTask;
+    }
+
+    Task Confirm() => OnPicked.InvokeAsync(_current);
+
+    Task Close() => OnClose.InvokeAsync();
+
+    Task HandleKeyDown(KeyboardEventArgs e) => e.Key == "Escape" ? Close() : Task.CompletedTask;
+}

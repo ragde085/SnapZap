@@ -1,12 +1,14 @@
+@using System.Globalization
 @using Microsoft.AspNetCore.Components.Web
 @using SnapZap.App.Services
 @inject IWebHostEnvironment Env
 @inject DependencyChecker Checker
+@inject IStringLocalizer<AppResources> L
 <!DOCTYPE html>
 @* data-theme is omitted entirely for "system", so app.css's prefers-color-scheme fallback
    decides — rendering it here (rather than only via JS after load) is what keeps an explicit
    light/dark choice from flashing the other theme for the first frame. *@
-<html lang="en" data-theme="@(Checker.Theme is "light" or "dark" ? Checker.Theme : null)">
+<html lang="@CultureInfo.CurrentUICulture.Name" data-theme="@(Checker.Theme is "light" or "dark" ? Checker.Theme : null)">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -25,8 +27,8 @@
     <Routes @rendermode="InteractiveServer" />
 
     <div id="blazor-error-ui">
-        An unhandled error has occurred.
-        <a href="." class="reload">Reload</a>
+        @L["UnhandledError"]
+        <a href="." class="reload">@L["Reload"]</a>
         <span class="dismiss">🗙</span>
     </div>
 
@@ -41,37 +43,34 @@
         is nothing on the server left to render it.
     *@
     <div id="components-reconnect-modal" class="reconnect">
-        <div class="reconnect-box" role="alertdialog" aria-live="assertive" aria-label="Connection to SnapZap">
+        <div class="reconnect-box" role="alertdialog" aria-live="assertive" aria-label="@L["ReconnectDialogLabel"]">
             <div class="reconnect-pulse" aria-hidden="true"><span></span><span></span></div>
 
-            <h2 class="reconnect-title">SnapZap has stopped responding</h2>
+            <h2 class="reconnect-title">@L["ReconnectTitle"]</h2>
 
             <p class="reconnect-line when-retrying">
-                Trying to reconnect — next attempt in
+                @L["ReconnectRetryingPrefix"]
                 <b id="components-seconds-to-next-attempt">…</b>s
-                (<b id="components-reconnect-current-attempt">1</b> of
+                (<b id="components-reconnect-current-attempt">1</b> @L["ReconnectRetryingOf"]
                 <b id="components-reconnect-max-retries">30</b>).
             </p>
 
             <p class="reconnect-line when-failed">
-                The SnapZap process isn't running any more. Start it again, then reload.
+                @L["ReconnectFailed"]
             </p>
 
             <p class="reconnect-line when-rejected">
-                This window is out of date because SnapZap restarted. Reload to pick up where
-                you left off.
+                @L["ReconnectRejected"]
             </p>
 
             @* The question anyone actually has when a photo app drops out mid-operation. *@
             <p class="reconnect-safe">
-                Nothing has been lost. Your selection is saved, and every scan, export and
-                delete is journalled — completed work is on disk, and an interrupted export
-                resumes where it stopped.
+                @L["ReconnectSafe"]
             </p>
 
             <div class="reconnect-actions">
-                <button type="button" class="reconnect-retry">Try again</button>
-                <button type="button" class="reconnect-reload">Reload</button>
+                <button type="button" class="reconnect-retry">@L["TryAgain"]</button>
+                <button type="button" class="reconnect-reload">@L["Reload"]</button>
             </div>
         </div>
     </div>

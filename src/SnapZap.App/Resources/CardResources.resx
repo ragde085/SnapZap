@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <data name="NsfwBadgeTitleFormat" xml:space="preserve"><value>{0} — the model scored this {1}</value></data>
+  <data name="BlurBadgeTitleFormat" xml:space="preserve"><value>Soft focus — blur score {0} (soft at {1} or below)</value></data>
+  <data name="DupeTitleFormat" xml:space="preserve"><value>{0} duplicate group #{1} — {2}</value></data>
+  <data name="DupeTitleKeeping" xml:space="preserve"><value>keeping this one</value></data>
+  <data name="DupeTitleExtra" xml:space="preserve"><value>extra copy</value></data>
+  <data name="AriaLikelyExplicit" xml:space="preserve"><value>likely explicit</value></data>
+  <data name="AriaExplicitUnsure" xml:space="preserve"><value>explicit content, not sure</value></data>
+  <data name="AriaSoftFocus" xml:space="preserve"><value>soft focus</value></data>
+  <data name="AriaDuplicateKeeper" xml:space="preserve"><value>duplicate keeper</value></data>
+  <data name="AriaDuplicateExtra" xml:space="preserve"><value>duplicate extra</value></data>
+</root>

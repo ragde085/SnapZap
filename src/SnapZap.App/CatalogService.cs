@@ -114,6 +114,22 @@ public sealed class CatalogService : IDisposable
     }
 
     /// <summary>
+    /// Re-analyze one folder already inside the current library (e.g. picked from the folder
+    /// tree) without moving <see cref="ScanRoot"/>. Deliberately does not touch ScanRoot or
+    /// LastScannedFolder: those describe the whole library's scope (everything the grid, the
+    /// tree and Export's Mirror structure act on), and a subfolder rescan must not narrow it.
+    /// Pruning is still safe scoped this way — <c>PathScope</c> is a prefix match, so it can
+    /// only ever delete rows already under <paramref name="folder"/>.
+    /// </summary>
+    public Task<ScanResult> RescanFolderAsync(string folder, IProgress<ScanProgress>? progress, CancellationToken ct)
+    {
+        if (!Directory.Exists(folder))
+            throw new DirectoryNotFoundException(folder);
+        var scanner = new Scanner(Db, Imaging, ThumbDir);
+        return scanner.ScanAsync(folder, progress, ct);
+    }
+
+    /// <summary>
     /// Empty the catalogue and the thumbnail/preview caches, returning the app to a fresh install
     /// as far as analysis goes. Photos on disk are never touched, and the undo log survives so
     /// anything already in the Recycle Bin can still be restored.

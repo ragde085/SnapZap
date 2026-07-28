@@ -1,27 +1,28 @@
 @inject DependencyChecker Checker
+@inject IStringLocalizer<DependencyDialogResources> L
 
 @if (Show)
 {
-    <div class="dlg" role="dialog" aria-modal="true" aria-label="Optional features"
+    <div class="dlg" role="dialog" aria-modal="true" aria-label="@L["OptionalFeaturesLabel"]"
          tabindex="-1" @ref="_dlgRef" @onkeydown="HandleKeyDown">
         <div class="dlg-box">
             <h2>@Heading</h2>
             <p class="dlg-sub">
-                SnapZap is ready to use right now — scanning, exact duplicates, export and
-                delete all work. @(_missing.Count == 1 ? "This add-on unlocks one more filter" : "These add-ons unlock the remaining filters") whenever you want @(_missing.Count == 1 ? "it" : "them").
+                @L["ReadyIntro"]
+                @(_missing.Count == 1 ? L["UnlocksSingular"] : L["UnlocksPlural"])
             </p>
 
             <DependencyList Items="_missing" Detailed="true" />
 
             <div class="dlg-actions">
-                <button class="btn btn-primary" @onclick="Recheck">@(_checking ? "Checking…" : "Check again")</button>
-                <button class="btn btn-ghost" @onclick="Close">Continue without them</button>
+                <button class="btn btn-primary" @onclick="Recheck">@(_checking ? L["Checking"] : L["CheckAgain"])</button>
+                <button class="btn btn-ghost" @onclick="Close">@L["ContinueWithoutThem"]</button>
             </div>
 
             <label class="f checkbox dep-suppress">
-                <input type="checkbox" @bind="_suppress" /> Don't show this at startup again
+                <input type="checkbox" @bind="_suppress" /> @L["SuppressPrompt"]
             </label>
-            <p class="hint">You can always see this under <b>Setup</b> in the toolbar on the left.</p>
+            <p class="hint">@((MarkupString)L["HintSetup"].Value)</p>
         </div>
     </div>
 }
@@ -32,7 +33,7 @@
 
     IReadOnlyList<DependencyInfo> _missing = [];
 
-    string Heading => _missing.Count == 1 ? "One optional extra" : $"{_missing.Count} optional extras";
+    string Heading => _missing.Count == 1 ? L["HeadingSingular"] : L["HeadingPlural", _missing.Count];
     bool _suppress;
     bool _checking;
     bool _wasShown;

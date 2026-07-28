@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 using SnapZap.Core.Imaging;
+using SnapZap.Core.Resources;
 using SnapZap.Core.Scanning;
 
 namespace SnapZap.Core.Stego;
@@ -35,15 +36,15 @@ public static class StegoEngine
             ct.ThrowIfCancellationRequested();
 
             if (!File.Exists(carrierPath))
-                throw new StegoException("Carrier file doesn't exist.");
+                throw new StegoException(CoreStrings.Get("CarrierMissing"));
             if (new SkiaImageService().Probe(carrierPath) is null)
-                throw new StegoException("Carrier must be a readable image file.");
+                throw new StegoException(CoreStrings.Get("CarrierNotImage"));
 
             // Refuse to clobber an unrelated pre-existing file. The one path a user can take
             // deliberately is pointing outputPath at the same bytes as the carrier (including
             // literally the same file) — anything else at that path is left alone (AC8).
             if (File.Exists(outputPath) && !FilesByteIdentical(outputPath, carrierPath))
-                throw new StegoException($"A different file already exists at {outputPath}.");
+                throw new StegoException(CoreStrings.Get("DestinationExists", outputPath));
 
             progress?.Report(new HideProgress(HidePhase.Writing, 0, payload.Length));
             ct.ThrowIfCancellationRequested();
@@ -65,24 +66,24 @@ public static class StegoEngine
             progress?.Report(new ExtractProgress(ExtractPhase.Reading, 0, 0));
 
             if (!File.Exists(carrierPath))
-                throw new StegoException("That file doesn't exist.");
+                throw new StegoException(CoreStrings.Get("FileMissing"));
 
             using var stream = File.OpenRead(carrierPath);
             if (stream.Length < FooterLength)
-                throw new StegoException("This image doesn't appear to contain hidden data.");
+                throw new StegoException(CoreStrings.Get("NoHiddenData"));
 
             var footer = new byte[FooterLength];
             stream.Seek(-FooterLength, SeekOrigin.End);
             ReadExact(stream, footer);
 
             if (!footer.AsSpan(0, 4).SequenceEqual(FooterMagic))
-                throw new StegoException("This image doesn't appear to contain hidden data.");
+                throw new StegoException(CoreStrings.Get("NoHiddenData"));
 
             var encrypted = footer[4] != 0;
             var payloadLength = (long)BinaryPrimitives.ReadUInt64BigEndian(footer.AsSpan(5, 8));
             var payloadStart = stream.Length - FooterLength - payloadLength;
             if (payloadLength < 0 || payloadStart < 0)
-                throw new StegoException("Hidden data is corrupted or incomplete.");
+                throw new StegoException(CoreStrings.Get("HiddenDataCorrupted"));
 
             var payload = new byte[payloadLength];
             stream.Seek(payloadStart, SeekOrigin.Begin);
@@ -98,7 +99,7 @@ public static class StegoEngine
         while (total < buffer.Length)
         {
             int read = stream.Read(buffer, total, buffer.Length - total);
-            if (read == 0) throw new StegoException("Hidden data is corrupted or incomplete.");
+            if (read == 0) throw new StegoException(CoreStrings.Get("HiddenDataCorrupted"));
             total += read;
         }
     }

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <data name="EmptyStateHint" xml:space="preserve"><value>Escanea una carpeta para ver su estructura.</value></data>
+  <data name="FindFolderPlaceholder" xml:space="preserve"><value>Buscar una carpeta…</value></data>
+  <data name="FindFolderAriaLabel" xml:space="preserve"><value>Buscar una carpeta</value></data>
+  <data name="TreeAriaLabel" xml:space="preserve"><value>Carpetas escaneadas</value></data>
+  <data name="AllFoldersLabel" xml:space="preserve"><value>Todas las carpetas</value></data>
+  <data name="DupeGroupLegend" xml:space="preserve"><value>fotos aquí están en un grupo de duplicados ·</value></data>
+  <data name="CleanLegend" xml:space="preserve"><value>revisado, no se encontraron</value></data>
+  <data name="PendingLegend" xml:space="preserve"><value>algún análisis aún no llega a esta carpeta</value></data>
+  <data name="KeyboardLegend" xml:space="preserve"><value>↑ ↓ mover · → expandir · ← contraer · Inicio / Fin saltar al extremo</value></data>
+  <data name="StatusTitleComplete" xml:space="preserve"><value>{0:N0} fotos — todos los pasos completos</value></data>
+  <data name="StatusTitlePending" xml:space="preserve"><value>{0:N0} fotos — {1}</value></data>
+  <data name="CollapseFolderLabel" xml:space="preserve"><value>Contraer {0}</value></data>
+  <data name="ExpandFolderLabel" xml:space="preserve"><value>Expandir {0}</value></data>
+  <data name="DupeCountTitle" xml:space="preserve"><value>{0} en grupos de duplicados</value></data>
+  <data name="CleanTitle" xml:space="preserve"><value>Revisado en busca de duplicados — no se encontraron</value></data>
+  <data name="RescanFolderLabel" xml:space="preserve"><value>Volver a escanear {0}</value></data>
+  <data name="IncludeSubfoldersLabel" xml:space="preserve"><value>Incluir subcarpetas</value></data>
+  <data name="SubfoldersOffNote" xml:space="preserve"><value>Solo los archivos directamente en esta carpeta — nada en sus subcarpetas.</value></data>
+</root>

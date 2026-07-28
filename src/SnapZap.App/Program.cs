@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using Microsoft.AspNetCore.Localization;
 using SnapZap.App;
 using SnapZap.App.Services;
 using SnapZap.Core.Data;
@@ -46,6 +47,11 @@ builder.Services.AddSingleton<DependencyChecker>();
 builder.Services.AddSingleton<SessionStore>();
 builder.Services.AddScoped<AppState>();
 builder.Services.AddRazorComponents().AddInteractiveServerComponents();
+// No ResourcesPath option: every marker type already lives in the SnapZap.App.Resources
+// namespace, which matches the physical Resources/ folder 1:1. Setting ResourcesPath here too
+// double-prefixes the resource base name (SnapZap.App.Resources.Resources.X) and every lookup
+// silently falls back to the raw key — verified via IStringLocalizer's own ResourceNotFound flag.
+builder.Services.AddLocalization();
 
 // Platform services (DESIGN.md §9): resolve the OS-specific concerns behind interfaces.
 // Windows implementations replace these at publish time; on the dev Mac we bind the
@@ -62,6 +68,16 @@ else
 }
 
 var app = builder.Build();
+
+// Culture comes from settings.json (DependencyChecker.Language), not a cookie or
+// Accept-Language — see SettingsRequestCultureProvider. Must run before anything renders, so it
+// sits ahead of static files/antiforgery/routing like every other request-shaping middleware here.
+var localizationOptions = new RequestLocalizationOptions()
+    .SetDefaultCulture(DependencyChecker.SupportedLanguages[0])
+    .AddSupportedCultures([.. DependencyChecker.SupportedLanguages])
+    .AddSupportedUICultures([.. DependencyChecker.SupportedLanguages]);
+localizationOptions.RequestCultureProviders = [new SettingsRequestCultureProvider()];
+app.UseRequestLocalization(localizationOptions);
 
 app.UseStaticFiles();
 app.UseAntiforgery();

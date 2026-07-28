@@ -12,7 +12,7 @@
 // Measuring the container directly is deterministic and needs no guesswork.
 
 window.snapzap = (function () {
-  const MIN_COL = 150; // keep in sync with the grid's minimum column width in app.css
+  let MIN_COL = 150; // the thumbnail-size control (Home.razor) adjusts this via setCardSize
   const GAP = 3; // keep in sync with .grid-row's gap in app.css — the contact-sheet look runs edge to edge
 
   // Everything that behaves as a modal. One list, because the two places that consult it —
@@ -143,6 +143,14 @@ window.snapzap = (function () {
 
     scrollToTop: function () {
       if (gridEl) gridEl.scrollTop = 0;
+    },
+
+    /** Change the target minimum card width and re-measure immediately — same ResizeObserver
+     * path a window resize takes, just triggered from the thumbnail-size control instead. */
+    setCardSize: function (px) {
+      if (!(px > 0)) return;
+      MIN_COL = px;
+      report();
     },
 
     /**

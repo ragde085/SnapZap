@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <data name="RailLibraryLabel" xml:space="preserve"><value>Biblioteca</value></data>
+  <data name="RailPhotoCount" xml:space="preserve"><value>{0} fotos</value></data>
+  <data name="RailScannedAgo" xml:space="preserve"><value> · escaneado {0}</value></data>
+  <data name="RailStepsOfFive" xml:space="preserve"><value>{0} de 5 completados</value></data>
+  <data name="RailGroupsWaiting" xml:space="preserve"><value>{0} GRUPOS EN ESPERA</value></data>
+  <data name="RailTablistLabel" xml:space="preserve"><value>Vista del panel</value></data>
+  <data name="PlanTab" xml:space="preserve"><value>Plan</value></data>
+  <data name="FoldersTab" xml:space="preserve"><value>Carpetas</value></data>
+  <data name="FiltersTab" xml:space="preserve"><value>Filtros</value></data>
+  <data name="ScanFolderHint" xml:space="preserve"><value>Escanea una carpeta para ver el plan.</value></data>
+  <data name="CancelButton" xml:space="preserve"><value>Cancelar</value></data>
+  <data name="ChangeFolderButton" xml:space="preserve"><value>Cambiar carpeta…</value></data>
+  <data name="ReviewGroupsButton" xml:space="preserve"><value>Revisar {0} grupos</value></data>
+  <data name="FindAgainButton" xml:space="preserve"><value>Buscar de nuevo</value></data>
+  <data name="NsfwRunTitleReady" xml:space="preserve"><value>Pide al modelo que adivine qué fotos tienen contenido explícito.</value></data>
+  <data name="NsfwRunTitleNotReady" xml:space="preserve"><value>Necesita el modelo NSFW — consulta Configuración.</value></data>
+  <data name="RunButton" xml:space="preserve"><value>Ejecutar</value></data>
+  <data name="NarrowingToLabel" xml:space="preserve"><value>Filtrando a</value></data>
+  <data name="ClearAllButton" xml:space="preserve"><value>Borrar todo</value></data>
+  <data name="DuplicatesLabel" xml:space="preserve"><value>Duplicados</value></data>
+  <data name="AnyOption" xml:space="preserve"><value>Cualquiera</value></data>
+  <data name="ExtraCopiesOnlyOption" xml:space="preserve"><value>Solo copias extra</value></data>
+  <data name="ExtraCopiesNote" xml:space="preserve"><value>Idénticas y de la misma toma — {0}.</value></data>
+  <data name="KeepersOnlyOption" xml:space="preserve"><value>Solo las que se conservan</value></data>
+  <data name="BurstFramesOption" xml:space="preserve"><value>Fotogramas de ráfaga</value></data>
+  <data name="BurstNote" xml:space="preserve"><value>Fotografías distintas — ninguna vía masiva las selecciona.</value></data>
+  <data name="ContentReviewLabel" xml:space="preserve"><value>Revisión de contenido</value></data>
+  <data name="LikelyExplicitOption" xml:space="preserve"><value>Probablemente explícito</value></data>
+  <data name="NotSureOption" xml:space="preserve"><value>No estoy seguro</value></data>
+  <data name="LooksCleanOption" xml:space="preserve"><value>Se ve normal</value></data>
+  <data name="NotCheckedYetOption" xml:space="preserve"><value>Aún no revisado</value></data>
+  <data name="NsfwScoreAllTitle" xml:space="preserve"><value>Califica cada foto en busca de contenido explícito.</value></data>
+  <data name="RunToUnlockButton" xml:space="preserve"><value>Ejecutar para desbloquear estas</value></data>
+  <data name="BlurOffValue" xml:space="preserve"><value>desactivado</value></data>
+  <data name="BlurrierThanLabel" xml:space="preserve"><value>Más borroso que — {0}</value></data>
+  <data name="BlurSoftNote" xml:space="preserve"><value>{0} quedarían fuera en {1}.</value></data>
+  <data name="FolderLabel" xml:space="preserve"><value>Carpeta</value></data>
+  <data name="AllFoldersOption" xml:space="preserve"><value>Todas las carpetas</value></data>
+  <data name="SetInFoldersNote" xml:space="preserve"><value>definido en Carpetas</value></data>
+  <data name="SubfoldersExcludedNote" xml:space="preserve"><value>Subcarpetas excluidas — solo los archivos directamente en esta carpeta. Cámbialo en Carpetas.</value></data>
+  <data name="YearLabel" xml:space="preserve"><value>Año</value></data>
+</root>

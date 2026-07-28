@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <data name="HistoryButton" xml:space="preserve"><value>Historial</value></data>
+  <data name="ExtractTooltip" xml:space="preserve"><value>Recuperar fotos ocultas dentro de un PNG</value></data>
+  <data name="ExtractAriaLabel" xml:space="preserve"><value>Extraer imágenes ocultas</value></data>
+  <data name="HelpTooltip" xml:space="preserve"><value>Ayuda y preguntas frecuentes</value></data>
+  <data name="SetupTooltip" xml:space="preserve"><value>Configuración</value></data>
+  <data name="MissingFeaturesTooltip" xml:space="preserve"><value>{0} función(es) opcional(es) no instalada(s)</value></data>
+  <data name="ThemeToggleTooltip" xml:space="preserve"><value>Cambiar entre tema claro y oscuro</value></data>
+  <data name="NounPhotosRead" xml:space="preserve"><value>fotos leídas</value></data>
+  <data name="NounPhotosCompared" xml:space="preserve"><value>fotos comparadas</value></data>
+  <data name="NounPhotosScored" xml:space="preserve"><value>fotos evaluadas</value></data>
+  <data name="NounPhotosMoved" xml:space="preserve"><value>fotos movidas</value></data>
+  <data name="ProgressOfAbout" xml:space="preserve"><value>de aproximadamente {0} {1}</value></data>
+  <data name="ScanningEyebrowChecksums" xml:space="preserve"><value>Sumas de verificación</value></data>
+  <data name="ScanningEyebrowReused" xml:space="preserve"><value>Reutilizadas</value></data>
+  <data name="ScanningHint" xml:space="preserve"><value>Detener conserva todo lo analizado hasta ahora — volver a escanear continúa donde se quedó. La detección de duplicados empieza sola en cuanto esto termine.</value></data>
+  <data name="RecycleBinHint" xml:space="preserve"><value>Cada foto ya movida está a salvo en la papelera de reciclaje y se puede deshacer desde el historial — detener solo deja el resto donde está.</value></data>
+  <data name="GenericBusyHint" xml:space="preserve"><value>Detener conserva todo lo evaluado hasta ahora — volver a ejecutar continúa donde se quedó.</value></data>
+  <data name="StopButton" xml:space="preserve"><value>Detener</value></data>
+  <data name="StoppingButton" xml:space="preserve"><value>Deteniendo…</value></data>
+  <data name="SelectAllShown" xml:space="preserve"><value>Seleccionar las {0} que se muestran</value></data>
+  <data name="ScopeFlagged" xml:space="preserve"><value>Marcadas</value></data>
+  <data name="NotSure" xml:space="preserve"><value>No estoy seguro</value></data>
+  <data name="ScopeKeepers" xml:space="preserve"><value>Las que se conservan</value></data>
+  <data name="FiltersButton" xml:space="preserve"><value>Filtros</value></data>
+  <data name="ClearAllButton" xml:space="preserve"><value>Borrar todo</value></data>
+  <data name="ThumbnailSizeAriaLabel" xml:space="preserve"><value>Tamaño de miniatura</value></data>
+  <data name="SizeEyebrow" xml:space="preserve"><value>Tamaño</value></data>
+  <data name="ThumbSizeSmall" xml:space="preserve"><value>P</value></data>
+  <data name="ThumbSizeMedium" xml:space="preserve"><value>M</value></data>
+  <data name="ThumbSizeLarge" xml:space="preserve"><value>G</value></data>
+  <data name="SortEyebrow" xml:space="preserve"><value>Ordenar</value></data>
+  <data name="SortScanOrder" xml:space="preserve"><value>Orden de escaneo</value></data>
+  <data name="SortDateTaken" xml:space="preserve"><value>Fecha en que se tomó</value></data>
+  <data name="SortName" xml:space="preserve"><value>Nombre</value></data>
+  <data name="SortFileSize" xml:space="preserve"><value>Tamaño de archivo</value></data>
+  <data name="SortSharpness" xml:space="preserve"><value>Nitidez</value></data>
+  <data name="SortExplicitContent" xml:space="preserve"><value>Contenido explícito</value></data>
+  <data name="SortDirDescending" xml:space="preserve"><value>Ordenado descendente — cambiar a ascendente</value></data>
+  <data name="SortDirAscending" xml:space="preserve"><value>Ordenado ascendente — cambiar a descendente</value></data>
+  <data name="DupeBannerTitle" xml:space="preserve"><value>{0} grupos de duplicados están esperando — {1} de espacio recuperable.</value></data>
+  <data name="DupeBannerSub" xml:space="preserve"><value>Se encontraron automáticamente al terminar el escaneo. Un grupo a la vez, con el que se conserva ya elegido.</value></data>
+  <data name="StartReviewingButton" xml:space="preserve"><value>Empezar a revisar</value></data>
+  <data name="LaterButton" xml:space="preserve"><value>Después</value></data>
+  <data name="EmptyNoPhotosTitle" xml:space="preserve"><value>No hay fotos en &lt;b&gt;{0}&lt;/b&gt;.</value></data>
+  <data name="EmptyUnsupportedOne" xml:space="preserve"><value>SnapZap encontró {0} archivo que aún no puede leer — mira la nota arriba de la cuadrícula.</value></data>
+  <data name="EmptyUnsupportedMany" xml:space="preserve"><value>SnapZap encontró {0} archivos que aún no puede leer — mira la nota arriba de la cuadrícula.</value></data>
+  <data name="EmptyCheckFolderHint" xml:space="preserve"><value>Verifica que sea la carpeta correcta y que contenga imágenes, en lugar de una carpeta de carpetas a la que en realidad querías apuntar.</value></data>
+  <data name="EmptyNoneMatchFilters" xml:space="preserve"><value>Ninguna de las {0} fotos coincide con estos filtros.</value></data>
+  <data name="EmptyUncheckedExplicit" xml:space="preserve"><value>{0} de ellas no se han revisado en busca de contenido explícito, así que este filtro las oculta.</value></data>
+  <data name="ClearFiltersButton" xml:space="preserve"><value>Borrar filtros</value></data>
+  <data name="DupeFilterExtrasOnly" xml:space="preserve"><value>Solo copias extra</value></data>
+  <data name="DupeFilterKeepersOnly" xml:space="preserve"><value>Solo las que se conservan</value></data>
+  <data name="DupeFilterBurstOnly" xml:space="preserve"><value>Cuadros de ráfaga</value></data>
+  <data name="NsfwFilterLikely" xml:space="preserve"><value>Probablemente explícito</value></data>
+  <data name="NsfwFilterReview" xml:space="preserve"><value>Probable o no seguro</value></data>
+  <data name="NsfwFilterClean" xml:space="preserve"><value>Se ve limpio</value></data>
+  <data name="NsfwFilterUnchecked" xml:space="preserve"><value>Aún no revisado</value></data>
+  <data name="BlurrierThan" xml:space="preserve"><value>Más borroso que {0}</value></data>
+  <data name="ThisFolderOnly" xml:space="preserve"><value>Solo esta carpeta</value></data>
+</root>

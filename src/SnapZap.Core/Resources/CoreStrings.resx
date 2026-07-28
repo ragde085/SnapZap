@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <data name="CarrierMissing" xml:space="preserve"><value>Carrier file doesn't exist.</value></data>
+  <data name="CarrierNotImage" xml:space="preserve"><value>Carrier must be a readable image file.</value></data>
+  <data name="DestinationExists" xml:space="preserve"><value>A different file already exists at {0}.</value></data>
+  <data name="FileMissing" xml:space="preserve"><value>That file doesn't exist.</value></data>
+  <data name="NoHiddenData" xml:space="preserve"><value>This image doesn't appear to contain hidden data.</value></data>
+  <data name="HiddenDataCorrupted" xml:space="preserve"><value>Hidden data is corrupted or incomplete.</value></data>
+  <data name="UnrecognizedPayloadVersion" xml:space="preserve"><value>Unrecognized payload format version {0}.</value></data>
+  <data name="InvalidEntryName" xml:space="preserve"><value>Hidden data is corrupted: invalid entry name "{0}".</value></data>
+  <data name="ImplausibleEntrySize" xml:space="preserve"><value>Hidden data is corrupted: an entry decompresses to an implausible size.</value></data>
+  <data name="NonCollidingNameFailed" xml:space="preserve"><value>could not resolve a non-colliding name for {0}</value></data>
+  <data name="SourceMissing" xml:space="preserve"><value>source missing</value></data>
+  <data name="DestinationNotWritten" xml:space="preserve"><value>destination not written: {0}</value></data>
+  <data name="HardlinkSizeMismatch" xml:space="preserve"><value>hardlink size mismatch for {0}</value></data>
+  <data name="VerificationFailed" xml:space="preserve"><value>verification failed: {0} hash != source</value></data>
+  <data name="TrashFailed" xml:space="preserve"><value>Trash failed for {0}: {1}</value></data>
+  <data name="HardLinkFailedErrno" xml:space="preserve"><value>hard link {0} -&gt; {1} failed (errno via link())</value></data>
+  <data name="RecycleFailed" xml:space="preserve"><value>Recycle failed for {0} (SHFileOperation {1})</value></data>
+  <data name="CreateHardLinkFailed" xml:space="preserve"><value>CreateHardLink {0} -&gt; {1} failed (win32 {2})</value></data>
+  <data name="NsfwModelNotFound" xml:space="preserve"><value>NSFW ONNX model not found</value></data>
+  <data name="CannotDecode" xml:space="preserve"><value>cannot decode {0}</value></data>
+  <data name="ResizeFailed" xml:space="preserve"><value>resize failed</value></data>
+  <data name="DupeKindExact" xml:space="preserve"><value>Identical</value></data>
+  <data name="DupeKindVariant" xml:space="preserve"><value>Same shot</value></data>
+  <data name="DupeKindBurst" xml:space="preserve"><value>Burst</value></data>
+</root>

@@ -1,6 +1,7 @@
 using Microsoft.Data.Sqlite;
 using SnapZap.Core.Data;
 using SnapZap.Core.Platform;
+using SnapZap.Core.Resources;
 using SnapZap.Core.Scanning;
 
 namespace SnapZap.Core.Export;
@@ -79,7 +80,7 @@ public sealed class ExportEngine(Database db, ILinkService links, ITrashService 
             try
             {
                 if (!File.Exists(img.Path))
-                    throw new FileNotFoundException("source missing", img.Path);
+                    throw new FileNotFoundException(CoreStrings.Get("SourceMissing"), img.Path);
 
                 var (dest, skipIdentical) = planner.Resolve(img);
                 if (skipIdentical)
@@ -163,18 +164,18 @@ public sealed class ExportEngine(Database db, ILinkService links, ITrashService 
 
     void Verify(ImageRecord img, string dest, TransferMode mode)
     {
-        if (!File.Exists(dest)) throw new IOException($"destination not written: {dest}");
+        if (!File.Exists(dest)) throw new IOException(CoreStrings.Get("DestinationNotWritten", dest));
         if (mode == TransferMode.Hardlink)
         {
             // Same inode ⇒ identical bytes; a size check catches gross link errors cheaply.
             if (new FileInfo(dest).Length != img.FileSize)
-                throw new IOException($"hardlink size mismatch for {dest}");
+                throw new IOException(CoreStrings.Get("HardlinkSizeMismatch", dest));
             return;
         }
         // Copy/Move: re-hash the destination and compare to the source's known hash.
         var destHash = Hasher.HashFile(dest);
         if (destHash != img.ContentHash)
-            throw new IOException($"verification failed: {dest} hash != source");
+            throw new IOException(CoreStrings.Get("VerificationFailed", dest));
     }
 
     void ReleaseSource(string src, string dest)

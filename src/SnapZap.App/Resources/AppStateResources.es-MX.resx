@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <data name="TimeJustNow" xml:space="preserve"><value>hace un momento</value></data>
+  <data name="TimeOneMinAgo" xml:space="preserve"><value>hace 1 min</value></data>
+  <data name="TimeMinutesAgo" xml:space="preserve"><value>hace {0} min</value></data>
+  <data name="TimeOneHourAgo" xml:space="preserve"><value>hace 1 hora</value></data>
+  <data name="TimeHoursAgo" xml:space="preserve"><value>hace {0} horas</value></data>
+  <data name="TimeYesterday" xml:space="preserve"><value>ayer</value></data>
+  <data name="TimeDaysAgo" xml:space="preserve"><value>hace {0} días</value></data>
+  <data name="EvidenceNotScored" xml:space="preserve"><value>Aún no se ha calificado.</value></data>
+  <data name="EvidenceWholeOnly" xml:space="preserve"><value>{0:F2} de 1.00 · marcado a partir de {1:F2}</value></data>
+  <data name="EvidenceTiled" xml:space="preserve"><value>{0:F2} al ver la foto completa, {1:F2} al ver más de cerca · marcado a partir de {2:F2} en general o {3:F2} de cerca</value></data>
+  <data name="EvidenceTiledFlagged" xml:space="preserve"><value>{0:F2} al ver la foto completa, {1:F2} al ver más de cerca — marcado al ver más de cerca · marcado a partir de {2:F2} en general o {3:F2} de cerca</value></data>
+  <data name="BandLikely" xml:space="preserve"><value>Probablemente contenido explícito</value></data>
+  <data name="BandUnsure" xml:space="preserve"><value>No es seguro</value></data>
+  <data name="BandClean" xml:space="preserve"><value>Se ve limpio</value></data>
+  <data name="BandUnchecked" xml:space="preserve"><value>No revisado</value></data>
+  <data name="ScanBusyLabel" xml:space="preserve"><value>Escaneando</value></data>
+  <data name="DedupBusyLabel" xml:space="preserve"><value>Buscando duplicados</value></data>
+  <data name="NsfwBusyLabel" xml:space="preserve"><value>Calificando contenido explícito</value></data>
+  <data name="EmptyCatalogBusyLabel" xml:space="preserve"><value>Vaciando el catálogo</value></data>
+  <data name="RecycleBusyLabel" xml:space="preserve"><value>Moviendo a la papelera de reciclaje</value></data>
+  <data name="ProgressOfTotal" xml:space="preserve"><value>{0:N0} de {1:N0}</value></data>
+  <data name="ProgressSoFar" xml:space="preserve"><value>{0:N0} hasta ahora</value></data>
+  <data name="PlanStepScan" xml:space="preserve"><value>Escanear</value></data>
+  <data name="PlanStepDuplicates" xml:space="preserve"><value>Duplicados</value></data>
+  <data name="PlanStepContentReview" xml:space="preserve"><value>Revisión de contenido</value></data>
+  <data name="PlanStepSharpness" xml:space="preserve"><value>Nitidez</value></data>
+  <data name="PlanStepExport" xml:space="preserve"><value>Exportar una biblioteca limpia</value></data>
+  <data name="WaitsForScan" xml:space="preserve"><value>Espera el escaneo</value></data>
+  <data name="ReadingProgress" xml:space="preserve"><value>Leyendo… {0}</value></data>
+  <data name="PhotosCountWithTime" xml:space="preserve"><value>{0:N0} fotos · {1}</value></data>
+  <data name="PhotosCountOnly" xml:space="preserve"><value>{0:N0} fotos</value></data>
+  <data name="NothingScannedYet" xml:space="preserve"><value>Nada escaneado todavía</value></data>
+  <data name="GroupingProgress" xml:space="preserve"><value>Agrupando… {0}</value></data>
+  <data name="DedupQueued" xml:space="preserve"><value>En cola — comienza por su cuenta cuando termina el escaneo</value></data>
+  <data name="DupeGroupsSummary" xml:space="preserve"><value>{0:N0} grupos · {1:N0} duplicados extra · {2}</value></data>
+  <data name="NoDuplicatesFound" xml:space="preserve"><value>No se encontraron duplicados</value></data>
+  <data name="ScoringProgress" xml:space="preserve"><value>Calificando… {0}</value></data>
+  <data name="AllPhotosChecked" xml:space="preserve"><value>Todas las fotos revisadas</value></data>
+  <data name="NothingScoredYet" xml:space="preserve"><value>Nada calificado todavía</value></data>
+  <data name="SoftShotsFound" xml:space="preserve"><value>{0:N0} fotos borrosas encontradas</value></data>
+  <data name="NothingSoftFound" xml:space="preserve"><value>No se encontraron fotos borrosas</value></data>
+  <data name="ExportedThisSession" xml:space="preserve"><value>Exportado en esta sesión</value></data>
+  <data name="NothingExportedYet" xml:space="preserve"><value>Nada exportado todavía</value></data>
+  <data name="CatalogueEmptiedStatus" xml:space="preserve"><value>Catálogo vaciado. Escanea una carpeta para empezar de nuevo.</value></data>
+  <data name="FolderNotFound" xml:space="preserve"><value>No se encontró la carpeta: {0}</value></data>
+  <data name="ScanSummary" xml:space="preserve"><value>Se escanearon {0} nuevas, {1} en caché</value></data>
+  <data name="RescanSummary" xml:space="preserve"><value>Se volvieron a escanear {0} nuevas, {1} en caché</value></data>
+  <data name="ScanSkipped" xml:space="preserve"><value>{0} omitidas</value></data>
+  <data name="ScanSkippedAcrossFolders" xml:space="preserve"><value>{0} omitidas en {1} carpetas</value></data>
+  <data name="ScanUnsupportedFormats" xml:space="preserve"><value>{0:N0} en formatos que SnapZap todavía no puede leer</value></data>
+  <data name="ScanPruned" xml:space="preserve"><value>{0:N0} ya no están en la carpeta, se quitaron del catálogo</value></data>
+  <data name="DupeGroupsCount" xml:space="preserve"><value>{0} grupos</value></data>
+  <data name="NsfwScored" xml:space="preserve"><value>Se calificaron {0}</value></data>
+  <data name="NsfwScoredWithFailed" xml:space="preserve"><value>Se calificaron {0}, {1} fallaron</value></data>
+  <data name="NsfwModelNotInstalled" xml:space="preserve"><value>El modelo de contenido explícito no está instalado — se omitió la calificación</value></data>
+  <data name="OperationStoppedWithTotal" xml:space="preserve"><value>{0} se detuvo después de {1:N0} de {2:N0}</value></data>
+  <data name="OperationStoppedNoTotal" xml:space="preserve"><value>{0} se detuvo después de {1:N0}</value></data>
+  <data name="FailedPrefix" xml:space="preserve"><value>Error: {0}</value></data>
+  <data name="RecycledCount" xml:space="preserve"><value>Se reciclaron {0}</value></data>
+  <data name="RecycledCountWithFailed" xml:space="preserve"><value>Se reciclaron {0}, {1} fallaron</value></data>
+  <data name="RecycledToastSingular" xml:space="preserve"><value>Se recicló 1 foto a la papelera de reciclaje.</value></data>
+  <data name="RecycledToastPlural" xml:space="preserve"><value>Se reciclaron {0} fotos a la papelera de reciclaje.</value></data>
+  <data name="UndoActionLabel" xml:space="preserve"><value>Deshacer</value></data>
+  <data name="RestoredCount" xml:space="preserve"><value>Se restauraron {0}</value></data>
+  <data name="RestoredCountWithMissing" xml:space="preserve"><value>Se restauraron {0}, {1} faltantes</value></data>
+</root>

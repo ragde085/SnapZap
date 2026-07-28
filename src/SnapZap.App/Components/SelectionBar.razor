@@ -1,5 +1,6 @@
 @implements IDisposable
 @inject AppState AppState
+@inject IStringLocalizer<SelectionBarResources> L
 
 @*
     What you can do with the photos you have picked, shown only once you have picked some.
@@ -14,41 +15,43 @@
 *@
 @if (AppState.Selected.Count > 0)
 {
-    <div class="selbar" role="region" aria-label="Selection actions">
+    <div class="selbar" role="region" aria-label="@L["SelectionAreaLabel"].Value">
         @* A live region: the bar appearing is what tells a screen-reader user that Export
            and Delete are now available, and a plain region is never announced. *@
         <div class="selbar-count" role="status" aria-live="polite" aria-atomic="true">
-            <b>@AppState.Selected.Count.ToString("N0")</b>
-            selected
+            @(AppState.Selected.Count == 1
+                ? L["SelectedCountSingular", AppState.Selected.Count.ToString("N0")].Value
+                : L["SelectedCountPlural", AppState.Selected.Count.ToString("N0")].Value)
             <span class="selbar-bytes">@AppState.FormattedSelectedBytes</span>
         </div>
 
         <button class="btn btn-ghost" disabled="@(!CanInvert)" title="@InvertTitle"
-                @onclick="Invert">Invert</button>
+                @onclick="Invert">@L["InvertButton"]</button>
         <button class="btn btn-ghost" disabled="@(!CanAct)" title="@ActHint"
-                @onclick="Clear">Clear</button>
+                @onclick="Clear">@L["ClearButton"]</button>
 
         <div class="selbar-actions">
             <button class="btn btn-secondary" disabled="@(!CanAct)" title="@ActHint" @ref="_deleteBtn"
-                    @onclick="AskDelete">Delete…</button>
+                    @onclick="AskDelete">@L["DeleteButton"]</button>
             <button class="btn btn-secondary" disabled="@(!CanAct)" title="@ActHint"
-                    @onclick="() => OnOpenHide.InvokeAsync()">Hide in Image…</button>
+                    @onclick="() => OnOpenHide.InvokeAsync()">@L["HideButton"]</button>
             <button class="btn btn-primary" disabled="@(!CanAct)" title="@ActHint"
-                    @onclick="() => OnOpenExport.InvokeAsync()">Export…</button>
+                    @onclick="() => OnOpenExport.InvokeAsync()">@L["ExportButton"]</button>
         </div>
 
         @if (_confirmDelete)
         {
-            <div class="confirm" role="alertdialog" aria-modal="true" aria-label="Confirm delete"
+            <div class="confirm" role="alertdialog" aria-modal="true" aria-label="@L["ConfirmDeleteAriaLabel"].Value"
                  tabindex="-1" @ref="_confirmRef" @onkeydown="ConfirmKey">
                 <p>
                     @{ var live = PendingLive; }
-                    Move <b>@live.Count.ToString("N0")</b> photo@(live.Count == 1 ? "" : "s")
-                    (@AppState.FormatBytes(live.Sum(i => i.FileSize))) to the Recycle Bin? You can undo this from History.
+                    @(live.Count == 1
+                        ? L["ConfirmDeleteBodySingular", live.Count.ToString("N0"), AppState.FormatBytes(live.Sum(i => i.FileSize))].Value
+                        : L["ConfirmDeleteBodyPlural", live.Count.ToString("N0"), AppState.FormatBytes(live.Sum(i => i.FileSize))].Value)
                 </p>
                 <div class="row">
-                    <button class="btn btn-danger" @onclick="Delete">Move to Recycle Bin</button>
-                    <button class="btn btn-ghost" @onclick="CancelDelete">Cancel</button>
+                    <button class="btn btn-danger" @onclick="Delete">@L["MoveToRecycleBinButton"]</button>
+                    <button class="btn btn-ghost" @onclick="CancelDelete">@L["CancelButton"]</button>
                 </div>
             </div>
         }
@@ -84,8 +87,8 @@
     bool CanInvert => !AppState.Busy && AppState.Filtered().Count > 0;
 
     string InvertTitle => AppState.Busy
-        ? "Wait for the current job to finish."
-        : "Select everything shown that is not selected now";
+        ? L["WaitForJobHint"].Value
+        : L["InvertHint"].Value;
 
     void Invert()
     {
@@ -105,7 +108,7 @@
     List<ImageView> PendingLive => AppState.Images.Where(i => _pendingSet.Contains(i.Id)).ToList();
     long PendingBytes => PendingLive.Sum(i => i.FileSize);
 
-    string? ActHint => AppState.Busy ? "Wait for the current job to finish." : null;
+    string? ActHint => AppState.Busy ? L["WaitForJobHint"].Value : null;
 
     protected override void OnInitialized() => AppState.Changed += OnStateChanged;
 

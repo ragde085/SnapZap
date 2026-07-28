@@ -461,6 +461,8 @@ kbd {
 :root[data-theme="dark"] .theme-toggle .i-sun { display: none; }
 :root[data-theme="dark"] .theme-toggle .i-moon { display: block; }
 
+.lang-code { font-size: 11px; font-weight: 700; letter-spacing: 0.02em; }
+
 /* Determinate progress in the topbar/scan bar. */
 .op { display: flex; flex-direction: column; gap: 5px; min-width: 230px; }
 .op-line { display: flex; justify-content: space-between; gap: 12px; font-size: var(--t-xs); color: var(--color-neutral-700); font-variant-numeric: tabular-nums; }
@@ -585,6 +587,20 @@ main { display: flex; flex: 1; min-height: 0; }
 .tdupes svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .tdupes.clean { color: var(--color-neutral-500); }
 .tpending { color: var(--color-accent); font-size: 9px; flex: none; }
+.trow-action {
+  all: unset;
+  box-sizing: border-box;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  color: var(--color-neutral-600);
+  cursor: pointer;
+}
+.trow-action:hover:not(:disabled) { color: var(--color-text); background: color-mix(in srgb, var(--color-text) 10%, transparent); }
+.trow-action:disabled { opacity: 0.35; cursor: not-allowed; }
+.trow-action svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .rail-legend { padding: 9px 16px; font-size: 11px; color: var(--color-neutral-700); line-height: 1.7; }
 
 /* ---------- Filters tab ---------- */
@@ -914,6 +930,28 @@ main { display: flex; flex: 1; min-height: 0; }
 
 .dlg-actions { display: flex; gap: var(--space-2); align-items: center; }
 .exp-result { margin-top: var(--space-4); font-size: var(--t-sm); white-space: pre-wrap; line-height: 1.6; color: var(--color-neutral-700); }
+
+/* ---------- directory picker ---------- */
+
+.dir-roots { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 12px; }
+.dir-list { border-top: 2px solid var(--color-divider); max-height: 280px; overflow-y: auto; margin-bottom: 4px; }
+.dir-row {
+  all: unset;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 7px 4px;
+  font-size: var(--t-sm);
+  border-bottom: 1px solid var(--color-divider);
+  cursor: pointer;
+}
+.dir-row:hover { background: color-mix(in srgb, var(--color-text) 5%, transparent); }
+.dir-row:focus-visible { outline: 2px solid var(--color-accent); outline-offset: -2px; }
+.dir-icon { flex: none; width: 15px; height: 15px; color: var(--color-neutral-600); display: flex; align-items: center; }
+.dir-icon svg { width: 15px; height: 15px; }
+.dir-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .exp-result .good { color: var(--color-ok); }
 .exp-result .bad { color: var(--color-danger); }
 
@@ -1028,6 +1066,26 @@ main { display: flex; flex: 1; min-height: 0; }
 }
 .modal .frame img { max-width: 100%; max-height: 100%; object-fit: contain; }
 
+/* Past "fit", grid's place-items:center clips the overflow symmetrically and there is no
+   scroll offset that reaches its top-left — the same reason DupeReview's .cmp-pane drops
+   centering once it isn't showing "fit". Zoomed swaps to a plain scrollable block instead. */
+.modal .frame.zoomed { display: block; overflow: auto; padding: 0; }
+.modal .frame.zoomed img { max-width: none; max-height: none; display: block; }
+
+.modal .frame-zoom {
+  position: absolute;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+  display: flex;
+  border: 1px solid var(--color-divider);
+  background: var(--color-bg);
+}
+.modal .frame-zoom button { all: unset; box-sizing: border-box; cursor: pointer; padding: 5px 12px; font-size: var(--t-xs); border-right: 1px solid var(--color-divider); }
+.modal .frame-zoom button:last-child { border-right: none; }
+.modal .frame-zoom button.on { background: var(--color-accent); color: var(--color-bg); }
+
 .modal .frame-tags { position: absolute; top: 16px; left: 20px; display: flex; gap: var(--space-2); z-index: 1; }
 
 .modal .frame-bar { position: absolute; bottom: 16px; left: 20px; right: 20px; display: flex; align-items: center; gap: var(--space-4); z-index: 1; }
@@ -1037,6 +1095,7 @@ main { display: flex; flex: 1; min-height: 0; }
   font-size: var(--t-xs);
   font-family: var(--font-heading);
   font-weight: 600;
+  color: var(--color-text);
   background: var(--color-bg);
   border: 1px solid var(--color-divider);
   cursor: pointer;
@@ -1054,6 +1113,7 @@ main { display: flex; flex: 1; min-height: 0; }
   padding: 0;
   font-size: 1.4rem;
   line-height: 1;
+  color: var(--color-text);
   background: var(--color-bg);
   border: 1px solid var(--color-divider);
 }
@@ -1087,9 +1147,13 @@ main { display: flex; flex: 1; min-height: 0; }
 .modal .panel-group-sub { font-size: var(--t-xs); color: var(--color-accent-700); margin-bottom: 8px; }
 .modal .panel-hint { margin-top: auto; font-size: var(--t-xs); color: var(--color-neutral-700); line-height: 1.6; }
 
-.modal .details-toggle { position: absolute; top: 20px; right: 20px; z-index: 3; background: var(--color-bg); }
+/* All four of these are plain <button>s with a themed background but no explicit color, so
+   without one they fall back to the browser's default button text color — fixed/dark
+   regardless of theme, which made them nearly unreadable against the dark palette's near-black
+   --color-bg (dark icon on dark background). */
+.modal .details-toggle { position: absolute; top: 20px; right: 20px; z-index: 3; color: var(--color-text); background: var(--color-bg); }
 .modal.details-open .details-toggle { right: calc(var(--preview-panel-w) + 20px); }
-.modal .close { position: absolute; top: 20px; left: 20px; z-index: 3; background: var(--color-bg); }
+.modal .close { position: absolute; top: 20px; left: 20px; z-index: 3; color: var(--color-text); background: var(--color-bg); }
 
 @media (max-width: 860px) {
   .modal, .modal.details-open { grid-template-columns: 1fr; grid-template-rows: 1fr 45vh; }

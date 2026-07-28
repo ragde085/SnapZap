@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <data name="StatusReady" xml:space="preserve"><value>Listo</value></data>
+  <data name="StatusNotInstalled" xml:space="preserve"><value>No instalado</value></data>
+  <data name="UsingPathLabel" xml:space="preserve"><value>Usando {0}</value></data>
+  <data name="WithoutItLabel" xml:space="preserve"><value>Sin esto: {0}</value></data>
+  <data name="RunCommandInstruction" xml:space="preserve"><value>Ejecuta esto una vez, desde la carpeta de SnapZap:</value></data>
+  <data name="CopyCommandTitle" xml:space="preserve"><value>Copiar comando</value></data>
+  <data name="CopyButtonCopied" xml:space="preserve"><value>Copiado</value></data>
+  <data name="CopyButtonCopy" xml:space="preserve"><value>Copiar</value></data>
+  <data name="InstallManualSummaryOnly" xml:space="preserve"><value>Instalarlo manualmente</value></data>
+  <data name="InstallManualSummaryOr" xml:space="preserve"><value>O instalarlo manualmente</value></data>
+  <data name="DownloadLabel" xml:space="preserve"><value>Descargar</value></data>
+  <data name="SaveAsInstruction" xml:space="preserve"><value>y guárdalo como</value></data>
+  <data name="PutBothFilesIn" xml:space="preserve"><value>Coloca ambos archivos en</value></data>
+  <data name="PutItIn" xml:space="preserve"><value>Colócalo en</value></data>
+</root>

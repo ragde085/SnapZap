@@ -10,21 +10,21 @@
     in one top bar is a guess about which one holds the answer; the shortcut list is now a
     section here, so there is one place to look and the "?" always leads to it.
 *@
+@inject IStringLocalizer<HelpDialogResources> L
 @if (Show)
 {
-    <div class="dlg" role="dialog" aria-modal="true" aria-label="Help"
+    <div class="dlg" role="dialog" aria-modal="true" aria-label="@L["HelpDialogAriaLabel"]"
          tabindex="-1" @ref="_ref" @onkeydown="HandleKeyDown">
         <div class="dlg-box help">
 
             <div class="help-head">
                 <div>
-                    <h2>Help</h2>
+                    <h2>@L["HelpTitle"]</h2>
                     <p class="dlg-sub">
-                        SnapZap finds duplicates, blurry photos and explicit content in a folder,
-                        then writes the set you keep somewhere clean.
+                        @L["HelpIntro"]
                     </p>
                 </div>
-                <button class="btn btn-ghost" @onclick="Close">Close</button>
+                <button class="btn btn-ghost" @onclick="Close">@L["CloseButton"]</button>
             </div>
 
             @* Plain buttons in a nav, deliberately not role="tablist". Real tabs promise one tab
@@ -32,7 +32,7 @@
                roving tabindex and JS focus calls, and announcing a pattern the component does
                not implement is worse than announcing none. Nine tab stops is a fair price. *@
             <div class="help-shell">
-                <nav class="help-nav" aria-label="Help sections">
+                <nav class="help-nav" aria-label="@L["HelpNavAriaLabel"]">
                     @foreach (var s in Sections)
                     {
                         <button class="@(_section == s.Id ? "on" : "")"
@@ -65,22 +65,31 @@
     bool _wasShown;
     bool _needsFocus;
 
-    static readonly (Section Id, string Title)[] Sections =
+    /// <summary>Computed rather than a static array: the titles route through <see cref="L"/>,
+    /// which is only available once the component is instantiated and injected.</summary>
+    (Section Id, string Title)[] Sections =>
     [
-        (Section.Start,  "Start here"),
-        (Section.Scan,   "Scanning"),
-        (Section.Dupes,  "Duplicates"),
-        (Section.Nsfw,   "Explicit content"),
-        (Section.Select, "Selecting"),
-        (Section.Export, "Exporting"),
-        (Section.Delete, "Deleting & undo"),
-        (Section.Keys,   "Keyboard"),
-        (Section.Faq,    "FAQ"),
+        (Section.Start,  L["SectionStart"]),
+        (Section.Scan,   L["SectionScanning"]),
+        (Section.Dupes,  L["SectionDuplicates"]),
+        (Section.Nsfw,   L["SectionExplicit"]),
+        (Section.Select, L["SectionSelecting"]),
+        (Section.Export, L["SectionExporting"]),
+        (Section.Delete, L["SectionDeleting"]),
+        (Section.Keys,   L["SectionKeyboard"]),
+        (Section.Faq,    L["SectionFaq"]),
     ];
 
     // Windows shows Ctrl, macOS shows the command glyph. The rest of the app resolves this the
     // same way; a shortcut list that names the wrong modifier is worse than no list.
     static string ModKey => OperatingSystem.IsMacOS() ? "⌘" : "Ctrl";
+
+    /// <summary>Wraps a localized value carrying inline HTML (e.g. an emphasized word mid
+    /// sentence) so Razor renders it as markup instead of HTML-encoding it. The whole sentence
+    /// stays one resx entry — splitting it around the tag would split the grammar too, and
+    /// Spanish word order does not track English word order.</summary>
+    MarkupString M(string key) => new(L[key]);
+    MarkupString M(string key, params object[] args) => new(L[key, args]);
 
     protected override void OnParametersSet()
     {
@@ -131,304 +140,305 @@
     };
 
     RenderFragment StartHere => @<div class="help-sec">
-        <h3>The short version</h3>
+        <h3>@L["StartHeading1"]</h3>
         <ol class="help-steps">
-            <li><b>Scan a folder.</b> Type or paste its path and press <b>Scan</b>. SnapZap reads every photo under it and remembers what it found.</li>
-            <li><b>Duplicates are found automatically</b> the moment the scan ends — no button to press. The rail's <b>Plan</b> tab shows a <b>Review N groups</b> button once they're ready; optionally press <b>Run</b> under <b>Content review</b> to flag explicit photos.</li>
-            <li><b>Pick the photos you want to keep.</b> Click them, or use <b>Select all N shown</b> at the top of the grid.</li>
-            <li><b>Press <b>Export…</b></b> to write them somewhere clean — or <b>Delete…</b> to recycle what you don't want.</li>
+            <li>@M("StartStep1")</li>
+            <li>@M("StartStep2")</li>
+            <li>@M("StartStep3")</li>
+            <li>@M("StartStep4")</li>
         </ol>
 
         <div class="help-note ok">
-            <b>Two things that are always true</b>
-            <p>Your original folder is never touched unless you explicitly ask — an export in <i>Move</i> mode, or the opt-in "also recycle what I didn't pick" box.</p>
-            <p>Nothing is ever hard-deleted. Deleting goes to the Recycle Bin, and every batch is reversible from <b>History</b>.</p>
+            <b>@L["StartNoteTitle"]</b>
+            <p>@M("StartNoteFolder")</p>
+            <p>@M("StartNoteDelete")</p>
         </div>
 
-        <h3>Where things are</h3>
+        <h3>@L["StartWhereHeading"]</h3>
         <dl class="help-dl">
-            <dt>Top bar</dt><dd><b>Jump to anything</b> (search by filename or folder), <b>History</b>, and icons for Extract, Help and Setup.</dd>
-            <dt>Rail</dt><dd>The library summary and progress strip, above three tabs: <b>Plan</b> (what's done, what's next, and the buttons to run each step), <b>Folders</b> (the folder tree — click one to show only its photos), and <b>Filters</b> (narrow by duplicates, explicit content, sharpness, folder or year).</dd>
-            <dt>Grid header</dt><dd><b>Select all N shown</b> (with a menu for Flagged / Not sure / Keepers), the active filter as a clearable chip, and Sort.</dd>
-            <dt>Bottom bar</dt><dd><b>Export…</b>, <b>Delete…</b> and <b>Hide in Image…</b>, plus <b>Invert</b> / <b>Clear</b> — it appears once you have selected at least one photo.</dd>
-            <dt>Gear icon</dt><dd><b>Setup</b>: the optional add-on, what duplicate detection checks, and the catalogue.</dd>
+            <dt>@L["StartTopBarTerm"]</dt><dd>@M("StartTopBarDesc")</dd>
+            <dt>@L["StartRailTerm"]</dt><dd>@M("StartRailDesc")</dd>
+            <dt>@L["StartGridHeaderTerm"]</dt><dd>@M("StartGridHeaderDesc")</dd>
+            <dt>@L["StartBottomBarTerm"]</dt><dd>@M("StartBottomBarDesc")</dd>
+            <dt>@L["StartGearTerm"]</dt><dd>@M("StartGearDesc")</dd>
         </dl>
     </div>;
 
     RenderFragment Scanning => @<div class="help-sec">
-        <h3>Scanning a folder</h3>
-        <p>The first time, type or paste a folder path and press <b>Scan</b>, or just press <kbd>Enter</kbd>. A leading <code>~</code> expands to your home folder. Once a library is loaded, <b>Change folder…</b> under the <b>Scan</b> step in the Plan tab does the same thing for a different folder.</p>
-        <p>SnapZap walks that folder and everything beneath it, recording a checksum, the dimensions, the capture date and camera from EXIF, a sharpness score, a visual fingerprint and a thumbnail for each photo.</p>
-        <p><b>Stop</b> is always available, and it is safe — everything analysed so far is kept.</p>
+        <h3>@L["ScanHeading1"]</h3>
+        <p>@M("ScanIntroP1")</p>
+        <p>@L["ScanIntroP2"]</p>
+        <p>@M("ScanStopNote")</p>
 
-        <h3>Which files it reads</h3>
-        <p class="help-formats">.jpg &nbsp; .jpeg &nbsp; .png &nbsp; .webp &nbsp; .gif &nbsp; .bmp &nbsp; .tif &nbsp; .tiff</p>
+        <h3>@L["ScanReadsHeading"]</h3>
+        <p class="help-formats">@M("ScanSupportedFormats")</p>
 
-        <h3>Which it can't read yet</h3>
-        <p class="help-formats quiet">.heic &nbsp; .heif &nbsp; .avif &nbsp; and camera RAW (.cr2, .cr3, .nef, .arw, .dng, .orf, .rw2, .raf, .srw, .pef)</p>
-        <p>These are counted and reported above the grid, never touched. If your library came off an iPhone it is probably mostly HEIC — which is why SnapZap says so rather than reporting an empty folder.</p>
+        <h3>@L["ScanUnsupportedHeading"]</h3>
+        <p class="help-formats quiet">@M("ScanUnsupportedFormats")</p>
+        <p>@L["ScanUnsupportedNote"]</p>
 
-        <h3>Re-scanning is fast</h3>
-        <p>A file whose path, size and modification time have not changed is reused from the catalogue rather than read again, so scanning the same library a second time is close to instant.</p>
-        <p>Files that have left the folder are dropped from the catalogue, and the status line says how many — along with their scores and keeper decisions, which is why it is said out loud rather than shown as a quietly shorter grid.</p>
+        <h3>@L["ScanFastHeading"]</h3>
+        <p>@L["ScanFastP1"]</p>
+        <p>@L["ScanFastP2"]</p>
     </div>;
 
     RenderFragment Duplicates => @<div class="help-sec">
-        <h3>Three kinds, and the difference matters</h3>
+        <h3>@L["DupeKindsHeading"]</h3>
         <table class="help-table">
-            <thead><tr><th>Kind</th><th>What it means</th><th>Bulk-select?</th></tr></thead>
+            <thead><tr><th>@L["DupeTableKindHeader"]</th><th>@L["DupeTableMeaningHeader"]</th><th>@L["DupeTableBulkHeader"]</th></tr></thead>
             <tbody>
-                <tr><td><b>Identical</b></td><td>Byte-for-byte the same file, in two places. Found by checksum.</td><td class="ok">Yes</td></tr>
-                <tr><td><b>Same shot</b></td><td>One photograph, resized, re-saved, converted or rotated.</td><td class="ok">Yes</td></tr>
-                <tr><td><b>Burst</b></td><td>Different photographs of the same scene, seconds apart.</td><td class="warn">No</td></tr>
+                <tr><td><b>@L["DupeIdenticalTerm"]</b></td><td>@L["DupeIdenticalDesc"]</td><td class="ok">@L["YesLabel"]</td></tr>
+                <tr><td><b>@L["DupeSameShotTerm"]</b></td><td>@L["DupeSameShotDesc"]</td><td class="ok">@L["YesLabel"]</td></tr>
+                <tr><td><b>@L["DupeBurstTerm"]</b></td><td>@L["DupeBurstDesc"]</td><td class="warn">@L["NoLabel"]</td></tr>
             </tbody>
         </table>
 
         <div class="help-note warn">
-            <b>Why bursts are treated differently</b>
-            <p>A burst of five frames is five <i>different photographs</i>, not five copies of one. SnapZap groups them so you can look at them, but deliberately leaves them out of <b>Extras</b> — sweeping them into a delete would throw real photos away. For a burst, you pick the keeper yourself.</p>
+            <b>@L["DupeBurstNoteTitle"]</b>
+            <p>@M("DupeBurstNoteBody")</p>
         </div>
 
-        <h3>On the photos</h3>
-        <p>Cards pick up a badge: <b>✓</b> for the copy being kept from its group, <b>▣</b> for an extra copy. Hover either for the group number and kind.</p>
+        <h3>@L["DupeOnPhotosHeading"]</h3>
+        <p>@M("DupeBadgesNote")</p>
 
-        <h3>Reviewing them</h3>
-        <p>Press <b>Review N groups</b> (Plan tab, or the banner above the grid) for the good way to work through them — one group at a time, copies side by side. Facts that are identical across the group are greyed out because they cannot help you choose; whatever differs stays bright, and a clear winner on resolution or file size is highlighted.</p>
-        <p>Click a copy to make it the keeper. <b>Compare full size</b> opens them at full resolution with the panes panning together. <b>Nothing is deleted in that dialog</b> — it only decides which copy survives an export or delete you run afterwards.</p>
+        <h3>@L["DupeReviewingHeading"]</h3>
+        <p>@M("DupeReviewP1")</p>
+        <p>@M("DupeReviewP2")</p>
 
-        <h3>Tuning it</h3>
-        <p>In <b>Setup → Duplicates</b>:</p>
+        <h3>@L["DupeTuningHeading"]</h3>
+        <p>@M("DupeTuningIntro")</p>
         <ul>
-            <li><b>Identical files</b> — always on. A duplicate finder that cannot find identical files is not one.</li>
-            <li><b>The same shot at another size</b> — on by default, with a strictness slider (default 20 of 272) and an option to match rotated copies.</li>
-            <li><b>Bursts</b> — always on. Only the window is tunable, default 3 seconds.</li>
+            <li>@M("DupeTuningIdentical")</li>
+            <li>@M("DupeTuningSameShot")</li>
+            <li>@M("DupeTuningBursts")</li>
         </ul>
-        <p class="hint">Changes save immediately. Press <b>Find again</b> under the Duplicates step (Plan tab) to apply them.</p>
+        <p class="hint">@M("DupeTuningHint")</p>
     </div>;
 
     RenderFragment Explicit => @<div class="help-sec">
-        <h3>Scoring explicit content</h3>
-        <p>Press <b>Run</b> under <b>Content review</b> (Plan tab, or the same facet in the Filters tab). This is the one feature that needs an optional download — see <b>Setup</b> if the button is greyed out. Everything else in SnapZap works without it.</p>
-        <p>Every photo gets one score from 0.00 to 1.00 and lands in a band:</p>
+        <h3>@L["NsfwHeading"]</h3>
+        <p>@M("NsfwP1")</p>
+        <p>@L["NsfwP2"]</p>
 
         <table class="help-table">
-            <thead><tr><th>Band</th><th>Score</th><th>Meaning</th></tr></thead>
+            <thead><tr><th>@L["NsfwTableBandHeader"]</th><th>@L["NsfwTableScoreHeader"]</th><th>@L["NsfwTableMeaningHeader"]</th></tr></thead>
             <tbody>
-                <tr><td class="warn"><b>Likely explicit</b></td><td>0.85 and up</td><td>The model is fairly confident</td></tr>
-                <tr><td class="warn"><b>Not sure</b></td><td>0.20 – 0.85</td><td>The pile actually worth looking at</td></tr>
-                <tr><td class="ok"><b>Looks clean</b></td><td>below 0.20</td><td></td></tr>
-                <tr><td class="quiet"><b>Not checked yet</b></td><td>—</td><td>Never scored</td></tr>
+                <tr><td class="warn"><b>@L["NsfwLikelyTerm"]</b></td><td>@L["NsfwLikelyScore"]</td><td>@L["NsfwLikelyMeaning"]</td></tr>
+                <tr><td class="warn"><b>@L["NsfwNotSureTerm"]</b></td><td>@L["NsfwNotSureScore"]</td><td>@L["NsfwNotSureMeaning"]</td></tr>
+                <tr><td class="ok"><b>@L["NsfwCleanTerm"]</b></td><td>@L["NsfwCleanScore"]</td><td></td></tr>
+                <tr><td class="quiet"><b>@L["NsfwNotCheckedTerm"]</b></td><td>—</td><td>@L["NsfwNotCheckedMeaning"]</td></tr>
             </tbody>
         </table>
 
         <div class="help-note">
-            <b>It is a guess, not a verdict</b>
-            <p>The model is right often enough to be useful and wrong often enough that you should look before you act. That is exactly what the "Not sure" band is for — it is deliberately small, so it stays a review queue rather than a category.</p>
+            <b>@L["NsfwGuessTitle"]</b>
+            <p>@L["NsfwGuessBody"]</p>
         </div>
 
-        <p>Flagged photos get a shield badge in the grid; hover it for the score and the threshold it was measured against.</p>
+        <p>@L["NsfwShieldNote"]</p>
     </div>;
 
     RenderFragment Selecting => @<div class="help-sec">
-        <h3>Nothing happens until you select something</h3>
-        <p>The <b>Export…</b> and <b>Delete…</b> buttons only appear once at least one photo is picked.</p>
+        <h3>@L["SelectHeading1"]</h3>
+        <p>@M("SelectIntro")</p>
 
-        <h3>By hand</h3>
+        <h3>@L["SelectByHandHeading"]</h3>
         <dl class="help-dl">
-            <dt>Click</dt><dd>Select or deselect one photo.</dd>
-            <dt>Shift-click</dt><dd>Select the whole range from the last photo you clicked to this one.</dd>
-            <dt>Double-click</dt><dd>Open the preview.</dd>
+            <dt>@L["SelectClickTerm"]</dt><dd>@L["SelectClickDesc"]</dd>
+            <dt>@L["SelectShiftClickTerm"]</dt><dd>@L["SelectShiftClickDesc"]</dd>
+            <dt>@L["SelectDoubleClickTerm"]</dt><dd>@L["SelectDoubleClickDesc"]</dd>
         </dl>
 
-        <h3>By command</h3>
-        <p><b>Select all N shown</b> sits at the top of the grid — it picks everything the current filters show (<kbd>@ModKey</kbd><kbd>A</kbd>). Its own chevron opens a menu for a few other scopes; each shows how many photos it would pick.</p>
+        <h3>@L["SelectByCommandHeading"]</h3>
+        <p>@M("SelectByCommandP1", ModKey)</p>
         <table class="help-table">
             <tbody>
-                <tr><td><b>All shown</b></td><td>Everything the current filters show (<kbd>@ModKey</kbd><kbd>A</kbd>)</td></tr>
-                <tr><td><b>Flagged</b></td><td>Photos the model called likely explicit</td></tr>
-                <tr><td><b>Not sure</b></td><td>Photos the model was unsure about</td></tr>
-                <tr><td><b>Keepers</b></td><td>The one copy being kept from each duplicate group</td></tr>
+                <tr><td><b>@L["SelectScopeAllTerm"]</b></td><td>@M("SelectScopeAllDesc", ModKey)</td></tr>
+                <tr><td><b>@L["SelectScopeFlaggedTerm"]</b></td><td>@L["SelectScopeFlaggedDesc"]</td></tr>
+                <tr><td><b>@L["SelectScopeNotSureTerm"]</b></td><td>@L["SelectScopeNotSureDesc"]</td></tr>
+                <tr><td><b>@L["SelectScopeKeepersTerm"]</b></td><td>@L["SelectScopeKeepersDesc"]</td></tr>
             </tbody>
         </table>
-        <p>The Filters tab's <b>Duplicates</b> facet has an <b>Extra copies only</b> row — narrow to it, then <b>Select all N shown</b> picks every extra copy: identical and same-shot only, <b>never burst frames</b>.</p>
-        <p>Once something is selected, <b>Invert</b> and <b>Clear</b> appear in the bar at the bottom of the grid, next to the count (<kbd>@ModKey</kbd><kbd>D</kbd> also clears).</p>
-        <p class="hint">A command that cannot do anything stays visible but greyed, and its tooltip says which step is actually missing.</p>
+        <p>@M("SelectExtraCopiesNote")</p>
+        <p>@M("SelectInvertClearNote", ModKey)</p>
+        <p class="hint">@L["SelectGreyedHint"]</p>
 
         <div class="help-note warn">
-            <b>The selection is shared by every SnapZap window</b>
-            <p>Picking a scope <i>replaces</i> the selection rather than adding to it, so a press in one window changes what the other is about to export or delete.</p>
+            <b>@L["SelectSharedTitle"]</b>
+            <p>@M("SelectSharedBody")</p>
         </div>
     </div>;
 
     RenderFragment Exporting => @<div class="help-sec">
-        <h3>Exporting</h3>
-        <p>Select the photos you want, then press <b>Export…</b>. Give it a <b>full path</b> starting from the root of the drive — a relative one is rejected, because it would quietly resolve somewhere inside the folder you are cleaning.</p>
+        <h3>@L["ExportHeading"]</h3>
+        <p>@M("ExportIntro")</p>
 
-        <h3>Transfer mode</h3>
+        <h3>@L["ExportModeHeading"]</h3>
         <dl class="help-dl">
-            <dt>Copy</dt><dd>The default, and the safest. Originals stay exactly where they are.</dd>
-            <dt>Move</dt><dd>The file is written, hash-verified against the original, and <i>only then</i> is the source removed.</dd>
-            <dt>Hardlink</dt><dd>A second name for the same data — instant and free, but destination and source must be on the same drive.</dd>
+            <dt>@L["ExportCopyTerm"]</dt><dd>@L["ExportCopyDesc"]</dd>
+            <dt>@L["ExportMoveTerm"]</dt><dd>@M("ExportMoveDesc")</dd>
+            <dt>@L["ExportHardlinkTerm"]</dt><dd>@L["ExportHardlinkDesc"]</dd>
         </dl>
 
-        <h3>Structure</h3>
+        <h3>@L["ExportStructureHeading"]</h3>
         <dl class="help-dl">
-            <dt>By date</dt><dd><code>YYYY/YYYY-MM/</code> from the capture date. The default.</dd>
-            <dt>Mirror source tree</dt><dd>Keeps your existing folder layout. Needs a folder scanned this session.</dd>
-            <dt>Flat</dt><dd>Everything in one folder, with collision-safe renaming.</dd>
+            <dt>@L["ExportByDateTerm"]</dt><dd>@M("ExportByDateDesc")</dd>
+            <dt>@L["ExportMirrorTerm"]</dt><dd>@L["ExportMirrorDesc"]</dd>
+            <dt>@L["ExportFlatTerm"]</dt><dd>@L["ExportFlatDesc"]</dd>
         </dl>
 
-        <h3>Check destination</h3>
-        <p>Press it before exporting. You get the count and total size to be written, the free space at the destination and whether that is enough, whether hardlinks are available, and an example of the folders that will be created.</p>
-        <p><b>Export stays disabled until this check passes</b>, and changing the destination, mode or structure invalidates it — so the button can never be armed for a plan nobody verified.</p>
+        <h3>@L["ExportCheckHeading"]</h3>
+        <p>@L["ExportCheckP1"]</p>
+        <p>@M("ExportCheckP2")</p>
 
-        <h3>Also recycle what you didn't pick</h3>
+        <h3>@L["ExportRecycleHeading"]</h3>
         <div class="help-note warn">
-            <p>This opt-in box sends every photo you did <i>not</i> select to the Recycle Bin, but only <b>after</b> the export has been written and verified.</p>
-            <p><b>Filters do not limit it</b> — it covers the whole catalogue, not just what is on screen. It is reversible from <b>History</b>.</p>
+            <p>@M("ExportRecycleP1")</p>
+            <p>@M("ExportRecycleP2")</p>
         </div>
 
-        <h3>While it runs, and after</h3>
-        <p><b>Stop</b> is always safe: everything already copied has been verified, and running the export again resumes where it left off rather than starting over.</p>
-        <p>When it finishes you get a summary and the path to a <b>manifest</b> — a CSV recording exactly what went where.</p>
+        <h3>@L["ExportWhileHeading"]</h3>
+        <p>@M("ExportWhileP1")</p>
+        <p>@M("ExportWhileP2")</p>
     </div>;
 
     RenderFragment Deleting => @<div class="help-sec">
-        <h3>Deleting</h3>
-        <p>Select photos and press <b>Delete…</b>. A confirmation names the exact count and total size before anything happens.</p>
-        <p>Confirming moves them to the <b>Recycle Bin</b> — never a hard delete. A message appears with an <b>Undo</b> button that puts them straight back.</p>
+        <h3>@L["DeleteHeading"]</h3>
+        <p>@M("DeleteIntroP1")</p>
+        <p>@M("DeleteIntroP2")</p>
 
-        <h3>History</h3>
-        <p>If that message has gone, everything is still there. <b>History</b>, in the top bar, lists every batch SnapZap has recycled or moved, newest first, each with a <b>Restore</b> button that puts the files back where they came from.</p>
+        <h3>@L["DeleteHistoryHeading"]</h3>
+        <p>@M("DeleteHistoryP")</p>
         <table class="help-table">
-            <thead><tr><th>Entry</th><th>What it was</th></tr></thead>
+            <thead><tr><th>@L["DeleteTableEntryHeader"]</th><th>@L["DeleteTableWhatHeader"]</th></tr></thead>
             <tbody>
-                <tr><td><b>Deleted</b></td><td>A normal delete</td></tr>
-                <tr><td><b>Recycled during export</b></td><td>The "also recycle what I didn't pick" option</td></tr>
-                <tr><td><b>Moved out by export</b></td><td>An export in Move mode. These were <i>relocated</i>, not binned — so the Recycle Bin is the wrong place to look for them.</td></tr>
+                <tr><td><b>@L["DeleteEntryDeletedTerm"]</b></td><td>@L["DeleteEntryDeletedDesc"]</td></tr>
+                <tr><td><b>@L["DeleteEntryRecycledTerm"]</b></td><td>@L["DeleteEntryRecycledDesc"]</td></tr>
+                <tr><td><b>@L["DeleteEntryMovedTerm"]</b></td><td>@M("DeleteEntryMovedDesc")</td></tr>
             </tbody>
         </table>
-        <p class="hint">You can also restore from the Recycle Bin's own right-click menu.</p>
+        <p class="hint">@L["DeleteRestoreHint"]</p>
     </div>;
 
     RenderFragment Keyboard => @<div class="help-sec">
-        <h3>In the grid</h3>
+        <h3>@L["KeysGridHeading"]</h3>
         <div class="shortcuts">
-            <div><span>Move between photos</span> <kbd>↑</kbd> <kbd>↓</kbd> <kbd>←</kbd> <kbd>→</kbd></div>
-            <div><span>Select / deselect</span> <kbd>X</kbd> <kbd>Space</kbd></div>
-            <div><span>Extend selection to here</span> <kbd>Shift</kbd> <kbd>X</kbd></div>
-            <div><span>Open preview</span> <kbd>Enter</kbd></div>
-            <div><span>First / last photo</span> <kbd>Home</kbd> <kbd>End</kbd></div>
-            <div><span>Select everything shown</span> <kbd>@ModKey</kbd> <kbd>A</kbd></div>
-            <div><span>Clear selection</span> <kbd>@ModKey</kbd> <kbd>D</kbd></div>
+            <div><span>@L["KeysGridMoveLabel"]</span> <kbd>↑</kbd> <kbd>↓</kbd> <kbd>←</kbd> <kbd>→</kbd></div>
+            <div><span>@L["KeysGridSelectLabel"]</span> <kbd>X</kbd> <kbd>Space</kbd></div>
+            <div><span>@L["KeysGridExtendLabel"]</span> <kbd>Shift</kbd> <kbd>X</kbd></div>
+            <div><span>@L["KeysGridOpenPreviewLabel"]</span> <kbd>Enter</kbd></div>
+            <div><span>@L["KeysGridFirstLastLabel"]</span> <kbd>Home</kbd> <kbd>End</kbd></div>
+            <div><span>@L["KeysGridSelectAllLabel"]</span> <kbd>@ModKey</kbd> <kbd>A</kbd></div>
+            <div><span>@L["KeysGridClearLabel"]</span> <kbd>@ModKey</kbd> <kbd>D</kbd></div>
         </div>
 
-        <h3>In the preview</h3>
+        <h3>@L["KeysPreviewHeading"]</h3>
         <div class="shortcuts">
-            <div><span>Previous / next photo</span> <kbd>←</kbd> <kbd>→</kbd></div>
-            <div><span>Select / deselect</span> <kbd>X</kbd></div>
-            <div><span>Photo details</span> <kbd>I</kbd></div>
-            <div><span>Close</span> <kbd>Esc</kbd></div>
+            <div><span>@L["KeysPreviewPrevNextLabel"]</span> <kbd>←</kbd> <kbd>→</kbd></div>
+            <div><span>@L["KeysPreviewSelectLabel"]</span> <kbd>X</kbd></div>
+            <div><span>@L["KeysPreviewDetailsLabel"]</span> <kbd>I</kbd></div>
+            <div><span>@L["KeysPreviewZoomLabel"]</span> <kbd>+</kbd> <kbd>-</kbd></div>
+            <div><span>@L["KeysPreviewZoomFitLabel"]</span> <kbd>0</kbd></div>
+            <div><span>@L["CloseLabel"]</span> <kbd>Esc</kbd></div>
         </div>
 
-        <h3>In Review duplicates</h3>
+        <h3>@L["KeysReviewHeading"]</h3>
         <div class="shortcuts">
-            <div><span>Previous / next group</span> <kbd>←</kbd> <kbd>→</kbd></div>
-            <div><span>Pick that copy as the keeper</span> <kbd>1</kbd>–<kbd>9</kbd></div>
-            <div><span>Close</span> <kbd>Esc</kbd></div>
+            <div><span>@L["KeysReviewPrevNextLabel"]</span> <kbd>←</kbd> <kbd>→</kbd></div>
+            <div><span>@L["KeysReviewPickLabel"]</span> <kbd>1</kbd>–<kbd>9</kbd></div>
+            <div><span>@L["CloseLabel"]</span> <kbd>Esc</kbd></div>
         </div>
 
-        <h3>In the folder tree</h3>
+        <h3>@L["KeysFolderHeading"]</h3>
         <div class="shortcuts">
-            <div><span>Move between folders</span> <kbd>↑</kbd> <kbd>↓</kbd></div>
-            <div><span>Expand / collapse</span> <kbd>→</kbd> <kbd>←</kbd></div>
-            <div><span>First / last folder</span> <kbd>Home</kbd> <kbd>End</kbd></div>
+            <div><span>@L["KeysFolderMoveLabel"]</span> <kbd>↑</kbd> <kbd>↓</kbd></div>
+            <div><span>@L["KeysFolderExpandLabel"]</span> <kbd>→</kbd> <kbd>←</kbd></div>
+            <div><span>@L["KeysFolderFirstLastLabel"]</span> <kbd>Home</kbd> <kbd>End</kbd></div>
         </div>
 
-        <h3>Everywhere</h3>
+        <h3>@L["KeysEverywhereHeading"]</h3>
         <div class="shortcuts">
-            <div><span>Scan, from the folder box</span> <kbd>Enter</kbd></div>
-            <div><span>Close the open dialog or menu</span> <kbd>Esc</kbd></div>
+            <div><span>@L["KeysEverywhereScanLabel"]</span> <kbd>Enter</kbd></div>
+            <div><span>@L["KeysEverywhereCloseLabel"]</span> <kbd>Esc</kbd></div>
         </div>
 
-        <p class="hint">The grid is a single tab stop — <kbd>Tab</kbd> reaches it and moves on, and the arrows move within it.</p>
+        <p class="hint">@M("KeysTabHint")</p>
         <p class="hint">
-            <kbd>@ModKey</kbd><kbd>A</kbd> and <kbd>@ModKey</kbd><kbd>D</kbd> are ignored while a
-            dialog is open, so a stray keypress cannot re-aim a delete confirmation already on screen.
+            @M("KeysIgnoredHint", ModKey)
         </p>
     </div>;
 
     RenderFragment Faq => @<div class="help-sec faq">
-        <h3>Frequently asked</h3>
+        <h3>@L["FaqHeading"]</h3>
 
         <details>
-            <summary>Is anything uploaded, or does this need an internet connection?</summary>
-            <p>No, to both. SnapZap runs entirely on your own machine. It opens in your browser because that is its window, not because anything is going online. Duplicate detection, blur, dates and export are all in-process; the only download is the optional explicit-content model, and that is a one-time install.</p>
+            <summary>@L["FaqQ1"]</summary>
+            <p>@L["FaqA1"]</p>
         </details>
 
         <details>
-            <summary>Will SnapZap delete my photos?</summary>
-            <p>Not without you asking, and never permanently. Scanning and finding duplicates are read-only. Deleting moves files to the Recycle Bin and every batch is restorable from <b>History</b>. The only ways your source folder is touched are an export in <i>Move</i> mode and the opt-in "also recycle what I didn't pick" box — both clearly labelled, both undoable.</p>
+            <summary>@L["FaqQ2"]</summary>
+            <p>@M("FaqA2")</p>
         </details>
 
         <details>
-            <summary>My iPhone photos don't show up.</summary>
-            <p>They are almost certainly HEIC, which SnapZap cannot decode yet — nor AVIF, nor camera RAW. They are counted and reported in the note above the grid, and left completely untouched. Converting them to JPEG makes them visible.</p>
+            <summary>@L["FaqQ3"]</summary>
+            <p>@L["FaqA3"]</p>
         </details>
 
         <details>
-            <summary>"Run" is greyed out under Content review.</summary>
-            <p>The optional model is not installed. Open <b>Setup</b> (the gear, top right) — it shows the exact command to install it, and a <b>Check again</b> button that picks it up without a restart. Everything else in SnapZap works without it.</p>
+            <summary>@L["FaqQ4"]</summary>
+            <p>@M("FaqA4")</p>
         </details>
 
         <details>
-            <summary>Where's the "Find duplicates" button?</summary>
-            <p>There isn't one to press the first time — duplicate detection runs automatically the moment a scan finishes, no download or setup needed. To re-run it later (after changing a setting in <b>Setup → Duplicates</b>, say), use <b>Find again</b> under the Duplicates step in the Plan tab.</p>
+            <summary>@L["FaqQ5"]</summary>
+            <p>@M("FaqA5")</p>
         </details>
 
         <details>
-            <summary>Why won't the Export button turn on?</summary>
-            <p>Press <b>Check destination</b> first. If you changed the destination, mode or structure after checking, check again — the button deliberately disarms so it can never run a plan that nothing verified. If the check says there is not enough room, the export stays blocked.</p>
+            <summary>@L["FaqQ6"]</summary>
+            <p>@M("FaqA6")</p>
         </details>
 
         <details>
-            <summary>It says "Enter a full path, starting from the root of the drive."</summary>
-            <p>Relative destination paths are rejected, because one would resolve somewhere unexpected — possibly inside the very folder you are cleaning. Use a full path.</p>
+            <summary>@L["FaqQ7"]</summary>
+            <p>@L["FaqA7"]</p>
         </details>
 
         <details>
-            <summary>Mirror structure won't let me export.</summary>
-            <p>Mirror recreates your existing folder layout, so it needs a source folder scanned in this session to make paths relative to. Scan the source again, or choose <b>By date</b> or <b>Flat</b>.</p>
+            <summary>@L["FaqQ8"]</summary>
+            <p>@M("FaqA8")</p>
         </details>
 
         <details>
-            <summary>A burst of shots got grouped as duplicates. Will they be deleted?</summary>
-            <p>No. Bursts are grouped so you can review them, but they are deliberately excluded from <b>Extras</b>, so a bulk selection will not pick them up. Use <b>Review duplicates</b> to choose which frames you want. If one burst is being split across several groups, widen the burst window in <b>Setup</b>.</p>
+            <summary>@L["FaqQ9"]</summary>
+            <p>@M("FaqA9")</p>
         </details>
 
         <details>
-            <summary>Why didn't it find my cropped copies?</summary>
-            <p>It can't. A crop changes the image enough that the visual fingerprint no longer matches — that is a known limit of how the matching works, not something a setting will fix.</p>
+            <summary>@L["FaqQ10"]</summary>
+            <p>@L["FaqA10"]</p>
         </details>
 
         <details>
-            <summary>The filters are showing nothing.</summary>
-            <p>The message in the empty grid names the reason. The usual one: an explicit-content filter over a library that has not been scored matches nothing, because every photo is still "Not checked". Either press <b>Run</b> under Content review or clear the filter.</p>
+            <summary>@L["FaqQ11"]</summary>
+            <p>@M("FaqA11")</p>
         </details>
 
         <details>
-            <summary>Scanning was slow. Will it be that slow every time?</summary>
-            <p>No. The first scan analyses every photo. After that, any file whose path, size and modification time are unchanged is reused from the catalogue, so re-scanning the same library is close to instant. <b>Stop</b> is safe at any point — the work done so far is kept.</p>
+            <summary>@L["FaqQ12"]</summary>
+            <p>@M("FaqA12")</p>
         </details>
 
         <details>
-            <summary>Where does SnapZap keep its own data?</summary>
-            <p>In your local app-data folder, deliberately <i>outside</i> the folder you scan, so it never writes into your photo library: the catalogue database, thumbnails, export manifests and preferences. <b>Setup → Forget everything</b> clears all of it — no photo is deleted or moved, and a scan rebuilds it.</p>
+            <summary>@L["FaqQ13"]</summary>
+            <p>@M("FaqA13")</p>
         </details>
 
         <details>
-            <summary>Can I run two windows on the same library?</summary>
-            <p>Yes, but they share one selection. A command like <b>Extras</b> replaces the selection rather than adding to it, so a press in one window changes what the other is about to act on.</p>
+            <summary>@L["FaqQ14"]</summary>
+            <p>@M("FaqA14")</p>
         </details>
     </div>;
 }

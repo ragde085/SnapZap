@@ -1,4 +1,5 @@
 using SnapZap.App;
+using SnapZap.App.Resources;
 using SnapZap.App.Services;
 using SnapZap.Core;
 using SnapZap.Core.Platform;
@@ -23,7 +24,8 @@ public class NsfwBandTests : IDisposable
         Directory.CreateDirectory(_work);
         _catalog = new CatalogService(_work);
         _session = new SessionStore(_catalog, TimeSpan.FromMilliseconds(50));
-        _state = new AppState(_catalog, new MacOsTrashService(), _session, new DependencyChecker(_catalog));
+        _state = new AppState(_catalog, new MacOsTrashService(), _session, new DependencyChecker(_catalog),
+            new TestStringLocalizer<AppStateResources>());
     }
 
     static ImageView Img(double? score, double? tileMean = null) =>
@@ -125,7 +127,7 @@ public class NsfwBandTests : IDisposable
     [InlineData("Looks clean", AppState.NsfwBand.Clean)]
     [InlineData("Not checked", AppState.NsfwBand.Unchecked)]
     public void Every_band_reads_as_plain_language(string expected, AppState.NsfwBand band) =>
-        Assert.Equal(expected, AppState.BandLabel(band));
+        Assert.Equal(expected, _state.BandLabel(band));
 
     public void Dispose()
     {

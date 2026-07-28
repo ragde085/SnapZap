@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <data name="DialogAriaLabel" xml:space="preserve"><value>Hide selected photos in an image</value></data>
+  <data name="DialogTitle" xml:space="preserve"><value>Hide in image</value></data>
+  <data name="SelectionSummarySingular" xml:space="preserve"><value>{0} photo ({1}) will be zipped and attached to the end of a carrier image — the carrier still opens normally, and looks completely ordinary to anyone who doesn't know to look.</value></data>
+  <data name="SelectionSummaryPlural" xml:space="preserve"><value>{0} photos ({1}) will be zipped and attached to the end of a carrier image — the carrier still opens normally, and looks completely ordinary to anyone who doesn't know to look.</value></data>
+  <data name="SelectionTooLarge" xml:space="preserve"><value>This selection ({0}) is too large to hide in one image — the practical limit is {1}. Select fewer photos.</value></data>
+  <data name="CarrierImageLabel" xml:space="preserve"><value>Carrier image (any ordinary photo — JPEG, PNG, etc.)</value></data>
+  <data name="CarrierPathPlaceholder" xml:space="preserve"><value>Full path to an image file</value></data>
+  <data name="OutputPathLabel" xml:space="preserve"><value>Output path (the carrier + hidden data — share this file, not the original carrier)</value></data>
+  <data name="PassphraseLabel" xml:space="preserve"><value>Passphrase (optional)</value></data>
+  <data name="ConfirmPassphraseLabel" xml:space="preserve"><value>Confirm passphrase</value></data>
+  <data name="CarrierInfo" xml:space="preserve"><value>Carrier is a {0}, {1}×{2} pixels.</value></data>
+  <data name="NoPassphraseWarning" xml:space="preserve"><value>No passphrase — the hidden zip will &lt;b&gt;not&lt;/b&gt; be encrypted. Many common zip tools (7-Zip, WinRAR, Windows' own "Extract All") can open the attached zip directly without needing this app at all — so anyone who receives this file and knows to look can see the photos inside.</value></data>
+  <data name="PassphraseTooShort" xml:space="preserve"><value>Passphrase must be at least {0} characters.</value></data>
+  <data name="PassphraseMismatch" xml:space="preserve"><value>Passphrases don't match.</value></data>
+  <data name="ShareWarning" xml:space="preserve"><value>Share the output file as-is — any tool that re-saves or re-encodes it (most messaging apps, social platforms, some cloud photo services) will strip the hidden data off the end.</value></data>
+  <data name="HideButton" xml:space="preserve"><value>Hide</value></data>
+  <data name="HidingButton" xml:space="preserve"><value>Hiding…</value></data>
+  <data name="StopButton" xml:space="preserve"><value>Stop</value></data>
+  <data name="StoppingButton" xml:space="preserve"><value>Stopping…</value></data>
+  <data name="DoneButton" xml:space="preserve"><value>Done</value></data>
+  <data name="CancelButton" xml:space="preserve"><value>Cancel</value></data>
+  <data name="PathNotRootedError" xml:space="preserve"><value>Enter a full path, starting from the root of the drive.</value></data>
+  <data name="FileNotFoundError" xml:space="preserve"><value>That file doesn't exist.</value></data>
+  <data name="FileNotImageError" xml:space="preserve"><value>That file isn't a readable image.</value></data>
+  <data name="ZippingStatus" xml:space="preserve"><value>Zipping…</value></data>
+  <data name="DerivingKeyStatus" xml:space="preserve"><value>Deriving key…</value></data>
+  <data name="EtaRemainingSuffix" xml:space="preserve"><value> · ~{0} left</value></data>
+  <data name="HideResultSingular" xml:space="preserve"><value>Hidden {0} photo in {1}</value></data>
+  <data name="HideResultPlural" xml:space="preserve"><value>Hidden {0} photos in {1}</value></data>
+  <data name="EncryptedNote" xml:space="preserve"><value>Encrypted with your passphrase.</value></data>
+  <data name="NotEncryptedNote" xml:space="preserve"><value>Not encrypted — anyone can open the attached zip.</value></data>
+  <data name="ReencodeWarning" xml:space="preserve"><value>Any tool that re-saves or re-encodes this file will destroy the hidden data.</value></data>
+  <data name="StoppedNoOutput" xml:space="preserve"><value>Stopped. No output file was written.</value></data>
+  <data name="HideStoppedError" xml:space="preserve"><value>Hide stopped: {0}</value></data>
+</root>

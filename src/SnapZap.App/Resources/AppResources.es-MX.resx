@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <data name="UnhandledError" xml:space="preserve"><value>Se produjo un error inesperado.</value></data>
+  <data name="Reload" xml:space="preserve"><value>Recargar</value></data>
+  <data name="ReconnectDialogLabel" xml:space="preserve"><value>Conexión con SnapZap</value></data>
+  <data name="ReconnectTitle" xml:space="preserve"><value>SnapZap dejó de responder</value></data>
+  <data name="ReconnectRetryingPrefix" xml:space="preserve"><value>Reintentando conexión — próximo intento en</value></data>
+  <data name="ReconnectRetryingOf" xml:space="preserve"><value>de</value></data>
+  <data name="ReconnectFailed" xml:space="preserve"><value>El proceso de SnapZap ya no se está ejecutando. Inícialo de nuevo y luego recarga.</value></data>
+  <data name="ReconnectRejected" xml:space="preserve"><value>Esta ventana quedó desactualizada porque SnapZap se reinició. Recarga para continuar donde lo dejaste.</value></data>
+  <data name="ReconnectSafe" xml:space="preserve"><value>No se perdió nada. Tu selección está guardada, y cada escaneo, exportación y eliminación queda registrado — el trabajo terminado está en el disco, y una exportación interrumpida continúa donde se detuvo.</value></data>
+  <data name="TryAgain" xml:space="preserve"><value>Reintentar</value></data>
+</root>

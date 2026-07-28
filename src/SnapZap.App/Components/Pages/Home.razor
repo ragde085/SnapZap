@@ -4,6 +4,8 @@
 @inject DependencyChecker Checker
 @inject SessionStore Session
 @inject IJSRuntime JS
+@inject NavigationManager Nav
+@inject IStringLocalizer<HomeResources> L
 @using Scope = SnapZap.App.Services.AppState.SelectionScope
 
 <header class="topbar">
@@ -25,31 +27,35 @@
         <button class="btn btn-secondary" style="margin-left:@(AppState.Images.Count > 0 ? "0" : "auto")"
                 @onclick="OpenUndo">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path d="M3 3v5h5" /></svg>
-            History
+            @L["HistoryButton"]
         </button>
     }
 
     <div class="topbar-tools" style="@(AppState.ScannedFolder is null && AppState.Images.Count == 0 ? "margin-left:auto" : "")">
-        <button class="icon-btn" title="Recover photos hidden inside a PNG" aria-label="Extract hidden images"
+        <button class="icon-btn" title="@L["ExtractTooltip"]" aria-label="@L["ExtractAriaLabel"]"
                 aria-haspopup="dialog" aria-expanded="@(_showExtract ? "true" : "false")"
                 @onclick="OpenExtract">
             <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="8" width="18" height="12" rx="1" /><path d="M7 8V6a5 5 0 0 1 10 0v2" /></svg>
         </button>
-        <button class="icon-btn" title="Help and FAQ" aria-label="Help and FAQ"
+        <button class="icon-btn" title="@L["HelpTooltip"]" aria-label="@L["HelpTooltip"]"
                 aria-haspopup="dialog" aria-expanded="@(_showHelp ? "true" : "false")"
                 @onclick="() => OpenHelp(null)">
             <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M9.5 9a2.5 2.5 0 113.5 2.3c-.7.4-1 .9-1 1.7" /><circle cx="12" cy="17" r=".6" fill="currentColor" stroke="none" /></svg>
         </button>
-        <button class="icon-btn" title="Setup" aria-label="Setup"
+        <button class="icon-btn" title="@L["SetupTooltip"]" aria-label="@L["SetupTooltip"]"
                 aria-haspopup="dialog" aria-expanded="@(_showSetup ? "true" : "false")"
                 @onclick="() => _showSetup = true">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 100-6 3 3 0 000 6z" /><path d="M19.4 15a1.7 1.7 0 00.3 1.9l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.9-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1A1.7 1.7 0 008.9 19a1.7 1.7 0 00-1.9.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.9 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1A1.7 1.7 0 004.6 8.4a1.7 1.7 0 00-.3-1.9l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.9.3H9a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.9-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.9V9a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z" /></svg>
             @if (Checker.MissingCount > 0)
             {
-                <span class="pip" title="@Checker.MissingCount optional feature(s) not installed">@Checker.MissingCount</span>
+                <span class="pip" title="@L["MissingFeaturesTooltip", Checker.MissingCount]">@Checker.MissingCount</span>
             }
         </button>
-        <button class="icon-btn theme-toggle" title="Switch light/dark theme" aria-label="Switch light/dark theme"
+        <button class="icon-btn lang-toggle" title="@NextLanguageName" aria-label="@NextLanguageName"
+                @onclick="ToggleLanguage">
+            <span class="lang-code" aria-hidden="true">@(Checker.Language == "es-MX" ? "ES" : "EN")</span>
+        </button>
+        <button class="icon-btn theme-toggle" title="@L["ThemeToggleTooltip"]" aria-label="@L["ThemeToggleTooltip"]"
                 @onclick="ToggleTheme">
             <svg class="i-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4 12H2M22 12h-2M5 5l1.4 1.4M17.6 17.6L19 19M19 5l-1.4 1.4M6.4 17.6L5 19" /></svg>
             <svg class="i-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8.5 8.5 0 119.5 4a7 7 0 1010.5 10.5z" /></svg>
@@ -76,7 +82,7 @@ else
                 <div class="scan-stats">
                     <div class="scan-count">
                         <b>@AppState.BusyDone.ToString("N0")</b>
-                        <span>@(AppState.BusyTotal > 0 ? $"of about {AppState.BusyTotal:N0} {noun}" : noun)</span>
+                        <span>@(AppState.BusyTotal > 0 ? (string)L["ProgressOfAbout", AppState.BusyTotal.ToString("N0"), noun] : noun)</span>
                     </div>
                     <div class="scan-track"><div style="width:@(ScanPercent)%"></div></div>
                     @if (AppState.BusyDetail is { Length: > 0 } current)
@@ -86,17 +92,20 @@ else
                     @if (AppState.BusyLabel == "Scanning")
                     {
                         <div class="scan-metrics">
-                            <div class="scan-metric"><div class="eyeb">Checksums</div><b>@AppState.BusyDone.ToString("N0")</b></div>
-                            <div class="scan-metric accent"><div class="eyeb">Reused</div><b>@AppState.BusyCached.ToString("N0")</b></div>
+                            <div class="scan-metric"><div class="eyeb">@L["ScanningEyebrowChecksums"]</div><b>@AppState.BusyDone.ToString("N0")</b></div>
+                            <div class="scan-metric accent"><div class="eyeb">@L["ScanningEyebrowReused"]</div><b>@AppState.BusyCached.ToString("N0")</b></div>
                         </div>
                         <div class="scan-hint">
-                            Stopping keeps everything analysed so far — re-scanning picks up where this
-                            left off. Duplicate detection starts by itself the moment this finishes.
+                            @L["ScanningHint"]
                         </div>
+                    }
+                    else if (AppState.BusyLabel == "Moving to the Recycle Bin")
+                    {
+                        <div class="scan-hint">@L["RecycleBinHint"]</div>
                     }
                     else
                     {
-                        <div class="scan-hint">Stopping keeps everything scored so far — re-running picks up where this left off.</div>
+                        <div class="scan-hint">@L["GenericBusyHint"]</div>
                     }
                 </div>
             }
@@ -106,7 +115,7 @@ else
                 {
                     <div style="font-size:13px">@AppState.BusyLabel<text>&hellip; </text><b>@(AppState.ScannedFolder ?? "")</b></div>
                     <button class="btn btn-secondary" style="margin-left:auto" disabled="@(!AppState.CanCancel)" @onclick="() => AppState.Cancel()">
-                        @(AppState.CanCancel ? "Stop" : "Stopping…")
+                        @(AppState.CanCancel ? L["StopButton"] : L["StoppingButton"])
                     </button>
                 }
                 else
@@ -114,7 +123,7 @@ else
                     <div class="mhead-split">
                         <button class="btn @(AppState.HasActiveFilter ? "btn-primary" : "btn-secondary")" style="font-size:12.5px"
                                 disabled="@(SelectAllCount == 0)" @onclick="() => AppState.SelectBy(Scope.AllShown)">
-                            Select all @SelectAllCount.ToString("N0") shown
+                            @L["SelectAllShown", SelectAllCount.ToString("N0")]
                         </button>
                         <button class="btn @(AppState.HasActiveFilter ? "btn-primary" : "btn-secondary")" style="width:26px"
                                 aria-haspopup="true" aria-expanded="@(_scopeMenuOpen ? "true" : "false")"
@@ -142,7 +151,7 @@ else
                     @if (!AppState.HasActiveFilter)
                     {
                         <button class="btn btn-secondary" style="font-size:12.5px" @onclick="() => _rail?.ShowFiltersTab()">
-                            Filters
+                            @L["FiltersButton"]
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6" /></svg>
                         </button>
                     }
@@ -155,19 +164,30 @@ else
                                 <span class="clear" role="button" tabindex="0" @onclick="chip.Clear">✕</span>
                             </div>
                         }
-                        <button class="btn btn-ghost" style="font-size:11.5px" @onclick="() => _rail?.ShowFiltersTab()">Filters</button>
-                        <button class="btn btn-ghost" style="font-size:11.5px" @onclick="() => AppState.ClearFilters()">Clear all</button>
+                        <button class="btn btn-ghost" style="font-size:11.5px" @onclick="() => _rail?.ShowFiltersTab()">@L["FiltersButton"]</button>
+                        <button class="btn btn-ghost" style="font-size:11.5px" @onclick="() => AppState.ClearFilters()">@L["ClearAllButton"]</button>
                     }
 
                     <div class="sortbar">
-                        <span class="eyeb">Sort</span>
+                        <span class="eyeb">@L["SizeEyebrow"]</span>
+                        <div class="seg" role="group" aria-label="@L["ThumbnailSizeAriaLabel"]">
+                            @foreach (var size in Enum.GetValues<ThumbSize>())
+                            {
+                                <label class="seg-opt">
+                                    <input type="radio" name="thumbsize" checked="@(AppState.ThumbSize == size)"
+                                           @onchange="() => SetThumbSize(size)" />@ThumbSizeLabel(size)
+                                </label>
+                            }
+                        </div>
+
+                        <span class="eyeb">@L["SortEyebrow"]</span>
                         <select value="@AppState.Sort" @onchange="SortChanged">
-                            <option value="@SortKey.Scanned">Scan order</option>
-                            <option value="@SortKey.Captured">Date taken</option>
-                            <option value="@SortKey.Name">Name</option>
-                            <option value="@SortKey.Size">File size</option>
-                            <option value="@SortKey.Blur">Sharpness</option>
-                            <option value="@SortKey.Nsfw">Explicit content</option>
+                            <option value="@SortKey.Scanned">@L["SortScanOrder"]</option>
+                            <option value="@SortKey.Captured">@L["SortDateTaken"]</option>
+                            <option value="@SortKey.Name">@L["SortName"]</option>
+                            <option value="@SortKey.Size">@L["SortFileSize"]</option>
+                            <option value="@SortKey.Blur">@L["SortSharpness"]</option>
+                            <option value="@SortKey.Nsfw">@L["SortExplicitContent"]</option>
                         </select>
                         <button class="btn btn-icon" title="@SortDirLabel" aria-label="@SortDirLabel"
                                 @onclick="() => AppState.SortDescending = !AppState.SortDescending">
@@ -190,15 +210,14 @@ else
                 <div class="banner">
                     <div style="flex:1">
                         <div class="banner-title">
-                            @AppState.DupeGroups.Count.ToString("N0") duplicate groups are waiting — @AppState.FormattedReclaimable of them.
+                            @L["DupeBannerTitle", AppState.DupeGroups.Count.ToString("N0"), AppState.FormattedReclaimable]
                         </div>
                         <div class="banner-sub">
-                            Found automatically when the scan finished. One group at a time, keeper
-                            already picked.
+                            @L["DupeBannerSub"]
                         </div>
                     </div>
-                    <button class="btn btn-primary" style="font-size:12.5px" @onclick="() => { _bannerDismissed = true; OpenDupeReview(); }">Start reviewing</button>
-                    <button class="btn btn-ghost" style="font-size:12.5px" @onclick="() => _bannerDismissed = true">Later</button>
+                    <button class="btn btn-primary" style="font-size:12.5px" @onclick="() => { _bannerDismissed = true; OpenDupeReview(); }">@L["StartReviewingButton"]</button>
+                    <button class="btn btn-ghost" style="font-size:12.5px" @onclick="() => _bannerDismissed = true">@L["LaterButton"]</button>
                 </div>
             }
 
@@ -211,21 +230,21 @@ else
             {
                 <div class="empty">
                     <p>
-                        No photos in <b>@ImageView.ShortFolder(scanned)</b>.
+                        @((MarkupString)(string)L["EmptyNoPhotosTitle", System.Net.WebUtility.HtmlEncode(ImageView.ShortFolder(scanned))])
                         @if (AppState.LastUnsupportedTotal > 0)
                         {
                             <text>
                                 <br />
-                                SnapZap found @AppState.LastUnsupportedTotal.ToString("N0") file@(AppState.LastUnsupportedTotal == 1 ? "" : "s")
-                                it can't read yet — see the note above the grid.
+                                @(AppState.LastUnsupportedTotal == 1
+                                    ? L["EmptyUnsupportedOne", AppState.LastUnsupportedTotal.ToString("N0")]
+                                    : L["EmptyUnsupportedMany", AppState.LastUnsupportedTotal.ToString("N0")])
                             </text>
                         }
                         else
                         {
                             <text>
                                 <br />
-                                Check the folder is the right one, and that it holds images rather
-                                than a folder of folders you meant to point at instead.
+                                @L["EmptyCheckFolderHint"]
                             </text>
                         }
                     </p>
@@ -235,17 +254,16 @@ else
             {
                 <div class="empty">
                     <p>
-                        None of the @AppState.Images.Count.ToString("N0") photos match these filters.
+                        @L["EmptyNoneMatchFilters", AppState.Images.Count.ToString("N0")]
                         @if (AppState.Nsfw != NsfwFilter.Any && Unchecked > 0)
                         {
                             <text>
                                 <br />
-                                @Unchecked.ToString("N0") of them have not been checked for explicit
-                                content, so this filter hides them.
+                                @L["EmptyUncheckedExplicit", Unchecked.ToString("N0")]
                             </text>
                         }
                         <br />
-                        <button class="btn btn-ghost" @onclick="() => AppState.ClearFilters()">Clear filters</button>
+                        <button class="btn btn-ghost" @onclick="() => AppState.ClearFilters()">@L["ClearFiltersButton"]</button>
                     </p>
                 </div>
             }
@@ -294,22 +312,23 @@ else
 
     /// <summary>
     /// The noun for the big counter's "N of about M ___" line — null for operations that don't
-    /// get the rich progress block (Delete, Forget, Restore already have their own generic
-    /// mhead label + Stop button, which is all a one-shot batch needs).
+    /// get the rich progress block (Forget and Restore keep their generic mhead label + Stop
+    /// button, which is all those one-shot batches need).
     /// </summary>
     string? BusyProgressNoun => AppState.BusyLabel switch
     {
-        "Scanning" => "photos read",
-        "Finding duplicates" => "photos compared",
-        "Scoring NSFW" => "photos scored",
+        "Scanning" => L["NounPhotosRead"],
+        "Finding duplicates" => L["NounPhotosCompared"],
+        "Scoring NSFW" => L["NounPhotosScored"],
+        "Moving to the Recycle Bin" => L["NounPhotosMoved"],
         _ => null,
     };
 
-    static string ScopeLabel(Scope scope) => scope switch
+    string ScopeLabel(Scope scope) => scope switch
     {
-        Scope.LikelyExplicit => "Flagged",
-        Scope.NotSure => "Not sure",
-        Scope.DuplicateKeepers => "Keepers",
+        Scope.LikelyExplicit => L["ScopeFlagged"],
+        Scope.NotSure => L["NotSure"],
+        Scope.DuplicateKeepers => L["ScopeKeepers"],
         _ => scope.ToString(),
     };
 
@@ -324,30 +343,30 @@ else
         if (AppState.Nsfw != NsfwFilter.Any)
             yield return new FilterChip(NsfwFilterLabel(AppState.Nsfw), () => AppState.Nsfw = NsfwFilter.Any);
         if (AppState.BlurMax > 0)
-            yield return new FilterChip($"Blurrier than {AppState.BlurMax}", () => AppState.BlurMax = 0);
+            yield return new FilterChip(L["BlurrierThan", AppState.BlurMax], () => AppState.BlurMax = 0);
         if (AppState.Folder.Length > 0)
             yield return new FilterChip(ImageView.ShortFolder(AppState.Folder), () => AppState.Folder = "");
         if (AppState.Year.Length > 0)
             yield return new FilterChip(AppState.Year, () => AppState.Year = "");
         if (!AppState.IncludeSubfolders)
-            yield return new FilterChip("This folder only", () => AppState.IncludeSubfolders = true);
+            yield return new FilterChip(L["ThisFolderOnly"], () => AppState.IncludeSubfolders = true);
     }
 
-    static string DupeFilterLabel(DupeFilter f) => f switch
+    string DupeFilterLabel(DupeFilter f) => f switch
     {
-        DupeFilter.ExtrasOnly => "Extra copies only",
-        DupeFilter.KeepersOnly => "Keepers only",
-        DupeFilter.BurstOnly => "Burst frames",
+        DupeFilter.ExtrasOnly => L["DupeFilterExtrasOnly"],
+        DupeFilter.KeepersOnly => L["DupeFilterKeepersOnly"],
+        DupeFilter.BurstOnly => L["DupeFilterBurstOnly"],
         _ => "",
     };
 
-    static string NsfwFilterLabel(NsfwFilter f) => f switch
+    string NsfwFilterLabel(NsfwFilter f) => f switch
     {
-        NsfwFilter.Likely => "Likely explicit",
-        NsfwFilter.Unsure => "Not sure",
-        NsfwFilter.Review => "Likely or not sure",
-        NsfwFilter.Clean => "Looks clean",
-        NsfwFilter.Unchecked => "Not checked yet",
+        NsfwFilter.Likely => L["NsfwFilterLikely"],
+        NsfwFilter.Unsure => L["NotSure"],
+        NsfwFilter.Review => L["NsfwFilterReview"],
+        NsfwFilter.Clean => L["NsfwFilterClean"],
+        NsfwFilter.Unchecked => L["NsfwFilterUnchecked"],
         _ => "",
     };
 
@@ -363,6 +382,21 @@ else
         AppState.SortDescending = key is SortKey.Nsfw or SortKey.Size or SortKey.Captured;
     }
 
+    string ThumbSizeLabel(ThumbSize size) => size switch
+    {
+        ThumbSize.Small => L["ThumbSizeSmall"],
+        ThumbSize.Large => L["ThumbSizeLarge"],
+        _ => L["ThumbSizeMedium"],
+    };
+
+    /// <summary>interop.js owns the actual column measurement (snapzap.setCardSize); AppState
+    /// just remembers which preset is picked so the control can show it as selected.</summary>
+    async Task SetThumbSize(ThumbSize size)
+    {
+        AppState.ThumbSize = size;
+        await JS.InvokeVoidAsync("snapzap.setCardSize", AppState.ThumbSizePixels(size));
+    }
+
     /// <summary>Photos nobody has scored yet. Surfaced because an unscored library looks
     /// exactly like a clean one, and only one of those is worth acting on.</summary>
     int Unchecked => AppState.CountInBand(AppState.NsfwBand.Unchecked);
@@ -370,12 +404,16 @@ else
     /// <summary>States where the sort is now and what pressing this does — both audiences get
     /// the same sentence, so the tooltip and the screen reader can't contradict each other.</summary>
     string SortDirLabel => AppState.SortDescending
-        ? "Sorted descending — switch to ascending"
-        : "Sorted ascending — switch to descending";
+        ? L["SortDirDescending"]
+        : L["SortDirAscending"];
 
     protected override async Task OnInitializedAsync()
     {
         AppState.Changed += StateHasChanged;
+
+        // Bring the Filters tab forward the moment scoring ends, so the flagged/not-sure
+        // results are the next thing on screen instead of a second click away.
+        AppState.NsfwScoringFinished += OnNsfwScoringFinished;
 
         // The Setup pip is rendered here, so this page has to hear about a re-check. The
         // checker is a singleton shared across circuits, so the event can arrive off this
@@ -412,6 +450,8 @@ else
 
     void OpenDupeReview() => _showDupes = true;
 
+    void OnNsfwScoringFinished() => _rail?.ShowFiltersTab();
+
     /// <summary>Flips relative to what's actually painted (asked of the DOM, not assumed from
     /// stored settings) so a first click always matches what the user is looking at, even when
     /// that came from the OS preference rather than an earlier explicit choice.</summary>
@@ -421,6 +461,19 @@ else
         var next = current == "dark" ? "light" : "dark";
         await JS.InvokeVoidAsync("snapzap.setTheme", next);
         Checker.Theme = next;
+    }
+
+    /// <summary>Named after the language a click switches <em>to</em>, in that language's own
+    /// name — not a translated tooltip — so the button needs no localization of its own.</summary>
+    string NextLanguageName => Checker.Language == "es-MX" ? "English" : "Español (México)";
+
+    /// <summary>Culture is resolved once per request (SettingsRequestCultureProvider, read before
+    /// any component renders), so a switch mid-circuit cannot relabel anything already on screen —
+    /// the persisted setting only takes effect on the next request, hence the forced reload.</summary>
+    void ToggleLanguage()
+    {
+        Checker.Language = Checker.Language == "es-MX" ? "en-US" : "es-MX";
+        Nav.NavigateTo(Nav.Uri, forceLoad: true);
     }
 
     /// <summary>Open help at a named section — see HelpDialog's own Section enum for the names.</summary>
@@ -447,6 +500,7 @@ else
     public void Dispose()
     {
         AppState.Changed -= StateHasChanged;
+        AppState.NsfwScoringFinished -= OnNsfwScoringFinished;
         Checker.Changed -= OnDepsChanged;
         Session.Changed -= OnSelectionChangedElsewhere;
     }

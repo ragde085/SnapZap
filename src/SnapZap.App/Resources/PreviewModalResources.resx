@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <data name="PreviewDialogLabel" xml:space="preserve"><value>Photo preview</value></data>
+  <data name="CloseButton" xml:space="preserve"><value>Close ✕</value></data>
+  <data name="DetailsButtonTitle" xml:space="preserve"><value>Photo details (I)</value></data>
+  <data name="DetailsToggleHide" xml:space="preserve"><value>Hide details</value></data>
+  <data name="DetailsToggleShow" xml:space="preserve"><value>Details</value></data>
+  <data name="PrevPhotoAriaLabel" xml:space="preserve"><value>Previous photo</value></data>
+  <data name="PrevPhotoTitle" xml:space="preserve"><value>Previous photo (←)</value></data>
+  <data name="NextPhotoAriaLabel" xml:space="preserve"><value>Next photo</value></data>
+  <data name="NextPhotoTitle" xml:space="preserve"><value>Next photo (→)</value></data>
+  <data name="ZoomGroupLabel" xml:space="preserve"><value>Zoom</value></data>
+  <data name="ZoomFitTitle" xml:space="preserve"><value>Fit to window</value></data>
+  <data name="ZoomFitButton" xml:space="preserve"><value>Fit</value></data>
+  <data name="PositionOfTotal" xml:space="preserve"><value>{0} of {1}</value></data>
+  <data name="ToggleSelectionTitle" xml:space="preserve"><value>Select or deselect this photo (X)</value></data>
+  <data name="SelectedButton" xml:space="preserve"><value>✓ Selected</value></data>
+  <data name="SelectButton" xml:space="preserve"><value>Select</value></data>
+  <data name="FieldFile" xml:space="preserve"><value>File</value></data>
+  <data name="FieldFolder" xml:space="preserve"><value>Folder</value></data>
+  <data name="FieldDimensions" xml:space="preserve"><value>Dimensions</value></data>
+  <data name="FieldCaptured" xml:space="preserve"><value>Captured</value></data>
+  <data name="FieldCamera" xml:space="preserve"><value>Camera</value></data>
+  <data name="CameraNotRecorded" xml:space="preserve"><value>not recorded</value></data>
+  <data name="FieldExplicitContent" xml:space="preserve"><value>Explicit content</value></data>
+  <data name="NsfwRunHint" xml:space="preserve"><value>Run Score NSFW to check this photo.</value></data>
+  <data name="FieldFocus" xml:space="preserve"><value>Focus</value></data>
+  <data name="FocusValueSharp" xml:space="preserve"><value>{0} — sharp</value></data>
+  <data name="FocusValueSoft" xml:space="preserve"><value>{0} — soft</value></data>
+  <data name="FocusNotMeasured" xml:space="preserve"><value>not measured</value></data>
+  <data name="FieldDuplicates" xml:space="preserve"><value>Duplicates</value></data>
+  <data name="DupeGroupLabel" xml:space="preserve"><value>{0} group #{1}</value></data>
+  <data name="DupeKeeperYes" xml:space="preserve"><value>keeping this one</value></data>
+  <data name="DupeKeeperNo" xml:space="preserve"><value>extra copy</value></data>
+  <data name="NoDuplicatesFound" xml:space="preserve"><value>no duplicates found</value></data>
+</root>

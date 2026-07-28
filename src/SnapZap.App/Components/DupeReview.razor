@@ -1,6 +1,7 @@
 @implements IDisposable
 @inject AppState AppState
 @inject IJSRuntime JS
+@inject IStringLocalizer<DupeReviewResources> L
 
 @*
     Group-at-a-time duplicate review: the core motion of the app, which the flat grid can't
@@ -13,20 +14,20 @@
 {
     @* Full-resolution comparison. Thumbnails settle an exact duplicate; they cannot settle a
        near-duplicate, where the difference is detail you have to actually look at. *@
-    <div class="cmp" role="dialog" aria-modal="true" aria-label="Compare copies at full size"
+    <div class="cmp" role="dialog" aria-modal="true" aria-label="@L["CompareDialogAriaLabel"]"
          tabindex="-1" @ref="_cmpRef" @onkeydown="HandleCompareKey">
 
         <div class="cmp-bar">
-            <span class="cmp-title">Group @(_index + 1) of @Groups.Count · @Distinguisher</span>
-            <div class="cmp-zoom" role="group" aria-label="Zoom">
+            <span class="cmp-title">@L["CompareGroupTitle", _index + 1, Groups.Count, Distinguisher]</span>
+            <div class="cmp-zoom" role="group" aria-label="@L["ZoomGroupAriaLabel"]">
                 @foreach (var z in Zooms)
                 {
                     <button class="@(_zoom == z ? "on" : "")" @onclick="() => SetZoom(z)">
-                        @(z == 0 ? "Fit" : $"{z}%")
+                        @(z == 0 ? L["ZoomFit"].Value : $"{z}%")
                     </button>
                 }
             </div>
-            <button class="btn btn-ghost" @onclick="() => _compare = false">Close</button>
+            <button class="btn btn-ghost" @onclick="() => _compare = false">@L["CloseButton"]</button>
         </div>
 
         <div class="cmp-panes" @ref="_panesRef">
@@ -50,34 +51,36 @@
                         <span>@m.Dimensions · @m.SizeLabel</span>
                         <button class="btn @(isKeeper ? "btn-primary" : "btn-secondary")"
                                 disabled="@(isKeeper && KeeperCountInGroup <= 1)"
-                                title="@(isKeeper && KeeperCountInGroup <= 1 ? "A group always keeps at least one copy." : null)"
+                                title="@(isKeeper && KeeperCountInGroup <= 1 ? L["KeepAtLeastOneHint"] : null)"
                                 @onclick="() => ToggleKeeper(m.Id)">
-                            @(isKeeper ? "Keeping this" : "Keep this")
+                            @(isKeeper ? L["KeepingThisButton"] : L["KeepThisButton"])
                         </button>
                     </div>
                 </div>
             }
         </div>
-        <p class="cmp-hint">Panes scroll together. <kbd>Esc</kbd> closes.</p>
+        <p class="cmp-hint">@L["ComparePanesHint"] <kbd>Esc</kbd> @L["EscClosesHint"]</p>
     </div>
 }
 
 @if (Show && Groups.Count > 0)
 {
-    <div class="dlg" role="dialog" aria-modal="true" aria-label="Review duplicates"
+    <div class="dlg" role="dialog" aria-modal="true" aria-label="@L["ReviewDialogAriaLabel"]"
          tabindex="-1" @ref="_dlgRef" @onkeydown="HandleKeyDown">
         <div class="dlg-box review">
             <div class="review-head">
                 <div>
-                    <span class="eyeb">Duplicate review</span>
-                    <h2 style="margin-top:4px">Group @(_index + 1) of @Groups.Count</h2>
+                    <span class="eyeb">@L["DuplicateReviewEyebrow"]</span>
+                    <h2 style="margin-top:4px">@L["ReviewGroupTitle", _index + 1, Groups.Count]</h2>
                     <p class="dlg-sub">
-                        @Members.Count cop@(Members.Count == 1 ? "y" : "ies") · @Distinguisher
+                        @(Members.Count == 1
+                            ? L["ReviewSubtitleSingular", Members.Count, Distinguisher]
+                            : L["ReviewSubtitlePlural", Members.Count, Distinguisher])
                     </p>
                 </div>
                 <div class="review-nav">
-                    <button class="btn btn-secondary btn-icon" disabled="@(_index == 0)" @onclick="Prev" aria-label="Previous group">‹</button>
-                    <button class="btn btn-secondary btn-icon" disabled="@(_index >= Groups.Count - 1)" @onclick="Next" aria-label="Next group">›</button>
+                    <button class="btn btn-secondary btn-icon" disabled="@(_index == 0)" @onclick="Prev" aria-label="@L["PreviousGroupAriaLabel"]">‹</button>
+                    <button class="btn btn-secondary btn-icon" disabled="@(_index >= Groups.Count - 1)" @onclick="Next" aria-label="@L["NextGroupAriaLabel"]">›</button>
                 </div>
             </div>
 
@@ -88,13 +91,13 @@
                     <button class="review-card @(isKeeper ? "keeper" : "")"
                             aria-pressed="@(isKeeper ? "true" : "false")"
                             disabled="@(isKeeper && KeeperCountInGroup <= 1)"
-                            title="@(isKeeper && KeeperCountInGroup <= 1 ? "A group always keeps at least one copy." : null)"
+                            title="@(isKeeper && KeeperCountInGroup <= 1 ? L["KeepAtLeastOneHint"] : null)"
                             @onclick="() => ToggleKeeper(m.Id)">
                         <span class="review-shot">
                             <img src="@m.ThumbUrl" alt="@m.FileName" loading="lazy" />
                             @if (isKeeper)
                             {
-                                <span class="review-badge">Keeping</span>
+                                <span class="review-badge">@L["KeepingBadge"]</span>
                             }
                         </span>
                         @* Facts that are identical across the group can't decide anything, so
@@ -111,17 +114,16 @@
             </div>
 
             <div class="dlg-actions">
-                <button class="btn btn-primary" @onclick="Next" disabled="@(_index >= Groups.Count - 1)">Next group</button>
-                <button class="btn btn-secondary" @onclick="() => _compare = true">Compare full size</button>
+                <button class="btn btn-primary" @onclick="Next" disabled="@(_index >= Groups.Count - 1)">@L["NextGroupButton"]</button>
+                <button class="btn btn-secondary" @onclick="() => _compare = true">@L["CompareFullSizeButton"]</button>
                 <button class="btn btn-secondary" @onclick="SelectExtrasAndClose">
-                    Select all @ExtraCount extras (@AppState.FormattedReclaimable)
+                    @L["SelectAllExtrasButton", ExtraCount, AppState.FormattedReclaimable]
                 </button>
-                <button class="btn btn-ghost" @onclick="Close">Done</button>
+                <button class="btn btn-ghost" @onclick="Close">@L["DoneButton"]</button>
             </div>
             <p class="hint">
-                <kbd>←</kbd> <kbd>→</kbd> move between groups · <kbd>1</kbd>–<kbd>9</kbd> toggle a keeper
-                (more than one can survive) · <kbd>Esc</kbd> close. Nothing is deleted here — this only
-                decides which copies survive an export.
+                <kbd>←</kbd> <kbd>→</kbd> @L["ReviewHintMoveGroups"] · <kbd>1</kbd>–<kbd>9</kbd> @L["ReviewHintToggleKeeper"]
+                · <kbd>Esc</kbd> @L["ReviewHintClose"] @L["ReviewHintSafetyNote"]
             </p>
         </div>
     </div>
@@ -245,11 +247,11 @@
     {
         get
         {
-            if (PixelsDiffer) return "different resolutions";
-            if (SizeDiffers) return "different file sizes";
-            if (FolderDiffers) return "identical copies — choose by location";
-            if (NameDiffers) return "identical copies — choose by name";
-            return "identical copies";
+            if (PixelsDiffer) return L["DistinguisherDifferentResolutions"];
+            if (SizeDiffers) return L["DistinguisherDifferentFileSizes"];
+            if (FolderDiffers) return L["DistinguisherChooseByLocation"];
+            if (NameDiffers) return L["DistinguisherChooseByName"];
+            return L["DistinguisherIdenticalCopies"];
         }
     }
 

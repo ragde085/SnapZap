@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <data name="DialogAriaLabel" xml:space="preserve"><value>Exportar las fotos seleccionadas</value></data>
+  <data name="ExportTitleOne" xml:space="preserve"><value>Exportar {0} foto</value></data>
+  <data name="ExportTitleMany" xml:space="preserve"><value>Exportar {0} fotos</value></data>
+  <data name="SubHeading" xml:space="preserve"><value>Escribe las fotos que elegiste en una carpeta limpia. Tu carpeta de origen no se toca, a menos que elijas Mover más abajo.</value></data>
+  <data name="DestinationLabel" xml:space="preserve"><value>Destino — ruta absoluta</value></data>
+  <data name="DestinationPlaceholder" xml:space="preserve"><value>A dónde va la biblioteca limpia</value></data>
+  <data name="BrowseButton" xml:space="preserve"><value>Explorar…</value></data>
+  <data name="DestinationHint" xml:space="preserve"><value>Las rutas relativas se rechazan: una se resolvería en silencio dentro de la carpeta que estás limpiando.</value></data>
+  <data name="TransferModeLabel" xml:space="preserve"><value>Modo de transferencia</value></data>
+  <data name="ModeCopy" xml:space="preserve"><value>Copiar</value></data>
+  <data name="ModeMove" xml:space="preserve"><value>Mover</value></data>
+  <data name="ModeHardlink" xml:space="preserve"><value>Enlace duro</value></data>
+  <data name="TransferModeHint" xml:space="preserve"><value>Copiar — los originales se quedan exactamente donde están. Mover verifica el hash antes de eliminar el origen; Enlace duro necesita una sola unidad.</value></data>
+  <data name="FolderStructureLabel" xml:space="preserve"><value>Estructura de carpetas</value></data>
+  <data name="StructureDate" xml:space="preserve"><value>Por fecha</value></data>
+  <data name="StructureMirror" xml:space="preserve"><value>Reflejar origen</value></data>
+  <data name="StructureFlat" xml:space="preserve"><value>Plana</value></data>
+  <data name="RecycleAllSelectedNotice" xml:space="preserve"><value>Todo está seleccionado, así que no queda nada por reciclar.</value></data>
+  <data name="RecycleRejectsOne" xml:space="preserve"><value>También reciclar la {0} foto que no elegí</value></data>
+  <data name="RecycleRejectsMany" xml:space="preserve"><value>También reciclar las {0} fotos que no elegí</value></data>
+  <data name="RecycleRejectsDetail" xml:space="preserve"><value>Se ejecuta solo después de que esta exportación se escriba y verifique. Cubre todo el catálogo, no solo lo que muestran tus filtros. Se puede revertir desde el historial.</value></data>
+  <data name="RecycleConfirmOne" xml:space="preserve"><value>&lt;b&gt;{0}&lt;/b&gt; foto ({1}) irá a la papelera de reciclaje después de que la exportación se verifique.</value></data>
+  <data name="RecycleConfirmMany" xml:space="preserve"><value>&lt;b&gt;{0}&lt;/b&gt; fotos ({1}) irán a la papelera de reciclaje después de que la exportación se verifique.</value></data>
+  <data name="PreflightCheckedTag" xml:space="preserve"><value>VERIFICADO</value></data>
+  <data name="PreflightKeeperCountOne" xml:space="preserve"><value>{0} foto · {1} por escribir</value></data>
+  <data name="PreflightKeeperCountMany" xml:space="preserve"><value>{0} fotos · {1} por escribir</value></data>
+  <data name="FreeSpaceEnough" xml:space="preserve"><value>{0} libres en el destino — suficiente</value></data>
+  <data name="FreeSpaceNotEnough" xml:space="preserve"><value>{0} libres en el destino — no es suficiente</value></data>
+  <data name="FreeSpaceUnknown" xml:space="preserve"><value>No se pudo leer el espacio libre — la exportación no está bloqueada, pero nada confirmó que va a caber.</value></data>
+  <data name="HardlinkAvailable" xml:space="preserve"><value>Enlaces duros disponibles — no usa espacio adicional</value></data>
+  <data name="HardlinkUnavailable" xml:space="preserve"><value>Enlaces duros no disponibles — el origen y el destino están en unidades distintas</value></data>
+  <data name="SampleDestination" xml:space="preserve"><value>Ejemplo: {0}</value></data>
+  <data name="PreflightStaleHint" xml:space="preserve"><value>Cambiar el destino, el modo o la estructura borra esta verificación — Exportar nunca queda listo para un plan que nada verificó.</value></data>
+  <data name="PreflightPromptHint" xml:space="preserve"><value>Verifica el destino antes de exportar — aquí se comprueban el espacio libre y la disponibilidad de enlaces duros, no se adivinan.</value></data>
+  <data name="CheckDestinationButton" xml:space="preserve"><value>Verificar destino</value></data>
+  <data name="CheckAgainButton" xml:space="preserve"><value>Verificar de nuevo</value></data>
+  <data name="ExportingStatus" xml:space="preserve"><value>Exportando…</value></data>
+  <data name="ExportButton" xml:space="preserve"><value>Exportar {0} fotos</value></data>
+  <data name="StopButton" xml:space="preserve"><value>Detener</value></data>
+  <data name="StoppingButton" xml:space="preserve"><value>Deteniendo…</value></data>
+  <data name="DoneButton" xml:space="preserve"><value>Listo</value></data>
+  <data name="CancelButton" xml:space="preserve"><value>Cancelar</value></data>
+  <data name="ErrorNoDestination" xml:space="preserve"><value>Primero escribe una carpeta de destino.</value></data>
+  <data name="ErrorRelativePath" xml:space="preserve"><value>Escribe una ruta completa, empezando desde la raíz de la unidad.</value></data>
+  <data name="ErrorMirrorNeedsScan" xml:space="preserve"><value>Reflejar mantiene tu estructura de carpetas actual, así que escanea primero la carpeta de origen — o elige Por fecha o Plana.</value></data>
+  <data name="ErrorPreflightFailed" xml:space="preserve"><value>No se pudo verificar ese destino: {0}</value></data>
+  <data name="EtaSuffix" xml:space="preserve"><value> · ~{0} restante</value></data>
+  <data name="ResultExported" xml:space="preserve"><value>Exportadas {0}</value></data>
+  <data name="ResultAlreadyThere" xml:space="preserve"><value>{0} ya estaban ahí</value></data>
+  <data name="ResultFailed" xml:space="preserve"><value>{0} fallaron</value></data>
+  <data name="ResultRecycled" xml:space="preserve"><value>{0} recicladas</value></data>
+  <data name="ResultMoveRemovedOne" xml:space="preserve"><value>{0} original se eliminó de la carpeta de origen. Deshazlo desde el historial.</value></data>
+  <data name="ResultMoveRemovedMany" xml:space="preserve"><value>{0} originales se eliminaron de la carpeta de origen. Deshazlo desde el historial.</value></data>
+  <data name="ResultManifestWritten" xml:space="preserve"><value>Manifiesto escrito en {0}</value></data>
+  <data name="ResultStopped" xml:space="preserve"><value>Exportación detenida. Las fotos ya copiadas están verificadas y completas; ejecutarla de nuevo continúa donde se quedó.</value></data>
+  <data name="ResultError" xml:space="preserve"><value>Exportación detenida: {0}</value></data>
+</root>
