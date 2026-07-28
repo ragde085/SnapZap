@@ -18,10 +18,14 @@
                        @bind="_sourcePath" @bind:event="oninput" @bind:after="() => _sourceError = ValidateSource()" />
             </label>
 
-            <label class="field">Output folder (recovered photos are written here)
-                <input type="text" placeholder="Full path to a folder — created if it doesn't exist" spellcheck="false"
-                       @bind="_outputFolder" @bind:event="oninput" />
-            </label>
+            <div class="field">
+                <label for="extractOutputFolder">Output folder (recovered photos are written here)</label>
+                <div style="display:flex;gap:8px">
+                    <input id="extractOutputFolder" type="text" style="flex:1" placeholder="Full path to a folder — created if it doesn't exist" spellcheck="false"
+                           @bind="_outputFolder" @bind:event="oninput" />
+                    <button class="btn btn-secondary" type="button" @onclick="() => _showPicker = true">Browse…</button>
+                </div>
+            </div>
 
             <label class="field">Passphrase (leave blank if the sender said it wasn't encrypted)
                 <input type="password" @bind="_passphrase" @bind:event="oninput" />
@@ -57,12 +61,16 @@
             }
         </div>
     </div>
+
+    <DirectoryPickerDialog Show="_showPicker" StartPath="@_outputFolder"
+                           OnPicked="OnOutputFolderPicked" OnClose="() => _showPicker = false" />
 }
 
 @code {
     [Parameter] public bool Show { get; set; }
     [Parameter] public EventCallback OnClose { get; set; }
 
+    bool _showPicker;
     string _sourcePath = "";
     string _outputFolder = "";
     string _passphrase = "";
@@ -122,6 +130,12 @@
         if (!Path.IsPathRooted(path)) return "Enter a full path, starting from the root of the drive.";
         if (!File.Exists(path)) return "That file doesn't exist.";
         return "";
+    }
+
+    void OnOutputFolderPicked(string path)
+    {
+        _outputFolder = path;
+        _showPicker = false;
     }
 
     async Task RunExtract()

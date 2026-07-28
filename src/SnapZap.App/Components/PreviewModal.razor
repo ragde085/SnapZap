@@ -31,8 +31,29 @@
                 aria-label="Next photo" title="Next photo (→)"
                 @onclick="() => Step(1)" @onclick:stopPropagation="true">›</button>
 
-        <div class="frame" @onclick:stopPropagation="true">
-            <img src="@img.FullUrl" alt="@img.FileName" />
+        <div class="frame @(_zoom != 0 ? "zoomed" : "")" @onclick:stopPropagation="true">
+            @if (_zoom == 0)
+            {
+                <img src="@img.FullUrl" alt="@img.FileName" />
+            }
+            else
+            {
+                <img src="@img.FullUrl" alt="@img.FileName"
+                     style="width:@(img.Width is { } w ? w * _zoom / 100 : 0)px" />
+            }
+
+            @* Zoom past "fit" is the point when the photo is what's actually being judged —
+               a resized duplicate or a soft-focus call can hinge on detail "fit" quietly
+               shrinks away. Same Fit/100/200/400 steps as the duplicate compare view. *@
+            <div class="frame-zoom" role="group" aria-label="Zoom">
+                @foreach (var z in Zooms)
+                {
+                    <button class="@(_zoom == z ? "on" : "")" title="@(z == 0 ? "Fit to window" : $"{z}%")"
+                            @onclick="() => SetZoom(z)" @onclick:stopPropagation="true">
+                        @(z == 0 ? "Fit" : $"{z}%")
+                    </button>
+                }
+            </div>
 
             @* Selecting is the reason this screen exists, so it stays reachable whether or not
                the details panel is open — it used to live only inside the panel. *@
@@ -133,6 +154,11 @@
     ElementReference _modalRef;
     bool _wasOpen;
 
+    // 0 = fit to window — same steps as the duplicate compare view (DupeReview), so zoom means
+    // the same thing everywhere a photo gets looked at full size.
+    int _zoom;
+    static readonly int[] Zooms = [0, 100, 200, 400];
+
     bool Selected => Img is { } img && AppState.Selected.Contains(img.Id);
 
     // Step through what the user is actually looking at — the filtered, sorted grid — rather
@@ -171,8 +197,30 @@
         "ArrowRight" => Step(1),
         "x" or "X" => ToggleSelection(),
         "i" or "I" => ToggleDetails(),
+        "+" or "=" => ZoomStep(1),
+        "-" or "_" => ZoomStep(-1),
+        "0" => SetZoomTask(0),
         _ => Task.CompletedTask,
     };
+
+    void SetZoom(int z) => _zoom = z;
+
+    Task SetZoomTask(int z)
+    {
+        SetZoom(z);
+        return Task.CompletedTask;
+    }
+
+    /// <summary>Step to the next/previous rung on the same Fit/100/200/400 ladder the zoom
+    /// toolbar shows, rather than a free-form increment — so <kbd>+</kbd>/<kbd>-</kbd> can never
+    /// land on a percentage the toolbar itself doesn't have a button for.</summary>
+    Task ZoomStep(int delta)
+    {
+        var i = Array.IndexOf(Zooms, _zoom);
+        var next = Math.Clamp(i + delta, 0, Zooms.Length - 1);
+        SetZoom(Zooms[next]);
+        return Task.CompletedTask;
+    }
 
     static string BandTone(AppState.NsfwBand band) => band switch
     {

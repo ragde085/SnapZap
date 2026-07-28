@@ -7,10 +7,13 @@
 *@
 <div class="field" style="@FieldStyle">
     <label>FOLDER TO SCAN</label>
-    <input class="input" style="font-size:14px" placeholder="/Volumes/Archive/Photos"
-           spellcheck="false" aria-label="Folder to scan"
-           disabled="@AppState.Busy"
-           @bind="_folder" @bind:event="oninput" @onkeydown="HandleKey" />
+    <div style="display:flex;gap:8px">
+        <input class="input" style="flex:1;font-size:14px" placeholder="/Volumes/Archive/Photos"
+               spellcheck="false" aria-label="Folder to scan"
+               disabled="@AppState.Busy"
+               @bind="_folder" @bind:event="oninput" @onkeydown="HandleKey" />
+        <button class="btn btn-secondary" type="button" disabled="@AppState.Busy" @onclick="() => _showPicker = true">Browse…</button>
+    </div>
 </div>
 <button class="btn btn-primary" style="@ButtonStyle"
         disabled="@(AppState.Busy || _folder.Trim().Length == 0)" @onclick="Scan">
@@ -21,16 +24,26 @@
     </svg>
 </button>
 
+<DirectoryPickerDialog Show="_showPicker" StartPath="@_folder"
+                       OnPicked="OnFolderPicked" OnClose="() => _showPicker = false" />
+
 @code {
     [Parameter] public string? InitialValue { get; set; }
     [Parameter] public string? FieldStyle { get; set; }
     [Parameter] public string? ButtonStyle { get; set; }
 
     string _folder = "";
+    bool _showPicker;
 
     protected override void OnInitialized() => _folder = InitialValue ?? "";
 
     Task HandleKey(KeyboardEventArgs e) => e.Key == "Enter" ? Scan() : Task.CompletedTask;
+
+    void OnFolderPicked(string path)
+    {
+        _folder = path;
+        _showPicker = false;
+    }
 
     Task Scan()
     {

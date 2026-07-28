@@ -467,6 +467,33 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
         Notify();
     }
 
+    // ---- Thumbnail size ------------------------------------------------------
+    ThumbSize _thumbSize = ThumbSize.Medium;
+
+    /// <summary>Doesn't touch <c>_filtered</c> — this changes how photos are displayed, not
+    /// which ones match, so the count caches stay valid.</summary>
+    public ThumbSize ThumbSize
+    {
+        get => _thumbSize;
+        set
+        {
+            if (_thumbSize == value) return;
+            _thumbSize = value;
+            Notify();
+        }
+    }
+
+    /// <summary>Target minimum card width in CSS pixels — passed to interop.js's
+    /// <c>snapzap.setCardSize</c>, which is what actually decides how many columns fit.
+    /// Instance method (not static) purely so callers can reach it off the injected
+    /// <c>AppState</c> instance without a type-qualified call.</summary>
+    public int ThumbSizePixels(ThumbSize size) => size switch
+    {
+        ThumbSize.Small => 110,
+        ThumbSize.Large => 220,
+        _ => 150,
+    };
+
     public bool HasActiveFilter =>
         _nsfw != NsfwFilter.Any || _blurMax > 0 || _dupeFilter != DupeFilter.Any || _folder.Length > 0
         || _year.Length > 0 || !_includeSubfolders;
@@ -1069,59 +1096,84 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
     {
         if (Busy) return;
         folder = ExpandHome(folder);
-        await RunAsync("Scanning", async (report, ct) =>
+        await RunAsync("Scanning", (report, ct) => ScanBodyAsync(folder, isLibraryRoot: true, report, ct));
+    }
+
+    /// <summary>
+    /// Re-analyze one folder already inside the library — the folder tree's "Rescan" action —
+    /// without moving the library's scan root. Unlike <see cref="ScanAsync"/>, this never
+    /// changes <see cref="ScannedFolder"/>: the folder being rescanned is a subset of it, and
+    /// narrowing the whole library's scope to it would break every other view (the grid, the
+    /// tree, Export's Mirror structure) that reads ScannedFolder as "everything in scope".
+    /// Rows outside <paramref name="folder"/> are never touched — CatalogService.RescanFolderAsync
+    /// scopes both the cache probe and pruning to it (PathScope is a prefix match).
+    /// </summary>
+    public async Task RescanFolderAsync(string folder)
+    {
+        if (Busy) return;
+        await RunAsync("Scanning", (report, ct) => ScanBodyAsync(folder, isLibraryRoot: false, report, ct));
+    }
+
+    async Task<string> ScanBodyAsync(
+        string folder, bool isLibraryRoot, Action<int, int, string?> report, CancellationToken ct)
+    {
+        var progress = new Progress<ScanProgress>(p =>
         {
-            var progress = new Progress<ScanProgress>(p =>
-            {
-                BusyCached = p.Cached;
-                report(p.Seen, p.Total, p.Current);
-            });
-            string msg;
-            try
-            {
-                var result = await catalog.ScanAsync(folder, progress, ct);
-                ScannedFolder = folder;
-                ScannedAt = DateTimeOffset.UtcNow;
-                LastFailures = result.Failures;
-                LastUnsupported = result.UnsupportedByFormat;
-                await LoadAsync();
-
-                msg = $"Scanned {result.Analyzed} new, {result.Cached} cached";
-                if (result.Failed > 0)
-                {
-                    var folders = result.Failures.Select(f => f.Folder).Distinct().Count();
-                    msg += $" · {result.Failed} skipped"
-                         + (folders > 1 ? $" across {folders} folders" : "");
-                }
-                if (result.UnsupportedTotal > 0)
-                    msg += $" · {result.UnsupportedTotal:N0} in formats SnapZap can't read yet";
-
-                // Pruning drops catalog rows for files that have left the folder. That is the
-                // right behaviour, but it also drops their scores and keeper decisions, so it
-                // has to be said out loud rather than shown as a silently shorter grid.
-                if (result.Pruned > 0)
-                    msg += $" · {result.Pruned:N0} no longer in the folder, removed from the catalogue";
-            }
-            catch (DirectoryNotFoundException)
-            {
-                return $"Folder not found: {folder}";
-            }
-
-            // Chained here rather than through a call to DedupAsync(): that method's own Busy
-            // guard would just no-op, since we're still inside this run. Dedup used to be a
-            // separate, user-gated step because it was once a genuinely separate pass; now the
-            // perceptual hash rides on scan's own decode (see CLAUDE.md), so what is left for
-            // this to do — a SQL query plus in-memory grouping over hashes already on disk — is
-            // fast enough (docs/PERFORMANCE.md: under a second at 100k photos) that gating it
-            // behind a second click no longer earns its keep.
-            BusyLabel = "Finding duplicates";
-            BusyDone = 0;
-            BusyTotal = 0;
-            BusyDetail = null;
-            Notify();
-            var dedupMsg = await RunDedupAsync(folder, report, ct);
-            return $"{msg} · {dedupMsg}";
+            BusyCached = p.Cached;
+            report(p.Seen, p.Total, p.Current);
         });
+        string msg;
+        try
+        {
+            var result = isLibraryRoot
+                ? await catalog.ScanAsync(folder, progress, ct)
+                : await catalog.RescanFolderAsync(folder, progress, ct);
+            if (isLibraryRoot) ScannedFolder = folder;
+            ScannedAt = DateTimeOffset.UtcNow;
+            LastFailures = result.Failures;
+            LastUnsupported = result.UnsupportedByFormat;
+            await LoadAsync();
+
+            msg = $"{(isLibraryRoot ? "Scanned" : "Rescanned")} {result.Analyzed} new, {result.Cached} cached";
+            if (result.Failed > 0)
+            {
+                var folders = result.Failures.Select(f => f.Folder).Distinct().Count();
+                msg += $" · {result.Failed} skipped"
+                     + (folders > 1 ? $" across {folders} folders" : "");
+            }
+            if (result.UnsupportedTotal > 0)
+                msg += $" · {result.UnsupportedTotal:N0} in formats SnapZap can't read yet";
+
+            // Pruning drops catalog rows for files that have left the folder. That is the
+            // right behaviour, but it also drops their scores and keeper decisions, so it
+            // has to be said out loud rather than shown as a silently shorter grid.
+            if (result.Pruned > 0)
+                msg += $" · {result.Pruned:N0} no longer in the folder, removed from the catalogue";
+        }
+        catch (DirectoryNotFoundException)
+        {
+            return $"Folder not found: {folder}";
+        }
+
+        // Chained here rather than through a call to DedupAsync(): that method's own Busy
+        // guard would just no-op, since we're still inside this run. Dedup used to be a
+        // separate, user-gated step because it was once a genuinely separate pass; now the
+        // perceptual hash rides on scan's own decode (see CLAUDE.md), so what is left for
+        // this to do — a SQL query plus in-memory grouping over hashes already on disk — is
+        // fast enough (docs/PERFORMANCE.md: under a second at 100k photos) that gating it
+        // behind a second click no longer earns its keep.
+        //
+        // Always against the whole library root, even for a subfolder rescan: a photo that
+        // changed in one folder can newly match (or stop matching) a duplicate anywhere else
+        // in the catalogue, and dedup's own cost is the same either way (docs/DEDUP-V2.md).
+        BusyLabel = "Finding duplicates";
+        BusyDone = 0;
+        BusyTotal = 0;
+        BusyDetail = null;
+        Notify();
+        var dedupRoot = isLibraryRoot ? folder : (ScannedFolder ?? folder);
+        var dedupMsg = await RunDedupAsync(dedupRoot, report, ct);
+        return $"{msg} · {dedupMsg}";
     }
 
     /// <summary>
@@ -1343,6 +1395,11 @@ public enum DupeFilter
     /// <summary>Every member of a Burst group — separate photographs, never bulk-selectable.</summary>
     BurstOnly,
 }
+
+/// <summary>The grid's thumbnail-size preference — Home.razor's segmented control, applied by
+/// telling interop.js's column-fitting measurement a different target width
+/// (<see cref="AppState.ThumbSizePixels"/>).</summary>
+public enum ThumbSize { Small, Medium, Large }
 
 /// <summary>One row of the Plan tab's pipeline strip.</summary>
 public enum PlanStepState { Waiting, Queued, Available, Active, Done }

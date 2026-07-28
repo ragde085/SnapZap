@@ -20,8 +20,11 @@
                 <div>
                     <div class="field">
                         <label>Destination — absolute path</label>
-                        <input class="input" type="text" placeholder="Where the clean library goes" spellcheck="false"
-                               @bind="_destination" @bind:event="oninput" @bind:after="InvalidatePreflight" />
+                        <div style="display:flex;gap:8px">
+                            <input class="input" style="flex:1" type="text" placeholder="Where the clean library goes" spellcheck="false"
+                                   @bind="_destination" @bind:event="oninput" @bind:after="InvalidatePreflight" />
+                            <button class="btn btn-secondary" type="button" @onclick="() => _showPicker = true">Browse…</button>
+                        </div>
                         <div class="hint">Relative paths are rejected: one would quietly resolve inside the folder you are cleaning.</div>
                     </div>
 
@@ -170,12 +173,16 @@
             </div>
         </div>
     </div>
+
+    <DirectoryPickerDialog Show="_showPicker" StartPath="@_destination"
+                           OnPicked="OnDestinationPicked" OnClose="() => _showPicker = false" />
 }
 
 @code {
     [Parameter] public bool Show { get; set; }
     [Parameter] public EventCallback OnClose { get; set; }
 
+    bool _showPicker;
     string _destination = "";
     TransferMode _mode = TransferMode.Copy;
     ExportStructure _structure = ExportStructure.Date;
@@ -294,6 +301,13 @@
         if (_done) return;   // a finished run is history, not a stale check
         _preflight = null;
         _resultText = "";
+    }
+
+    void OnDestinationPicked(string path)
+    {
+        _destination = path;
+        _showPicker = false;
+        InvalidatePreflight();
     }
 
     async Task RunExport()

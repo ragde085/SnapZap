@@ -164,6 +164,17 @@ else
                     }
 
                     <div class="sortbar">
+                        <span class="eyeb">Size</span>
+                        <div class="seg" role="group" aria-label="Thumbnail size">
+                            @foreach (var size in Enum.GetValues<ThumbSize>())
+                            {
+                                <label class="seg-opt">
+                                    <input type="radio" name="thumbsize" checked="@(AppState.ThumbSize == size)"
+                                           @onchange="() => SetThumbSize(size)" />@ThumbSizeLabel(size)
+                                </label>
+                            }
+                        </div>
+
                         <span class="eyeb">Sort</span>
                         <select value="@AppState.Sort" @onchange="SortChanged">
                             <option value="@SortKey.Scanned">Scan order</option>
@@ -366,6 +377,21 @@ else
         if (!Enum.TryParse<SortKey>(e.Value?.ToString(), out var key)) return;
         AppState.Sort = key;
         AppState.SortDescending = key is SortKey.Nsfw or SortKey.Size or SortKey.Captured;
+    }
+
+    static string ThumbSizeLabel(ThumbSize size) => size switch
+    {
+        ThumbSize.Small => "S",
+        ThumbSize.Large => "L",
+        _ => "M",
+    };
+
+    /// <summary>interop.js owns the actual column measurement (snapzap.setCardSize); AppState
+    /// just remembers which preset is picked so the control can show it as selected.</summary>
+    async Task SetThumbSize(ThumbSize size)
+    {
+        AppState.ThumbSize = size;
+        await JS.InvokeVoidAsync("snapzap.setCardSize", AppState.ThumbSizePixels(size));
     }
 
     /// <summary>Photos nobody has scored yet. Surfaced because an unscored library looks
