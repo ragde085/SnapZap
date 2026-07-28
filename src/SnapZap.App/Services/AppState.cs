@@ -28,6 +28,14 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
     public void Notify() => Changed?.Invoke();
 
     /// <summary>
+    /// Fires once an NSFW scoring run ends — success, stopped, or failed alike, since even a
+    /// partial run leaves newly-scored photos worth looking at. Home.razor uses it to bring the
+    /// Filters tab forward, so the flagged/not-sure results are the next thing on screen instead
+    /// of requiring a second click.
+    /// </summary>
+    public event Action? NsfwScoringFinished;
+
+    /// <summary>
     /// Notify *and* record that the selection moved. Kept separate from <see cref="Notify"/>
     /// because Notify also fires for filters, toasts and — critically — every progress tick of
     /// a scan. Doing this work there meant one full re-serialisation of the selection and one
@@ -1184,6 +1192,7 @@ public sealed class AppState(CatalogService catalog, ITrashService trash, Sessio
                 ? $"Scored {result.Scored}" + (result.Failed > 0 ? $", {result.Failed} failed" : "")
                 : "NSFW model not installed — scoring skipped";
         });
+        NsfwScoringFinished?.Invoke();
     }
 
     /// <summary>

@@ -382,6 +382,10 @@ else
     {
         AppState.Changed += StateHasChanged;
 
+        // Bring the Filters tab forward the moment scoring ends, so the flagged/not-sure
+        // results are the next thing on screen instead of a second click away.
+        AppState.NsfwScoringFinished += OnNsfwScoringFinished;
+
         // The Setup pip is rendered here, so this page has to hear about a re-check. The
         // checker is a singleton shared across circuits, so the event can arrive off this
         // circuit's synchronization context.
@@ -416,6 +420,8 @@ else
     void CloseUndo() => _showUndo = false;
 
     void OpenDupeReview() => _showDupes = true;
+
+    void OnNsfwScoringFinished() => _rail?.ShowFiltersTab();
 
     /// <summary>Flips relative to what's actually painted (asked of the DOM, not assumed from
     /// stored settings) so a first click always matches what the user is looking at, even when
@@ -452,6 +458,7 @@ else
     public void Dispose()
     {
         AppState.Changed -= StateHasChanged;
+        AppState.NsfwScoringFinished -= OnNsfwScoringFinished;
         Checker.Changed -= OnDepsChanged;
         Session.Changed -= OnSelectionChangedElsewhere;
     }
