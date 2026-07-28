@@ -10,7 +10,7 @@ SnapZap is a Windows desktop app (.NET 10, C#) that finds duplicates, NSFW image
 - No cloud, no subscriptions, no paid dependencies
 - Safety-critical: nothing is hard-deleted until hash-verified; source folder untouched unless explicitly requested
 
-See [DESIGN.md](docs/DESIGN.md) for full architecture and rationale, and [WINDOWS-VERIFY.md](docs/WINDOWS-VERIFY.md) for the Windows validation checklist.
+See [DESIGN.md](docs/DESIGN.md) for full architecture and rationale, [WINDOWS-VERIFY.md](docs/WINDOWS-VERIFY.md) for the Windows validation checklist, and [UI-FEATURES.md](docs/UI-FEATURES.md) for a quick per-feature reference to recent UI work (busy/progress, dark-mode buttons, the directory picker, folder rescan, preview zoom, thumbnail size) — read it before touching any of those instead of re-deriving the "why" from the diff.
 
 ---
 
@@ -152,6 +152,7 @@ The sidecars are excluded from publish output (`CopyToPublishDirectory="Never"`)
 | `docs/DESIGN.md` | Architecture, decisions, data model, pipeline, safety invariants |
 | `docs/ROADMAP.md` | Current status + prioritized next steps |
 | `docs/BLAZOR-MIGRATION.md` | The SPA → Blazor Server migration (completed) |
+| `docs/UI-FEATURES.md` | Quick per-feature reference for recent UI work — what each does, where the code lives, the one invariant not to regress |
 | `docs/WINDOWS-VERIFY.md` | Checklist for four Windows-only code paths |
 | `installer/SnapZap.iss` | Inno Setup definition for the Windows installer (per-user, optional model component, WebView2 bootstrap) |
 | `scripts/build-installer.bat` | Publish + package in one step; the supported way to build the Windows installer |
@@ -411,6 +412,14 @@ Full rationale in [docs/DEDUP-V2.md](docs/DEDUP-V2.md). The short version:
 8. **macOS `.app` launcher must resolve `dotnet` by absolute path.** Finder gives GUI apps a
    minimal `PATH` without `/usr/local/share/dotnet`, so `command -v dotnet` alone fails when
    launched by double-click even though it works from a terminal.
+
+10. **The app version has exactly one source: `<Version>` in `src/SnapZap.App/SnapZap.App.csproj`.**
+    Bump it there and nothing else — the Windows installer (`installer/SnapZap.iss`) reads it back
+    out of the built `.exe` via `GetVersionNumbersString`, and `scripts/build-installer-mac.sh`
+    greps it straight out of the csproj, so both installer filenames follow automatically. The
+    example paths in `README.md`'s installer walkthroughs are illustrative only (not read by any
+    script) — update them for freshness when you bump the version, but they're cosmetic, not a
+    second source of truth.
 
 ---
 
