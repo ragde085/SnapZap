@@ -86,6 +86,9 @@ sealed class StoredSettings
 
     /// <summary>"light", "dark", or "system" (the default — follows the OS).</summary>
     public string Theme { get; set; } = "system";
+
+    /// <summary>UI culture, e.g. "en-US" or "es-MX". Defaults to English.</summary>
+    public string Language { get; set; } = "en-US";
 }
 
 /// <summary>
@@ -157,6 +160,28 @@ public sealed class DependencyChecker
         {
             if (_settings.Theme == value) return;
             _settings.Theme = value;
+            Save();
+            Changed?.Invoke();
+        }
+    }
+
+    /// <summary>Cultures the UI ships translations for. The switcher and the request-culture
+    /// provider both read this list, so adding a language never means updating it in two places.</summary>
+    public static readonly IReadOnlyList<string> SupportedLanguages = ["en-US", "es-MX"];
+
+    /// <summary>
+    /// UI culture, persisted the same way as <see cref="Theme"/>. Read by
+    /// <c>SettingsRequestCultureProvider</c> at the start of every request — before any component
+    /// renders — so switching language sets this and then forces a full reload rather than trying
+    /// to hot-swap <see cref="System.Globalization.CultureInfo.CurrentUICulture"/> mid-circuit.
+    /// </summary>
+    public string Language
+    {
+        get => _settings.Language;
+        set
+        {
+            if (!SupportedLanguages.Contains(value) || _settings.Language == value) return;
+            _settings.Language = value;
             Save();
             Changed?.Invoke();
         }

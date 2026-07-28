@@ -1,39 +1,40 @@
 @implements IDisposable
 @inject AppState AppState
+@inject IStringLocalizer<UndoDialogResources> L
 
 @if (Show)
 {
-    <div class="dlg" role="dialog" aria-modal="true" aria-label="History"
+    <div class="dlg" role="dialog" aria-modal="true" aria-label="@L["DialogAriaLabel"]"
          tabindex="-1" @ref="_dlgRef" @onkeydown="HandleKeyDown">
         <div class="dlg-box wide">
-            <h3>History</h3>
+            <h3>@L["Title"]</h3>
             @* Not everything here was recycled — an export in Move mode relocates files rather
                than binning them, and calling that "recycled" sends people to the wrong place
                to look for their photos. *@
-            <p class="history-note">Every batch SnapZap has recycled or moved, newest first. Restore puts the files back where they came from.</p>
+            <p class="history-note">@L["HistoryNote"]</p>
 
             @if (_batches.Count == 0)
             {
-                <p class="hint">Nothing has been recycled yet.</p>
+                <p class="hint">@L["EmptyState"]</p>
             }
             else
             {
                 <table class="table">
-                    <thead><tr><th>When</th><th>What happened</th><th style="text-align:right">Photos</th><th></th></tr></thead>
+                    <thead><tr><th>@L["ColumnWhen"]</th><th>@L["ColumnWhatHappened"]</th><th style="text-align:right">@L["ColumnPhotos"]</th><th></th></tr></thead>
                     <tbody>
                         @foreach (var b in _batches)
                         {
                             var done = b.Restored >= b.Total;
                             var busy = _restoring == b.BatchId;
                             <tr>
-                                <td>@DateTimeOffset.FromUnixTimeSeconds(b.Ts).LocalDateTime.ToString("MMM d, yyyy 'at' h:mm tt")</td>
+                                <td>@L["BatchTimestamp", DateTimeOffset.FromUnixTimeSeconds(b.Ts).LocalDateTime]</td>
                                 <td>
                                     @What(b)
                                     <div class="history-sub">
-                                        @(WasMoved(b) ? "Relocated, not binned" : done ? "Emptied from the bin since" : "In the Recycle Bin")
+                                        @(WasMoved(b) ? L["SubRelocated"] : done ? L["SubEmptied"] : L["SubInBin"])
                                         @if (b.Restored > 0)
                                         {
-                                            <text> · @b.Restored restored</text>
+                                            <text> @L["SubRestoredCount", b.Restored]</text>
                                         }
                                     </div>
                                 </td>
@@ -41,7 +42,7 @@
                                 <td style="text-align:right">
                                     <button class="btn btn-secondary" style="font-size:12px;padding:4px 10px"
                                             disabled="@(done || busy)" @onclick="() => Restore(b.BatchId)">
-                                        @(done ? "Restored" : busy ? "Restoring…" : "Restore")
+                                        @(done ? L["ButtonRestored"] : busy ? L["ButtonRestoring"] : L["ButtonRestore"])
                                     </button>
                                 </td>
                             </tr>
@@ -50,8 +51,8 @@
                 </table>
             }
 
-            <div class="history-hint">You can also restore from the Recycle Bin's own right-click menu.</div>
-            <div class="dlg-actions" style="margin-top:14px"><button class="btn btn-ghost" @onclick="Close">Close</button></div>
+            <div class="history-hint">@L["RightClickHint"]</div>
+            <div class="dlg-actions" style="margin-top:14px"><button class="btn btn-ghost" @onclick="Close">@L["CloseButton"]</button></div>
         </div>
     </div>
 }
@@ -88,11 +89,11 @@
 
     static bool WasMoved(UndoBatch b) => b.BatchId.StartsWith("move-");
 
-    static string What(UndoBatch b) => b.BatchId switch
+    string What(UndoBatch b) => b.BatchId switch
     {
-        var s when s.StartsWith("move-") => "Moved out by export",
-        var s when s.StartsWith("export-") => "Recycled during export — the photos you didn't pick",
-        _ => "Deleted — recycled from a selection",
+        var s when s.StartsWith("move-") => L["WhatMoved"],
+        var s when s.StartsWith("export-") => L["WhatExportRecycled"],
+        _ => L["WhatSelectionDeleted"],
     };
 
     async Task Restore(string batchId)

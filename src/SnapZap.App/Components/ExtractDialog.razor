@@ -1,33 +1,33 @@
 @implements IDisposable
 @inject AppState AppState
+@inject IStringLocalizer<ExtractDialogResources> L
 @using System.Security.Cryptography
 
 @if (Show)
 {
-    <div class="dlg" role="dialog" aria-modal="true" aria-label="Extract hidden images"
+    <div class="dlg" role="dialog" aria-modal="true" aria-label="@L["DialogAriaLabel"]"
          tabindex="-1" @ref="_dlgRef" @onkeydown="HandleKeyDown">
         <div class="dlg-box">
-            <h2>Extract hidden images</h2>
+            <h2>@L["Title"]</h2>
             <p class="dlg-sub">
-                Pick any image someone gave you — it doesn't need to be part of your scanned library —
-                and, if it's encrypted, the passphrase used to hide photos inside it.
+                @L["Subtitle"]
             </p>
 
-            <label class="field">Source image
-                <input type="text" placeholder="Full path to the image that may contain hidden photos" spellcheck="false"
+            <label class="field">@L["SourceImageLabel"]
+                <input type="text" placeholder="@L["SourceImagePlaceholder"]" spellcheck="false"
                        @bind="_sourcePath" @bind:event="oninput" @bind:after="() => _sourceError = ValidateSource()" />
             </label>
 
             <div class="field">
-                <label for="extractOutputFolder">Output folder (recovered photos are written here)</label>
+                <label for="extractOutputFolder">@L["OutputFolderLabel"]</label>
                 <div style="display:flex;gap:8px">
-                    <input id="extractOutputFolder" type="text" style="flex:1" placeholder="Full path to a folder — created if it doesn't exist" spellcheck="false"
+                    <input id="extractOutputFolder" type="text" style="flex:1" placeholder="@L["OutputFolderPlaceholder"]" spellcheck="false"
                            @bind="_outputFolder" @bind:event="oninput" />
-                    <button class="btn btn-secondary" type="button" @onclick="() => _showPicker = true">Browse…</button>
+                    <button class="btn btn-secondary" type="button" @onclick="() => _showPicker = true">@L["BrowseButton"]</button>
                 </div>
             </div>
 
-            <label class="field">Passphrase (leave blank if the sender said it wasn't encrypted)
+            <label class="field">@L["PassphraseLabel"]
                 <input type="password" @bind="_passphrase" @bind:event="oninput" />
             </label>
 
@@ -38,21 +38,21 @@
 
             <div class="dlg-actions">
                 <button class="btn btn-primary" disabled="@(!CanConfirm)" @onclick="RunExtract">
-                    @(_running ? "Extracting…" : "Extract")
+                    @(_running ? L["ExtractingButton"] : L["ExtractButton"])
                 </button>
                 @if (_running)
                 {
                     <button class="btn btn-danger" disabled="@(_cts is not { IsCancellationRequested: false })" @onclick="StopExtract">
-                        @(_cts is { IsCancellationRequested: false } ? "Stop" : "Stopping…")
+                        @(_cts is { IsCancellationRequested: false } ? L["StopButton"] : L["StoppingButton"])
                     </button>
                 }
                 else if (_done)
                 {
-                    <button class="btn btn-ghost" @onclick="Close">Done</button>
+                    <button class="btn btn-ghost" @onclick="Close">@L["DoneButton"]</button>
                 }
                 else
                 {
-                    <button class="btn btn-ghost" @onclick="Close">Cancel</button>
+                    <button class="btn btn-ghost" @onclick="Close">@L["CancelButton"]</button>
                 }
             </div>
             @if (_resultText.Length > 0)
@@ -127,8 +127,8 @@
     {
         var path = _sourcePath.Trim();
         if (path.Length == 0) return "";
-        if (!Path.IsPathRooted(path)) return "Enter a full path, starting from the root of the drive.";
-        if (!File.Exists(path)) return "That file doesn't exist.";
+        if (!Path.IsPathRooted(path)) return L["ValidateSourcePathError"];
+        if (!File.Exists(path)) return L["ValidateSourceNotFoundError"];
         return "";
     }
 
@@ -142,7 +142,7 @@
     {
         if (!CanConfirm || _running) return;
         _running = true;
-        _resultText = "Reading…";
+        _resultText = L["ReadingStatus"];
         StateHasChanged();
 
         var inFlight = true;
@@ -152,7 +152,7 @@
         var progress = new Progress<ExtractProgress>(p =>
         {
             if (!inFlight) return;
-            _resultText = "Reading…";
+            _resultText = L["ReadingStatus"];
             InvokeAsync(StateHasChanged);
         });
 
@@ -174,9 +174,9 @@
             if (encrypted)
             {
                 if (_passphrase.Length == 0)
-                    throw new StegoException("This file is passphrase-protected — enter the passphrase.");
+                    throw new StegoException(L["PassphraseRequiredError"]);
 
-                _resultText = "Decrypting…";
+                _resultText = L["DecryptingStatus"];
                 StateHasChanged();
                 zipBytes = await Task.Run(() => PayloadCrypto.Decrypt(payload, _passphrase, ct), ct);
             }
@@ -185,13 +185,15 @@
                 zipBytes = payload;
             }
 
-            _resultText = "Unzipping…";
+            _resultText = L["UnzippingStatus"];
             StateHasChanged();
             var written = await Task.Run(() => PayloadZipper.ExtractZip(zipBytes, outputFolder, ct), ct);
             inFlight = false;
 
-            _resultText = $"Recovered {written.Count} file{(written.Count == 1 ? "" : "s")} to {outputFolder}:\n"
-                         + string.Join("\n", written.Select(Path.GetFileName));
+            var header = written.Count == 1
+                ? L["RecoveredFileSingular", outputFolder]
+                : L["RecoveredFilesPlural", written.Count, outputFolder];
+            _resultText = $"{header}\n" + string.Join("\n", written.Select(Path.GetFileName));
             _done = true;
         }
         catch (OperationCanceledException)
@@ -199,9 +201,12 @@
             inFlight = false;
             var after = Directory.Exists(outputFolder) ? Directory.GetFiles(outputFolder) : [];
             var recovered = after.Count(f => !before.Contains(f));
-            _resultText = recovered > 0
-                ? $"Stopped. {recovered} file{(recovered == 1 ? " was" : "s were")} already recovered to {outputFolder} before the cancel."
-                : "Stopped. No files were recovered.";
+            _resultText = recovered switch
+            {
+                0 => L["StoppedNoneRecovered"],
+                1 => L["StoppedRecoveredSingular", outputFolder],
+                _ => L["StoppedRecoveredPlural", recovered, outputFolder]
+            };
         }
         catch (StegoException ex)
         {
@@ -211,7 +216,7 @@
         catch (CryptographicException)
         {
             inFlight = false;
-            _resultText = "Incorrect passphrase or corrupted image.";
+            _resultText = L["IncorrectPassphraseError"];
         }
         catch (Exception ex)
         {
@@ -219,7 +224,7 @@
             // folder) — show it inline rather than letting an unhandled exception crash the
             // circuit, matching ExportDialog's fallback.
             inFlight = false;
-            _resultText = $"Extract stopped: {ex.Message}";
+            _resultText = L["ExtractStoppedError", ex.Message];
         }
         finally
         {

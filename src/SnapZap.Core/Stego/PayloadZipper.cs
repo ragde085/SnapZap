@@ -1,4 +1,5 @@
 using System.IO.Compression;
+using SnapZap.Core.Resources;
 
 namespace SnapZap.Core.Stego;
 
@@ -63,7 +64,7 @@ public static class PayloadZipper
             // hostile zip content is decrypted, untrusted-origin data (extract explicitly accepts
             // "a PNG someone gave you"), so fail with a clear message instead.
             if (entry.Name.Length == 0 || entry.Name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
-                throw new StegoException($"Hidden data is corrupted: invalid entry name \"{entry.Name}\".");
+                throw new StegoException(CoreStrings.Get("InvalidEntryName", entry.Name));
 
             var destName = UniqueName(entry.Name, name => File.Exists(Path.Combine(outputDir, name)));
             var destPath = Path.Combine(outputDir, destName);
@@ -91,7 +92,7 @@ public static class PayloadZipper
             ct.ThrowIfCancellationRequested();
             entryBytes += read;
             if (entryBytes > maxEntryBytes || bytesWrittenSoFar + entryBytes > maxTotalBytes)
-                throw new StegoException("Hidden data is corrupted: an entry decompresses to an implausible size.");
+                throw new StegoException(CoreStrings.Get("ImplausibleEntrySize"));
             destination.Write(buffer, 0, read);
         }
         return entryBytes;
@@ -112,6 +113,6 @@ public static class PayloadZipper
             var candidate = $"{stem} ({n}){ext}";
             if (!exists(candidate)) return candidate;
         }
-        throw new IOException($"could not resolve a non-colliding name for {name}");
+        throw new IOException(CoreStrings.Get("NonCollidingNameFailed", name));
     }
 }

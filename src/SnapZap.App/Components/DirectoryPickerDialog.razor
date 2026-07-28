@@ -5,20 +5,22 @@
     paste a path blind.
 *@
 
+@inject IStringLocalizer<DirectoryPickerDialogResources> L
+
 @if (Show)
 {
-    <div class="dlg" role="dialog" aria-modal="true" aria-label="Choose a folder"
+    <div class="dlg" role="dialog" aria-modal="true" aria-label="@L["DialogTitle"]"
          tabindex="-1" @ref="_dlgRef" @onkeydown="HandleKeyDown">
         <div class="dlg-box">
-            <h2>Choose a folder</h2>
+            <h2>@L["DialogTitle"]</h2>
             <hr class="hr" style="margin:0 0 14px" />
 
             <div class="field">
-                <label>Path</label>
+                <label>@L["PathLabel"]</label>
                 <div style="display:flex;gap:8px">
                     <input class="input" style="flex:1;font-family:var(--font-mono);font-size:12.5px" spellcheck="false"
                            @bind="_typedPath" @bind:event="oninput" @onkeydown="PathKeyDown" />
-                    <button class="btn btn-secondary" @onclick="GoToTyped">Go</button>
+                    <button class="btn btn-secondary" @onclick="GoToTyped">@L["GoButton"]</button>
                 </div>
             </div>
 
@@ -34,12 +36,12 @@
                 }
             </div>
 
-            <div class="dir-list" role="listbox" aria-label="Subfolders of @_current">
+            <div class="dir-list" role="listbox" aria-label="@L["SubfoldersAriaLabel", _current]">
                 @if (_parent is { } parent)
                 {
                     <button class="dir-row" @onclick="() => Navigate(parent)">
                         <span class="dir-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5" /><path d="m5 12 7-7 7 7" /></svg></span>
-                        <span class="dir-name">.. (up one level)</span>
+                        <span class="dir-name">@L["UpOneLevel"]</span>
                     </button>
                 }
                 @foreach (var d in _subfolders)
@@ -51,14 +53,14 @@
                 }
                 @if (_subfolders.Count == 0 && _parent is null && _error is null)
                 {
-                    <p class="hint" style="padding:10px 4px">No subfolders here.</p>
+                    <p class="hint" style="padding:10px 4px">@L["NoSubfoldersHint"]</p>
                 }
             </div>
 
             <div class="dlg-actions" style="margin-top:14px">
-                <button class="btn btn-primary" @onclick="Confirm">Use this folder</button>
+                <button class="btn btn-primary" @onclick="Confirm">@L["UseFolderButton"]</button>
                 <span class="hint" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@_current</span>
-                <button class="btn btn-ghost" @onclick="Close">Cancel</button>
+                <button class="btn btn-ghost" @onclick="Close">@L["CancelButton"]</button>
             </div>
         </div>
     </div>
@@ -113,7 +115,7 @@
         ? DriveInfo.GetDrives().Where(d => d.IsReady).Select(d => d.RootDirectory.FullName).ToList()
         : [Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "/"];
 
-    static string RootLabel(string root) => root == "/" ? "Root (/)" : root.TrimEnd('\\', '/');
+    string RootLabel(string root) => root == "/" ? L["RootDirectoryLabel"] : root.TrimEnd('\\', '/');
 
     void Navigate(string path)
     {
@@ -134,7 +136,7 @@
         }
         catch (Exception ex) when (ex is UnauthorizedAccessException or IOException or ArgumentException)
         {
-            _error = $"Can't open that folder: {ex.Message}";
+            _error = L["OpenFolderError", ex.Message];
         }
     }
 
@@ -142,7 +144,7 @@
     {
         var path = _typedPath.Trim();
         if (path.Length == 0) return;
-        if (!Directory.Exists(path)) { _error = "That folder doesn't exist."; return; }
+        if (!Directory.Exists(path)) { _error = L["FolderNotFoundError"]; return; }
         Navigate(path);
     }
 

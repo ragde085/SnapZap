@@ -1,3 +1,4 @@
+using SnapZap.Core.Resources;
 using SnapZap.Core.Scanning;
 
 namespace SnapZap.Core.Export;
@@ -66,7 +67,7 @@ public sealed class DestinationPlanner(
             if (!exists(alt)) return (alt, false);
             if (hashOf(alt) == img.ContentHash) return (alt, true);
         }
-        throw new IOException($"could not resolve a non-colliding name for {img.Path}");
+        throw new IOException(CoreStrings.Get("NonCollidingNameFailed", img.Path));
     }
 
     static string RelativeDir(string filePath, string root)

@@ -1,4 +1,5 @@
 @inject AppState AppState
+@inject IStringLocalizer<ScanFormResources> L
 
 @*
     The one place a folder gets typed in and scanned — used by FirstRun (the only screen with
@@ -6,18 +7,18 @@
     apart on what Enter does or when Scan is disabled.
 *@
 <div class="field" style="@FieldStyle">
-    <label>FOLDER TO SCAN</label>
+    <label>@L["FolderToScanLabel"]</label>
     <div style="display:flex;gap:8px">
-        <input class="input" style="flex:1;font-size:14px" placeholder="/Volumes/Archive/Photos"
-               spellcheck="false" aria-label="Folder to scan"
+        <input class="input" style="flex:1;font-size:14px" placeholder="@L["FolderPathPlaceholder"]"
+               spellcheck="false" aria-label="@L["FolderToScanAriaLabel"]"
                disabled="@AppState.Busy"
                @bind="_folder" @bind:event="oninput" @onkeydown="HandleKey" />
-        <button class="btn btn-secondary" type="button" disabled="@AppState.Busy" @onclick="() => _showPicker = true">Browse…</button>
+        <button class="btn btn-secondary" type="button" disabled="@AppState.Busy" @onclick="() => _showPicker = true">@L["BrowseButton"]</button>
     </div>
 </div>
 <button class="btn btn-primary" style="@ButtonStyle"
         disabled="@(AppState.Busy || _folder.Trim().Length == 0)" @onclick="Scan">
-    Scan
+    @L["ScanButton"]
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
          stroke-linecap="round" stroke-linejoin="round" style="margin-left:auto">
         <path d="M5 12h14" /><path d="m12 5 7 7-7 7" />

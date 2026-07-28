@@ -461,6 +461,8 @@ kbd {
 :root[data-theme="dark"] .theme-toggle .i-sun { display: none; }
 :root[data-theme="dark"] .theme-toggle .i-moon { display: block; }
 
+.lang-code { font-size: 11px; font-weight: 700; letter-spacing: 0.02em; }
+
 /* Determinate progress in the topbar/scan bar. */
 .op { display: flex; flex-direction: column; gap: 5px; min-width: 230px; }
 .op-line { display: flex; justify-content: space-between; gap: 12px; font-size: var(--t-xs); color: var(--color-neutral-700); font-variant-numeric: tabular-nums; }

@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <data name="DialogAriaLabel" xml:space="preserve"><value>Configuración</value></data>
+  <data name="Title" xml:space="preserve"><value>Configuración</value></data>
+  <data name="SectionsNavLabel" xml:space="preserve"><value>Secciones de configuración</value></data>
+  <data name="PaneAddOns" xml:space="preserve"><value>Complementos</value></data>
+  <data name="PaneExplicit" xml:space="preserve"><value>Contenido explícito</value></data>
+  <data name="PaneDuplicates" xml:space="preserve"><value>Duplicados</value></data>
+  <data name="PaneCatalogue" xml:space="preserve"><value>Catálogo</value></data>
+  <data name="AddOnsLede" xml:space="preserve"><value>Un complemento opcional. SnapZap escanea, encuentra duplicados, exporta y elimina sin él.</value></data>
+  <data name="CheckingButton" xml:space="preserve"><value>Comprobando…</value></data>
+  <data name="CheckAgainButton" xml:space="preserve"><value>Comprobar de nuevo</value></data>
+  <data name="AddOnsHint" xml:space="preserve"><value>Coloca un archivo y presiona Comprobar de nuevo — no necesitas reiniciar.</value></data>
+  <data name="ExplicitLede" xml:space="preserve"><value>Qué tanto se esfuerza SnapZap en buscar, y qué tan seguro debe estar antes de decir que una foto es contenido explícito.</value></data>
+  <data name="DepthHeading" xml:space="preserve"><value>Qué tanto se esfuerza</value></data>
+  <data name="TiledCheckboxLabel" xml:space="preserve"><value>También mirar de cerca, en nueve piezas superpuestas</value></data>
+  <data name="TiledCheckboxDetail" xml:space="preserve"><value>El modelo solo ve una miniatura pequeña de lo que recibe, así que una persona que ocupa parte de una foto panorámica puede desaparecer antes de que la analice. Diez veces más lento.</value></data>
+  <data name="WholeFrameHint" xml:space="preserve"><value>Desactivado, espera que se le escapen algunas. En una carpeta de prueba encontró 17 de 41; activado, 25.</value></data>
+  <data name="TiledHint" xml:space="preserve"><value>Las fotos calificadas de forma rápida se vuelven a calificar la próxima vez que presiones &lt;b&gt;Calificar contenido explícito&lt;/b&gt; — las dos respuestas no son comparables.</value></data>
+  <data name="SensitivityHeading" xml:space="preserve"><value>Qué tan seguro debe estar</value></data>
+  <data name="SensitivityGroupLabel" xml:space="preserve"><value>Sensibilidad</value></data>
+  <data name="SensitivityCautious" xml:space="preserve"><value>Cauteloso</value></data>
+  <data name="SensitivityEager" xml:space="preserve"><value>Agresivo</value></data>
+  <data name="SensitivityCustom" xml:space="preserve"><value>Personalizado</value></data>
+  <data name="SensitivityBalanced" xml:space="preserve"><value>Equilibrado</value></data>
+  <data name="BlurbCautious" xml:space="preserve"><value>Solo marca lo inconfundible. Menos falsas alarmas, más casos que se le escapan.</value></data>
+  <data name="BlurbEager" xml:space="preserve"><value>Marca más, y te muestra más fotos límite. Aun así evita el nivel donde las fotos comunes de personas empiezan a marcarse.</value></data>
+  <data name="BlurbCustom" xml:space="preserve"><value>Tus propios niveles. El límite seguro medido es 0.50 promediado entre las piezas.</value></data>
+  <data name="BlurbBalanced" xml:space="preserve"><value>Recomendado. En las carpetas donde se midió: se marcaron 25 de 41 fotos con contenido explícito, y ninguna de 263 fotos comunes.</value></data>
+  <data name="CustomSummary" xml:space="preserve"><value>Ajustar los niveles yo mismo</value></data>
+  <data name="WholeFlagLabel" xml:space="preserve"><value>Explícito, en la foto completa</value></data>
+  <data name="TileMeanFlagLabel" xml:space="preserve"><value>Explícito, promediado entre las nueve piezas</value></data>
+  <data name="SafeFloorWarning" xml:space="preserve"><value>Por debajo de {0:F2} esto empieza a marcar fotografías comunes de personas: un primer plano de un rostro es sobre todo piel, y el modelo interpreta la piel. Medido en un álbum familiar de 17 fotos — ninguna marcada en {0:F2}, seis en 0.40.</value></data>
+  <data name="UnsureLabel" xml:space="preserve"><value>Vale la pena revisar de nuevo</value></data>
+  <data name="UnsureHint" xml:space="preserve"><value>La categoría &lt;b&gt;No estoy seguro&lt;/b&gt; es una cola para que la revises. Si la pones baja, se llena de fotografías de rostros — el modelo le da a un retrato común alrededor de 0.40 solo por el tono de piel.</value></data>
+  <data name="LevelsApplyHint" xml:space="preserve"><value>Los niveles se aplican de inmediato a las fotos ya calificadas — nada se vuelve a calificar, solo se vuelve a juzgar.</value></data>
+  <data name="DuplicatesLede" xml:space="preserve"><value>Qué revisa &lt;b&gt;Encontrar duplicados&lt;/b&gt;.</value></data>
+  <data name="IdenticalFilesLabel" xml:space="preserve"><value>Archivos idénticos</value></data>
+  <data name="IdenticalFilesDetail" xml:space="preserve"><value>Copias byte por byte, por suma de verificación. Siempre activo — gratis y exacto.</value></data>
+  <data name="VariantLabel" xml:space="preserve"><value>La misma toma en otro tamaño</value></data>
+  <data name="VariantDetail" xml:space="preserve"><value>Copias redimensionadas, reguardadas o convertidas de una misma foto. Seguro para seleccionar en bloque.</value></data>
+  <data name="RotationsLabel" xml:space="preserve"><value>También detectar copias rotadas</value></data>
+  <data name="SlowerNote" xml:space="preserve"><value>(más lento)</value></data>
+  <data name="VariantBitsLabel" xml:space="preserve"><value>Qué tan diferentes pueden verse</value></data>
+  <data name="VariantBitsValue" xml:space="preserve"><value>{0} de {1}</value></data>
+  <data name="VariantBitsHint" xml:space="preserve"><value>Un valor más bajo es más estricto. Subirlo encuentra más, y eventualmente empieza a considerar iguales dos fotos distintas.</value></data>
+  <data name="BurstLabel" xml:space="preserve"><value>Ráfagas — la misma escena, segundos de diferencia</value></data>
+  <data name="BurstDetail" xml:space="preserve"><value>Siempre se detectan. Son fotografías distintas, así que se agrupan para revisión y nunca las toma "Seleccionar duplicados extra".</value></data>
+  <data name="BurstWindowLabel" xml:space="preserve"><value>Cuadros dentro de</value></data>
+  <data name="BurstWindowValue" xml:space="preserve"><value>{0} s</value></data>
+  <data name="BurstWindowHint" xml:space="preserve"><value>Necesita una hora de captura EXIF — las fotos que no la tienen se omiten, así que una ráfaga sin marcas de tiempo no está protegida de la selección en bloque.</value></data>
+  <data name="SettingsSavedHint" xml:space="preserve"><value>Guardado. Ejecuta &lt;b&gt;Encontrar duplicados&lt;/b&gt; de nuevo para aplicarlo.</value></data>
+  <data name="CatalogueLede" xml:space="preserve"><value>Lo que SnapZap recuerda sobre las fotos que ha revisado.</value></data>
+  <data name="PhotosAnalysedOne" xml:space="preserve"><value>&lt;b&gt;{0}&lt;/b&gt; foto analizada</value></data>
+  <data name="PhotosAnalysedOther" xml:space="preserve"><value>&lt;b&gt;{0}&lt;/b&gt; fotos analizadas</value></data>
+  <data name="FootprintDetail" xml:space="preserve"><value>{0} de base de datos · {1} de miniaturas</value></data>
+  <data name="ShowingFolderPrefix" xml:space="preserve"><value>Mostrando</value></data>
+  <data name="ForgetButton" xml:space="preserve"><value>Olvidar todo…</value></data>
+  <data name="ConfirmForgetAriaLabel" xml:space="preserve"><value>Confirmar olvido</value></data>
+  <data name="ConfirmForgetBody" xml:space="preserve"><value>¿Descartar el análisis de las &lt;b&gt;{0}&lt;/b&gt; fotos y {1} de miniaturas?</value></data>
+  <data name="ForgetHint" xml:space="preserve"><value>Ninguna foto se elimina ni se mueve — solo los hashes, calificaciones, fechas y miniaturas, todo lo cual un escaneo reconstruye. Todo lo que ya esté en la Papelera de reciclaje sigue siendo restaurable desde el historial.</value></data>
+  <data name="ForgetConfirmButton" xml:space="preserve"><value>Olvidar todo</value></data>
+  <data name="CancelButton" xml:space="preserve"><value>Cancelar</value></data>
+  <data name="DoneButton" xml:space="preserve"><value>Listo</value></data>
+</root>

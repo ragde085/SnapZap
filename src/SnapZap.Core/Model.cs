@@ -1,3 +1,5 @@
+using SnapZap.Core.Resources;
+
 namespace SnapZap.Core;
 
 /// <summary>A single analyzed image and its four signals. Mirrors the `images` table.</summary>
@@ -107,9 +109,9 @@ public static class DupeKindExtensions
 
     public static string Label(this DupeKind kind) => kind switch
     {
-        DupeKind.Exact => "Identical",
-        DupeKind.Variant => "Same shot",
-        _ => "Burst",
+        DupeKind.Exact => CoreStrings.Get("DupeKindExact"),
+        DupeKind.Variant => CoreStrings.Get("DupeKindVariant"),
+        _ => CoreStrings.Get("DupeKindBurst"),
     };
 }
 

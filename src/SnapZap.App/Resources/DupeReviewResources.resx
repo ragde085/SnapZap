@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <data name="CompareDialogAriaLabel" xml:space="preserve"><value>Compare copies at full size</value></data>
+  <data name="CompareGroupTitle" xml:space="preserve"><value>Group {0} of {1} · {2}</value></data>
+  <data name="ZoomGroupAriaLabel" xml:space="preserve"><value>Zoom</value></data>
+  <data name="ZoomFit" xml:space="preserve"><value>Fit</value></data>
+  <data name="CloseButton" xml:space="preserve"><value>Close</value></data>
+  <data name="KeepAtLeastOneHint" xml:space="preserve"><value>A group always keeps at least one copy.</value></data>
+  <data name="KeepingThisButton" xml:space="preserve"><value>Keeping this</value></data>
+  <data name="KeepThisButton" xml:space="preserve"><value>Keep this</value></data>
+  <data name="ComparePanesHint" xml:space="preserve"><value>Panes scroll together.</value></data>
+  <data name="EscClosesHint" xml:space="preserve"><value>closes.</value></data>
+  <data name="ReviewDialogAriaLabel" xml:space="preserve"><value>Review duplicates</value></data>
+  <data name="DuplicateReviewEyebrow" xml:space="preserve"><value>Duplicate review</value></data>
+  <data name="ReviewGroupTitle" xml:space="preserve"><value>Group {0} of {1}</value></data>
+  <data name="ReviewSubtitleSingular" xml:space="preserve"><value>{0} copy · {1}</value></data>
+  <data name="ReviewSubtitlePlural" xml:space="preserve"><value>{0} copies · {1}</value></data>
+  <data name="PreviousGroupAriaLabel" xml:space="preserve"><value>Previous group</value></data>
+  <data name="NextGroupAriaLabel" xml:space="preserve"><value>Next group</value></data>
+  <data name="KeepingBadge" xml:space="preserve"><value>Keeping</value></data>
+  <data name="NextGroupButton" xml:space="preserve"><value>Next group</value></data>
+  <data name="CompareFullSizeButton" xml:space="preserve"><value>Compare full size</value></data>
+  <data name="SelectAllExtrasButton" xml:space="preserve"><value>Select all {0} extras ({1})</value></data>
+  <data name="DoneButton" xml:space="preserve"><value>Done</value></data>
+  <data name="ReviewHintMoveGroups" xml:space="preserve"><value>move between groups</value></data>
+  <data name="ReviewHintToggleKeeper" xml:space="preserve"><value>toggle a keeper (more than one can survive)</value></data>
+  <data name="ReviewHintClose" xml:space="preserve"><value>close.</value></data>
+  <data name="ReviewHintSafetyNote" xml:space="preserve"><value>Nothing is deleted here — this only decides which copies survive an export.</value></data>
+  <data name="DistinguisherDifferentResolutions" xml:space="preserve"><value>different resolutions</value></data>
+  <data name="DistinguisherDifferentFileSizes" xml:space="preserve"><value>different file sizes</value></data>
+  <data name="DistinguisherChooseByLocation" xml:space="preserve"><value>identical copies — choose by location</value></data>
+  <data name="DistinguisherChooseByName" xml:space="preserve"><value>identical copies — choose by name</value></data>
+  <data name="DistinguisherIdenticalCopies" xml:space="preserve"><value>identical copies</value></data>
+</root>

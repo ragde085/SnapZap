@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <data name="RailLibraryLabel" xml:space="preserve"><value>Library</value></data>
+  <data name="RailPhotoCount" xml:space="preserve"><value>{0} photos</value></data>
+  <data name="RailScannedAgo" xml:space="preserve"><value> · scanned {0}</value></data>
+  <data name="RailStepsOfFive" xml:space="preserve"><value>{0} of 5 done</value></data>
+  <data name="RailGroupsWaiting" xml:space="preserve"><value>{0} GROUPS WAITING</value></data>
+  <data name="RailTablistLabel" xml:space="preserve"><value>Rail view</value></data>
+  <data name="PlanTab" xml:space="preserve"><value>Plan</value></data>
+  <data name="FoldersTab" xml:space="preserve"><value>Folders</value></data>
+  <data name="FiltersTab" xml:space="preserve"><value>Filters</value></data>
+  <data name="ScanFolderHint" xml:space="preserve"><value>Scan a folder to see the plan.</value></data>
+  <data name="CancelButton" xml:space="preserve"><value>Cancel</value></data>
+  <data name="ChangeFolderButton" xml:space="preserve"><value>Change folder…</value></data>
+  <data name="ReviewGroupsButton" xml:space="preserve"><value>Review {0} groups</value></data>
+  <data name="FindAgainButton" xml:space="preserve"><value>Find again</value></data>
+  <data name="NsfwRunTitleReady" xml:space="preserve"><value>Ask the model to guess which photos are explicit.</value></data>
+  <data name="NsfwRunTitleNotReady" xml:space="preserve"><value>Needs the NSFW model — see Setup.</value></data>
+  <data name="RunButton" xml:space="preserve"><value>Run</value></data>
+  <data name="NarrowingToLabel" xml:space="preserve"><value>Narrowing to</value></data>
+  <data name="ClearAllButton" xml:space="preserve"><value>Clear all</value></data>
+  <data name="DuplicatesLabel" xml:space="preserve"><value>Duplicates</value></data>
+  <data name="AnyOption" xml:space="preserve"><value>Any</value></data>
+  <data name="ExtraCopiesOnlyOption" xml:space="preserve"><value>Extra copies only</value></data>
+  <data name="ExtraCopiesNote" xml:space="preserve"><value>Identical and same-shot — {0}.</value></data>
+  <data name="KeepersOnlyOption" xml:space="preserve"><value>Keepers only</value></data>
+  <data name="BurstFramesOption" xml:space="preserve"><value>Burst frames</value></data>
+  <data name="BurstNote" xml:space="preserve"><value>Separate photographs — no bulk path picks them.</value></data>
+  <data name="ContentReviewLabel" xml:space="preserve"><value>Content review</value></data>
+  <data name="LikelyExplicitOption" xml:space="preserve"><value>Likely explicit</value></data>
+  <data name="NotSureOption" xml:space="preserve"><value>Not sure</value></data>
+  <data name="LooksCleanOption" xml:space="preserve"><value>Looks clean</value></data>
+  <data name="NotCheckedYetOption" xml:space="preserve"><value>Not checked yet</value></data>
+  <data name="NsfwScoreAllTitle" xml:space="preserve"><value>Score every photo for explicit content.</value></data>
+  <data name="RunToUnlockButton" xml:space="preserve"><value>Run to unlock these</value></data>
+  <data name="BlurOffValue" xml:space="preserve"><value>off</value></data>
+  <data name="BlurrierThanLabel" xml:space="preserve"><value>Blurrier than — {0}</value></data>
+  <data name="BlurSoftNote" xml:space="preserve"><value>{0} would drop out at {1}.</value></data>
+  <data name="FolderLabel" xml:space="preserve"><value>Folder</value></data>
+  <data name="AllFoldersOption" xml:space="preserve"><value>All folders</value></data>
+  <data name="SetInFoldersNote" xml:space="preserve"><value>set in Folders</value></data>
+  <data name="SubfoldersExcludedNote" xml:space="preserve"><value>Subfolders excluded — only files directly in this folder. Change it in Folders.</value></data>
+  <data name="YearLabel" xml:space="preserve"><value>Year</value></data>
+</root>

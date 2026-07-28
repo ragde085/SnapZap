@@ -82,8 +82,9 @@
     -->
     <IsTransformWebConfigDisabled>true</IsTransformWebConfigDisabled>
 
-    <!-- Nothing in the UI is localised, so the satellite assemblies are pure download. -->
-    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <!-- The UI ships English and Mexican Spanish (es-MX) resx satellites — trimming this to
+         just "en" would silently drop the es-MX translations from every build and publish. -->
+    <SatelliteResourceLanguages>en;es-MX</SatelliteResourceLanguages>
   </PropertyGroup>
 
   <!--

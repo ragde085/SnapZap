@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 using System.Security.Cryptography;
+using SnapZap.Core.Resources;
 
 namespace SnapZap.Core.Stego;
 
@@ -66,15 +67,15 @@ public static class PayloadCrypto
 
         const int headerLength = 1 + 4 + SaltLength + NonceLength + TagLength;
         if (blob.Length < headerLength)
-            throw new StegoException("Hidden data is corrupted or incomplete.");
+            throw new StegoException(CoreStrings.Get("HiddenDataCorrupted"));
 
         var span = blob.AsSpan();
         if (span[0] != FormatVersion)
-            throw new StegoException($"Unrecognized payload format version {span[0]}.");
+            throw new StegoException(CoreStrings.Get("UnrecognizedPayloadVersion", span[0]));
 
         var rawIterations = BinaryPrimitives.ReadUInt32BigEndian(span.Slice(1, 4));
         if (rawIterations == 0 || rawIterations > MaxPlausibleIterations)
-            throw new StegoException("Hidden data is corrupted or incomplete.");
+            throw new StegoException(CoreStrings.Get("HiddenDataCorrupted"));
         var iterations = (int)rawIterations;
 
         var salt = span.Slice(5, SaltLength).ToArray();

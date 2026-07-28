@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <data name="UnhandledError" xml:space="preserve"><value>An unhandled error has occurred.</value></data>
+  <data name="Reload" xml:space="preserve"><value>Reload</value></data>
+  <data name="ReconnectDialogLabel" xml:space="preserve"><value>Connection to SnapZap</value></data>
+  <data name="ReconnectTitle" xml:space="preserve"><value>SnapZap has stopped responding</value></data>
+  <data name="ReconnectRetryingPrefix" xml:space="preserve"><value>Trying to reconnect — next attempt in</value></data>
+  <data name="ReconnectRetryingOf" xml:space="preserve"><value>of</value></data>
+  <data name="ReconnectFailed" xml:space="preserve"><value>The SnapZap process isn't running any more. Start it again, then reload.</value></data>
+  <data name="ReconnectRejected" xml:space="preserve"><value>This window is out of date because SnapZap restarted. Reload to pick up where you left off.</value></data>
+  <data name="ReconnectSafe" xml:space="preserve"><value>Nothing has been lost. Your selection is saved, and every scan, export and delete is journalled — completed work is on disk, and an interrupted export resumes where it stopped.</value></data>
+  <data name="TryAgain" xml:space="preserve"><value>Try again</value></data>
+</root>

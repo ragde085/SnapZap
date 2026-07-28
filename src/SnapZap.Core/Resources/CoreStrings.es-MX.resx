@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <data name="CarrierMissing" xml:space="preserve"><value>El archivo portador no existe.</value></data>
+  <data name="CarrierNotImage" xml:space="preserve"><value>El portador debe ser un archivo de imagen legible.</value></data>
+  <data name="DestinationExists" xml:space="preserve"><value>Ya existe un archivo distinto en {0}.</value></data>
+  <data name="FileMissing" xml:space="preserve"><value>Ese archivo no existe.</value></data>
+  <data name="NoHiddenData" xml:space="preserve"><value>Esta imagen no parece contener datos ocultos.</value></data>
+  <data name="HiddenDataCorrupted" xml:space="preserve"><value>Los datos ocultos están dañados o incompletos.</value></data>
+  <data name="UnrecognizedPayloadVersion" xml:space="preserve"><value>Versión de formato de carga útil no reconocida {0}.</value></data>
+  <data name="InvalidEntryName" xml:space="preserve"><value>Los datos ocultos están dañados: nombre de entrada inválido "{0}".</value></data>
+  <data name="ImplausibleEntrySize" xml:space="preserve"><value>Los datos ocultos están dañados: una entrada se descomprime a un tamaño implausible.</value></data>
+  <data name="NonCollidingNameFailed" xml:space="preserve"><value>no se pudo resolver un nombre sin colisión para {0}</value></data>
+  <data name="SourceMissing" xml:space="preserve"><value>falta el archivo de origen</value></data>
+  <data name="DestinationNotWritten" xml:space="preserve"><value>no se escribió el destino: {0}</value></data>
+  <data name="HardlinkSizeMismatch" xml:space="preserve"><value>el tamaño del enlace duro no coincide para {0}</value></data>
+  <data name="VerificationFailed" xml:space="preserve"><value>verificación fallida: el hash de {0} no coincide con el origen</value></data>
+  <data name="TrashFailed" xml:space="preserve"><value>Error al enviar a la papelera de reciclaje {0}: {1}</value></data>
+  <data name="HardLinkFailedErrno" xml:space="preserve"><value>el enlace duro {0} -&gt; {1} falló (errno via link())</value></data>
+  <data name="RecycleFailed" xml:space="preserve"><value>Error al reciclar {0} (SHFileOperation {1})</value></data>
+  <data name="CreateHardLinkFailed" xml:space="preserve"><value>CreateHardLink {0} -&gt; {1} falló (win32 {2})</value></data>
+  <data name="NsfwModelNotFound" xml:space="preserve"><value>No se encontró el modelo ONNX de NSFW</value></data>
+  <data name="CannotDecode" xml:space="preserve"><value>no se pudo decodificar {0}</value></data>
+  <data name="ResizeFailed" xml:space="preserve"><value>error al cambiar el tamaño</value></data>
+  <data name="DupeKindExact" xml:space="preserve"><value>Idéntica</value></data>
+  <data name="DupeKindVariant" xml:space="preserve"><value>Misma toma</value></data>
+  <data name="DupeKindBurst" xml:space="preserve"><value>Ráfaga</value></data>
+</root>

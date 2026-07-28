@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <data name="SelectionAreaLabel" xml:space="preserve"><value>Acciones de selección</value></data>
+  <data name="SelectedCountSingular" xml:space="preserve"><value>{0} seleccionada</value></data>
+  <data name="SelectedCountPlural" xml:space="preserve"><value>{0} seleccionadas</value></data>
+  <data name="InvertButton" xml:space="preserve"><value>Invertir</value></data>
+  <data name="ClearButton" xml:space="preserve"><value>Limpiar</value></data>
+  <data name="DeleteButton" xml:space="preserve"><value>Eliminar…</value></data>
+  <data name="HideButton" xml:space="preserve"><value>Ocultar en imagen…</value></data>
+  <data name="ExportButton" xml:space="preserve"><value>Exportar…</value></data>
+  <data name="WaitForJobHint" xml:space="preserve"><value>Espera a que termine el proceso actual.</value></data>
+  <data name="InvertHint" xml:space="preserve"><value>Selecciona todo lo que se muestra y aún no está seleccionado</value></data>
+  <data name="ConfirmDeleteAriaLabel" xml:space="preserve"><value>Confirmar eliminación</value></data>
+  <data name="ConfirmDeleteBodySingular" xml:space="preserve"><value>¿Mover {0} foto ({1}) a la papelera de reciclaje? Puedes deshacerlo desde Historial.</value></data>
+  <data name="ConfirmDeleteBodyPlural" xml:space="preserve"><value>¿Mover {0} fotos ({1}) a la papelera de reciclaje? Puedes deshacerlo desde Historial.</value></data>
+  <data name="MoveToRecycleBinButton" xml:space="preserve"><value>Mover a la papelera de reciclaje</value></data>
+  <data name="CancelButton" xml:space="preserve"><value>Cancelar</value></data>
+</root>

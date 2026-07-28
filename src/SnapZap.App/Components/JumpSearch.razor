@@ -1,5 +1,6 @@
 @implements IDisposable
 @inject AppState AppState
+@inject IStringLocalizer<JumpSearchResources> L
 
 @*
     "Jump to anything" — a live filename/folder search over the whole library (not just what's
@@ -7,16 +8,16 @@
     straight into the preview so there is nothing else to learn: type, see matches, pick one.
 *@
 <div class="jump" @onkeydown="OnKeyDown">
-    <input class="input jump-input" placeholder="Jump to anything…" aria-label="Jump to a photo by name or folder"
+    <input class="input jump-input" placeholder="@L["JumpPlaceholder"]" aria-label="@L["JumpInputAriaLabel"]"
            value="@_query" @oninput="OnInput" @onfocus="() => _open = true" />
 
     @if (_open && _query.Trim().Length > 0)
     {
-        <div class="jump-results" role="listbox" aria-label="Matching photos">
+        <div class="jump-results" role="listbox" aria-label="@L["MatchingPhotosAriaLabel"]">
             @{ var results = AppState.Search(_query); }
             @if (results.Count == 0)
             {
-                <div class="jump-empty">No photos match "@_query".</div>
+                <div class="jump-empty">@L["NoPhotosMatch", _query]</div>
             }
             else
             {

@@ -1,5 +1,6 @@
 @implements IDisposable
 @inject AppState AppState
+@inject IStringLocalizer<RailResources> L
 
 @*
     The left rail: the folder tree, the Filters popover and the Select command row used to be
@@ -10,15 +11,15 @@
 *@
 <div class="rail">
     <div class="rail-lib">
-        <div class="eyeb" style="margin-bottom:5px">Library</div>
+        <div class="eyeb" style="margin-bottom:5px">@L["RailLibraryLabel"]</div>
         <div class="rail-lib-path">@(AppState.ScannedFolder ?? "—")</div>
         @if (AppState.ScannedFolder is not null)
         {
             <div class="rail-lib-meta">
-                @AppState.Images.Count.ToString("N0") photos
+                @L["RailPhotoCount", AppState.Images.Count.ToString("N0")]
                 @if (AppState.ScannedAt is { } at)
                 {
-                    <text> · scanned @AppState.TimeAgo(at)</text>
+                    <text>@L["RailScannedAgo", AppState.TimeAgo(at)]</text>
                 }
             </div>
         }
@@ -28,10 +29,10 @@
     {
         <div class="rail-progress">
             <div class="rail-progress-head">
-                <span class="eyeb">@DoneCount of 5 done</span>
+                <span class="eyeb">@L["RailStepsOfFive", DoneCount]</span>
                 @if (AppState.DupeGroups.Count > 0)
                 {
-                    <span class="waiting">@AppState.DupeGroups.Count.ToString("N0") GROUPS WAITING</span>
+                    <span class="waiting">@L["RailGroupsWaiting", AppState.DupeGroups.Count.ToString("N0")]</span>
                 }
             </div>
             <div class="rail-progress-bar">
@@ -43,11 +44,11 @@
         </div>
     }
 
-    <div class="tabs" role="tablist" aria-label="Rail view">
+    <div class="tabs" role="tablist" aria-label="@L["RailTablistLabel"]">
         <button class="tab @(_tab == RailTab.Plan ? "tab-on" : "")" role="tab"
                 aria-selected="@(_tab == RailTab.Plan ? "true" : "false")"
                 @onclick="() => _tab = RailTab.Plan">
-            Plan
+            @L["PlanTab"]
             @if (AttentionCount > 0)
             {
                 <span class="tag tag-accent">@AttentionCount</span>
@@ -56,7 +57,7 @@
         <button class="tab @(_tab == RailTab.Folders ? "tab-on" : "")" role="tab"
                 aria-selected="@(_tab == RailTab.Folders ? "true" : "false")"
                 @onclick="() => _tab = RailTab.Folders">
-            Folders
+            @L["FoldersTab"]
             @if (SomeFolderPending)
             {
                 <span class="dot">●</span>
@@ -65,7 +66,7 @@
         <button class="tab @(_tab == RailTab.Filters ? "tab-on" : "")" role="tab"
                 aria-selected="@(_tab == RailTab.Filters ? "true" : "false")"
                 @onclick="() => _tab = RailTab.Filters">
-            Filters
+            @L["FiltersTab"]
             @if (AppState.HasActiveFilter)
             {
                 <span class="tag tag-accent">@ActiveFilterCount</span>
@@ -82,7 +83,7 @@
             @if (AppState.ScannedFolder is null && !AppState.Busy)
             {
                 <div style="padding:16px">
-                    <p class="hint" style="margin-bottom:12px">Scan a folder to see the plan.</p>
+                    <p class="hint" style="margin-bottom:12px">@L["ScanFolderHint"]</p>
                     <ScanForm />
                 </div>
             }
@@ -160,7 +161,7 @@
                     {
                         <button class="btn btn-ghost" style="font-size:11.5px;padding:2px 0;margin-top:4px"
                                 @onclick="() => _changingFolder = !_changingFolder">
-                            @(_changingFolder ? "Cancel" : "Change folder…")
+                            @(_changingFolder ? L["CancelButton"] : L["ChangeFolderButton"])
                         </button>
                         @if (_changingFolder)
                         {
@@ -178,12 +179,12 @@
                             {
                                 <button class="btn btn-primary" style="font-size:12px;padding:5px 10px;width:100%;margin-bottom:5px"
                                         @onclick="() => OnOpenDupeReview.InvokeAsync()">
-                                    Review @AppState.DupeGroups.Count.ToString("N0") groups
+                                    @L["ReviewGroupsButton", AppState.DupeGroups.Count.ToString("N0")]
                                 </button>
                             }
                             <button class="btn btn-secondary" style="font-size:11.5px;padding:3px 9px;background:var(--color-bg)"
                                     disabled="@AppState.Busy" @onclick="() => AppState.DedupAsync()">
-                                Find again
+                                @L["FindAgainButton"]
                             </button>
                         </div>
                     }
@@ -192,9 +193,9 @@
                     {
                         <button class="btn btn-secondary facet-run" style="font-size:12px;padding:4px 10px"
                                 disabled="@(AppState.Busy || !AppState.NsfwModelReady)"
-                                title="@(AppState.NsfwModelReady ? "Ask the model to guess which photos are explicit." : "Needs the NSFW model — see Setup.")"
+                                title="@(AppState.NsfwModelReady ? L["NsfwRunTitleReady"] : L["NsfwRunTitleNotReady"])"
                                 @onclick="() => AppState.NsfwAsync()">
-                            Run
+                            @L["RunButton"]
                         </button>
                     }
                 </div>
@@ -228,78 +229,78 @@
     {
         <div class="rail-filters">
             <div class="filter-head">
-                <span class="eyeb">Narrowing to</span>
+                <span class="eyeb">@L["NarrowingToLabel"]</span>
                 <button class="btn btn-ghost" style="font-size:11.5px" disabled="@(!AppState.HasActiveFilter)"
-                        @onclick="() => AppState.ClearFilters()">Clear all</button>
+                        @onclick="() => AppState.ClearFilters()">@L["ClearAllButton"]</button>
             </div>
 
             <div class="facet">
-                <label class="eyeb" style="display:block;margin-bottom:4px">Duplicates</label>
-                @RenderDupeRow(DupeFilter.Any, "Any", AppState.Images.Count, null)
-                @RenderDupeRow(DupeFilter.ExtrasOnly, "Extra copies only", AppState.DupeExtraCount,
-                    $"Identical and same-shot — {AppState.FormattedReclaimable}.")
-                @RenderDupeRow(DupeFilter.KeepersOnly, "Keepers only", AppState.DupeKeeperCount, null)
-                @RenderDupeRow(DupeFilter.BurstOnly, "Burst frames", AppState.BurstMemberCount, null)
-                <div class="facet-note quiet">Separate photographs — no bulk path picks them.</div>
+                <label class="eyeb" style="display:block;margin-bottom:4px">@L["DuplicatesLabel"]</label>
+                @RenderDupeRow(DupeFilter.Any, L["AnyOption"], AppState.Images.Count, null)
+                @RenderDupeRow(DupeFilter.ExtrasOnly, L["ExtraCopiesOnlyOption"], AppState.DupeExtraCount,
+                    L["ExtraCopiesNote", AppState.FormattedReclaimable])
+                @RenderDupeRow(DupeFilter.KeepersOnly, L["KeepersOnlyOption"], AppState.DupeKeeperCount, null)
+                @RenderDupeRow(DupeFilter.BurstOnly, L["BurstFramesOption"], AppState.BurstMemberCount, null)
+                <div class="facet-note quiet">@L["BurstNote"]</div>
             </div>
 
             <div class="facet">
-                <label class="eyeb" style="display:block;margin-bottom:4px">Content review</label>
-                @RenderNsfwRow(NsfwFilter.Any, "Any", AppState.Images.Count)
-                @RenderNsfwRow(NsfwFilter.Likely, "Likely explicit", AppState.CountInBand(AppState.NsfwBand.Likely))
-                @RenderNsfwRow(NsfwFilter.Unsure, "Not sure", AppState.CountInBand(AppState.NsfwBand.Unsure))
-                @RenderNsfwRow(NsfwFilter.Clean, "Looks clean", AppState.CountInBand(AppState.NsfwBand.Clean))
-                @RenderNsfwRow(NsfwFilter.Unchecked, "Not checked yet", AppState.CountInBand(AppState.NsfwBand.Unchecked))
+                <label class="eyeb" style="display:block;margin-bottom:4px">@L["ContentReviewLabel"]</label>
+                @RenderNsfwRow(NsfwFilter.Any, L["AnyOption"], AppState.Images.Count)
+                @RenderNsfwRow(NsfwFilter.Likely, L["LikelyExplicitOption"], AppState.CountInBand(AppState.NsfwBand.Likely))
+                @RenderNsfwRow(NsfwFilter.Unsure, L["NotSureOption"], AppState.CountInBand(AppState.NsfwBand.Unsure))
+                @RenderNsfwRow(NsfwFilter.Clean, L["LooksCleanOption"], AppState.CountInBand(AppState.NsfwBand.Clean))
+                @RenderNsfwRow(NsfwFilter.Unchecked, L["NotCheckedYetOption"], AppState.CountInBand(AppState.NsfwBand.Unchecked))
                 @if (AppState.CountInBand(AppState.NsfwBand.Unchecked) == AppState.Images.Count && AppState.Images.Count > 0)
                 {
                     <button class="btn btn-secondary facet-run" style="font-size:11.5px;padding:3px 9px"
                             disabled="@(AppState.Busy || !AppState.NsfwModelReady)"
-                            title="@(AppState.NsfwModelReady ? "Score every photo for explicit content." : "Needs the NSFW model — see Setup.")"
+                            title="@(AppState.NsfwModelReady ? L["NsfwScoreAllTitle"] : L["NsfwRunTitleNotReady"])"
                             @onclick="() => AppState.NsfwAsync()">
-                        Run to unlock these
+                        @L["RunToUnlockButton"]
                     </button>
                 }
             </div>
 
             <div class="facet">
                 <label class="eyeb" style="display:block;margin-bottom:6px">
-                    Blurrier than — @(AppState.BlurMax == 0 ? "off" : AppState.BlurMax.ToString())
+                    @L["BlurrierThanLabel", AppState.BlurMax == 0 ? L["BlurOffValue"] : AppState.BlurMax.ToString()]
                 </label>
                 <input type="range" min="0" max="300" step="5" value="@AppState.BlurMax"
                        @onchange="e => AppState.BlurMax = int.Parse(e.Value!.ToString()!)"
                        @oninput="e => AppState.BlurMax = int.Parse(e.Value!.ToString()!)" />
-                <div class="facet-note quiet">@SoftCount would drop out at @AppState.SoftThreshold.ToString("F0").</div>
+                <div class="facet-note quiet">@L["BlurSoftNote", SoftCount, AppState.SoftThreshold.ToString("F0")]</div>
             </div>
 
             <div class="facet">
-                <label class="eyeb" style="display:block;margin-bottom:4px">Folder</label>
+                <label class="eyeb" style="display:block;margin-bottom:4px">@L["FolderLabel"]</label>
                 <div style="font-size:12.5px;padding:4px 0;border-top:1px solid var(--color-divider);display:flex;justify-content:space-between">
-                    <span>@(AppState.Folder.Length > 0 ? ImageView.ShortFolder(AppState.Folder) : "All folders")</span>
+                    <span>@(AppState.Folder.Length > 0 ? ImageView.ShortFolder(AppState.Folder) : L["AllFoldersOption"])</span>
                     @if (AppState.Folder.Length > 0)
                     {
                         <span style="display:flex;align-items:center;gap:6px">
-                            <span style="color:var(--color-neutral-700);font-size:11px">set in Folders</span>
+                            <span style="color:var(--color-neutral-700);font-size:11px">@L["SetInFoldersNote"]</span>
                             <span class="filter-chip" style="padding:0" @onclick="() => AppState.Folder = string.Empty"><span class="clear">✕</span></span>
                         </span>
                     }
                     else
                     {
-                        <span style="color:var(--color-neutral-700);font-size:11px">set in Folders</span>
+                        <span style="color:var(--color-neutral-700);font-size:11px">@L["SetInFoldersNote"]</span>
                     }
                 </div>
                 @* Read-only here, same as the folder name above — the checkbox lives in Folders,
                    next to the folder it modifies, not duplicated as a second editable control. *@
                 @if (AppState.Folder.Length > 0 && !AppState.IncludeSubfolders)
                 {
-                    <div class="facet-note quiet">Subfolders excluded — only files directly in this folder. Change it in Folders.</div>
+                    <div class="facet-note quiet">@L["SubfoldersExcludedNote"]</div>
                 }
             </div>
 
             <div class="facet">
-                <label class="eyeb" style="display:block;margin-bottom:4px">Year</label>
+                <label class="eyeb" style="display:block;margin-bottom:4px">@L["YearLabel"]</label>
                 <div class="seg seg-scroll">
                     <label class="seg-opt">
-                        <input type="radio" name="year" checked="@(AppState.Year.Length == 0)" @onchange="() => AppState.Year = string.Empty" />Any
+                        <input type="radio" name="year" checked="@(AppState.Year.Length == 0)" @onchange="() => AppState.Year = string.Empty" />@L["AnyOption"]
                     </label>
                     @foreach (var year in AppState.Years)
                     {

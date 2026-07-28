@@ -1,5 +1,6 @@
 @* Shared status rows, used both by the launch prompt and the Setup panel. *@
 @inject IJSRuntime JS
+@inject IStringLocalizer<DependencyListResources> L
 
 @foreach (var d in Items)
 {
@@ -7,21 +8,21 @@
         <div class="dep-head">
             <span class="dep-dot" aria-hidden="true"></span>
             <span class="dep-name">@d.Name</span>
-            <span class="dep-state">@(d.Found ? "Ready" : "Not installed")</span>
+            <span class="dep-state">@(d.Found ? L["StatusReady"] : L["StatusNotInstalled"])</span>
         </div>
 
         @if (d.Found)
         {
             <div class="dep-body">
                 <div class="dep-note">@d.Unlocks</div>
-                <div class="dep-path" title="@d.FoundAt">Using @d.FoundAt</div>
+                <div class="dep-path" title="@d.FoundAt">@L["UsingPathLabel", d.FoundAt]</div>
             </div>
         }
         else
         {
             <div class="dep-body">
                 <div class="dep-note">@d.Unlocks</div>
-                <div class="dep-note quiet">Without it: @d.WithoutIt</div>
+                <div class="dep-note quiet">@L["WithoutItLabel", d.WithoutIt]</div>
 
                 @if (Detailed)
                 {
@@ -30,12 +31,12 @@
                        reading three steps to place a file by hand is the fallback. *@
                     @if (d.Command is { } cmd)
                     {
-                        <div class="dep-cmd-label">Run this once, from the SnapZap folder:</div>
+                        <div class="dep-cmd-label">@L["RunCommandInstruction"]</div>
                         <div class="dep-cmd">
                             <code>@cmd</code>
-                            <button type="button" class="dep-copy" title="Copy command"
+                            <button type="button" class="dep-copy" title="@L["CopyCommandTitle"]"
                                     @onclick="() => Copy(d.Id, cmd)">
-                                @(_copied == d.Id ? "Copied" : "Copy")
+                                @(_copied == d.Id ? L["CopyButtonCopied"] : L["CopyButtonCopy"])
                             </button>
                         </div>
                         @if (d.CommandNote is { } note)
@@ -54,12 +55,12 @@
                     @* With nothing actionable above it there is nothing to be an alternative
                        to, so the manual route is the only route and starts open. *@
                     <details class="dep-manual" open="@(d.Command is null && d.InstallerHint is null)">
-                        <summary>@(d.Command is null ? "Install it by hand" : "Or install it by hand")</summary>
+                        <summary>@(d.Command is null ? L["InstallManualSummaryOnly"] : L["InstallManualSummaryOr"])</summary>
                         <ol class="dep-steps">
                             @foreach (var dl in d.Downloads)
                             {
                                 <li>
-                                    Download
+                                    @L["DownloadLabel"]
                                     <a href="@dl.Url" target="_blank" rel="noopener noreferrer">@dl.Label</a>
                                     @if (dl.Size is { } size)
                                     {
@@ -69,12 +70,12 @@
                                        for, so the rename belongs with the link, not after it. *@
                                     @if (dl.SaveAs != dl.Label)
                                     {
-                                        <text> and save it as <code>@dl.SaveAs</code></text>
+                                        <text> @L["SaveAsInstruction"] <code>@dl.SaveAs</code></text>
                                     }
                                 </li>
                             }
                             <li>
-                                Put @(d.Downloads.Count > 1 ? "both files" : "it") in
+                                @(d.Downloads.Count > 1 ? L["PutBothFilesIn"] : L["PutItIn"])
                                 <code class="dep-path">@d.InstallTo</code>
                             </li>
                             @if (d.ExtraStep is { } step)

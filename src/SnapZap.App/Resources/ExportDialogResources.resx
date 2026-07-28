@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <data name="DialogAriaLabel" xml:space="preserve"><value>Export selected photos</value></data>
+  <data name="ExportTitleOne" xml:space="preserve"><value>Export {0} photo</value></data>
+  <data name="ExportTitleMany" xml:space="preserve"><value>Export {0} photos</value></data>
+  <data name="SubHeading" xml:space="preserve"><value>Writes the photos you picked into a clean folder. Your source library is untouched unless you choose Move below.</value></data>
+  <data name="DestinationLabel" xml:space="preserve"><value>Destination — absolute path</value></data>
+  <data name="DestinationPlaceholder" xml:space="preserve"><value>Where the clean library goes</value></data>
+  <data name="BrowseButton" xml:space="preserve"><value>Browse…</value></data>
+  <data name="DestinationHint" xml:space="preserve"><value>Relative paths are rejected: one would quietly resolve inside the folder you are cleaning.</value></data>
+  <data name="TransferModeLabel" xml:space="preserve"><value>Transfer mode</value></data>
+  <data name="ModeCopy" xml:space="preserve"><value>Copy</value></data>
+  <data name="ModeMove" xml:space="preserve"><value>Move</value></data>
+  <data name="ModeHardlink" xml:space="preserve"><value>Hardlink</value></data>
+  <data name="TransferModeHint" xml:space="preserve"><value>Copy — originals stay exactly where they are. Move verifies the hash before removing the source; Hardlink needs one drive.</value></data>
+  <data name="FolderStructureLabel" xml:space="preserve"><value>Folder structure</value></data>
+  <data name="StructureDate" xml:space="preserve"><value>By date</value></data>
+  <data name="StructureMirror" xml:space="preserve"><value>Mirror source</value></data>
+  <data name="StructureFlat" xml:space="preserve"><value>Flat</value></data>
+  <data name="RecycleAllSelectedNotice" xml:space="preserve"><value>Everything is selected, so there is nothing left to recycle.</value></data>
+  <data name="RecycleRejectsOne" xml:space="preserve"><value>Also recycle the {0} photo I didn't pick</value></data>
+  <data name="RecycleRejectsMany" xml:space="preserve"><value>Also recycle the {0} photos I didn't pick</value></data>
+  <data name="RecycleRejectsDetail" xml:space="preserve"><value>Runs only after this export is written and verified. Covers the whole catalogue, not just what your filters show. Reversible from History.</value></data>
+  <data name="RecycleConfirmOne" xml:space="preserve"><value>&lt;b&gt;{0}&lt;/b&gt; photo ({1}) will go to the Recycle Bin after the export verifies.</value></data>
+  <data name="RecycleConfirmMany" xml:space="preserve"><value>&lt;b&gt;{0}&lt;/b&gt; photos ({1}) will go to the Recycle Bin after the export verifies.</value></data>
+  <data name="PreflightCheckedTag" xml:space="preserve"><value>CHECKED</value></data>
+  <data name="PreflightKeeperCountOne" xml:space="preserve"><value>{0} photo · {1} to write</value></data>
+  <data name="PreflightKeeperCountMany" xml:space="preserve"><value>{0} photos · {1} to write</value></data>
+  <data name="FreeSpaceEnough" xml:space="preserve"><value>{0} free at the destination — enough</value></data>
+  <data name="FreeSpaceNotEnough" xml:space="preserve"><value>{0} free at the destination — not enough</value></data>
+  <data name="FreeSpaceUnknown" xml:space="preserve"><value>Couldn't read free space — export isn't blocked, but nothing confirmed it will fit.</value></data>
+  <data name="HardlinkAvailable" xml:space="preserve"><value>Hardlinks available — uses no extra space</value></data>
+  <data name="HardlinkUnavailable" xml:space="preserve"><value>Hardlinks unavailable — source and destination are on different drives</value></data>
+  <data name="SampleDestination" xml:space="preserve"><value>Example: {0}</value></data>
+  <data name="PreflightStaleHint" xml:space="preserve"><value>Change the destination, mode or structure and this check clears itself — Export can never be armed for a plan nothing verified.</value></data>
+  <data name="PreflightPromptHint" xml:space="preserve"><value>Check the destination before exporting — free space and hardlink availability are verified here, not guessed.</value></data>
+  <data name="CheckDestinationButton" xml:space="preserve"><value>Check destination</value></data>
+  <data name="CheckAgainButton" xml:space="preserve"><value>Check again</value></data>
+  <data name="ExportingStatus" xml:space="preserve"><value>Exporting…</value></data>
+  <data name="ExportButton" xml:space="preserve"><value>Export {0} photos</value></data>
+  <data name="StopButton" xml:space="preserve"><value>Stop</value></data>
+  <data name="StoppingButton" xml:space="preserve"><value>Stopping…</value></data>
+  <data name="DoneButton" xml:space="preserve"><value>Done</value></data>
+  <data name="CancelButton" xml:space="preserve"><value>Cancel</value></data>
+  <data name="ErrorNoDestination" xml:space="preserve"><value>Enter a destination folder first.</value></data>
+  <data name="ErrorRelativePath" xml:space="preserve"><value>Enter a full path, starting from the root of the drive.</value></data>
+  <data name="ErrorMirrorNeedsScan" xml:space="preserve"><value>Mirror keeps your existing folder structure, so scan the source folder first — or choose By date or Flat.</value></data>
+  <data name="ErrorPreflightFailed" xml:space="preserve"><value>Could not check that destination: {0}</value></data>
+  <data name="EtaSuffix" xml:space="preserve"><value> · ~{0} left</value></data>
+  <data name="ResultExported" xml:space="preserve"><value>Exported {0}</value></data>
+  <data name="ResultAlreadyThere" xml:space="preserve"><value>{0} already there</value></data>
+  <data name="ResultFailed" xml:space="preserve"><value>{0} failed</value></data>
+  <data name="ResultRecycled" xml:space="preserve"><value>{0} recycled</value></data>
+  <data name="ResultMoveRemovedOne" xml:space="preserve"><value>{0} original was removed from the source folder. Undo it from History.</value></data>
+  <data name="ResultMoveRemovedMany" xml:space="preserve"><value>{0} originals were removed from the source folder. Undo it from History.</value></data>
+  <data name="ResultManifestWritten" xml:space="preserve"><value>Manifest written to {0}</value></data>
+  <data name="ResultStopped" xml:space="preserve"><value>Export stopped. Photos already copied are verified and complete; running it again resumes where this left off.</value></data>
+  <data name="ResultError" xml:space="preserve"><value>Export stopped: {0}</value></data>
+</root>

@@ -1,5 +1,6 @@
 @implements IDisposable
 @inject AppState AppState
+@inject IStringLocalizer<ToastResources> L
 
 @if (AppState.CurrentToast is { } toast)
 {
@@ -7,10 +8,10 @@
         <span class="msg">@toast.Message</span>
         @if (toast is { ActionLabel: { } label, Action: { } action })
         {
-            <button class="btn btn-primary" disabled="@_running" @onclick="() => Run(action)">@(_running ? "Working…" : label)</button>
+            <button class="btn btn-primary" disabled="@_running" @onclick="() => Run(action)">@(_running ? L["Working"] : label)</button>
         }
         <button class="btn btn-secondary" style="background:transparent;color:inherit;border-color:color-mix(in srgb, var(--color-bg) 40%, transparent)"
-                aria-label="Dismiss" @onclick="() => AppState.DismissToast()">Dismiss</button>
+                aria-label="@L["Dismiss"]" @onclick="() => AppState.DismissToast()">@L["Dismiss"]</button>
     </div>
 }
 

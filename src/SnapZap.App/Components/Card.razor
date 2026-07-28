@@ -1,5 +1,6 @@
 @implements IDisposable
 @inject AppState AppState
+@inject IStringLocalizer<CardResources> L
 
 <div class="card @(Selected ? "selected" : "")"
      tabindex="@(IsTabStop ? 0 : -1)"
@@ -31,7 +32,7 @@
             }
             @if (AppState.IsSoft(Img))
             {
-                <span class="badge blur" title="Soft focus — blur score @Img.BlurScore!.Value.ToString("F1") (soft at @AppState.SoftThreshold.ToString("F0") or below)">
+                <span class="badge blur" title="@L["BlurBadgeTitleFormat", Img.BlurScore!.Value.ToString("F1"), AppState.SoftThreshold.ToString("F0")]">
                     <svg viewBox="0 0 24 24">
                         <circle cx="12" cy="12" r="4" />
                         <path d="M12 3v2M12 19v2M3 12h2M19 12h2" />
@@ -76,7 +77,7 @@
     /// The bare score used to be the whole tooltip, which told you nothing about whether it
     /// was a high one.</summary>
     string NsfwBadgeTitle =>
-        $"{AppState.BandLabel(NsfwBand)} — the model scored this {AppState.NsfwEvidence(Img)}";
+        L["NsfwBadgeTitleFormat", AppState.BandLabel(NsfwBand), AppState.NsfwEvidence(Img)];
 
     string AriaLabel
     {
@@ -87,17 +88,17 @@
             // announce "NSFW 0.00", so a screen-reader user heard a content warning read out
             // over a library where nothing had been flagged at all.
             if (Flagged)
-                bits.Add(NsfwBand == AppState.NsfwBand.Likely ? "likely explicit" : "explicit content, not sure");
-            if (AppState.IsSoft(Img)) bits.Add("soft focus");
-            if (Img.Dupe is { } d) bits.Add(d.IsKeeper ? "duplicate keeper" : "duplicate extra");
+                bits.Add(NsfwBand == AppState.NsfwBand.Likely ? L["AriaLikelyExplicit"] : L["AriaExplicitUnsure"]);
+            if (AppState.IsSoft(Img)) bits.Add(L["AriaSoftFocus"]);
+            if (Img.Dupe is { } d) bits.Add(d.IsKeeper ? L["AriaDuplicateKeeper"] : L["AriaDuplicateExtra"]);
             return string.Join(", ", bits);
         }
     }
 
     // Reads DupeKindExtensions.Label rather than spelling the kinds out, so the three kinds are
     // named the same here, in the preview and in the folder tree's summary.
-    static string DupeTitle(DupeInfo d) =>
-        $"{d.Kind.Label()} duplicate group #{d.GroupId} — {(d.IsKeeper ? "keeping this one" : "extra copy")}";
+    string DupeTitle(DupeInfo d) =>
+        L["DupeTitleFormat", d.Kind.Label(), d.GroupId, d.IsKeeper ? L["DupeTitleKeeping"] : L["DupeTitleExtra"]];
 
     // Virtualize only re-renders an already-materialized item when its data changes; selection
     // is external state, so this component refreshes itself on AppState.Changed rather than

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <data name="NothingScannedYet" xml:space="preserve"><value>Todavía no hay nada escaneado</value></data>
+  <data name="PointAtFolder" xml:space="preserve"><value>Elige una carpeta para escanear.</value></data>
+  <data name="FirstRunLede" xml:space="preserve"><value>Lee todo lo que hay dentro, descubre qué fotos son copias entre sí y te entrega una biblioteca limpia para exportar. Todo esto en tu propia máquina.</value></data>
+  <data name="EnterScansHint" xml:space="preserve"><value>Enter para escanear. Un ~ al inicio se expande a tu carpeta de inicio.</value></data>
+  <data name="SupportedFormats" xml:space="preserve"><value>Lee JPEG · PNG · WebP · GIF · TIFF · BMP. HEIC/HEIF, AVIF y RAW de cámara se cuentan y se reportan, pero nunca se tocan, así que una carpeta de fotos de iPhone nunca parece un escaneo vacío.</value></data>
+  <data name="HowSnapZapWorks" xml:space="preserve"><value>Cómo funciona SnapZap</value></data>
+  <data name="TwoPromises" xml:space="preserve"><value>Dos promesas</value></data>
+  <data name="OriginalsStayPutTitle" xml:space="preserve"><value>Tus originales se quedan donde están</value></data>
+  <data name="OriginalsStayPutBody" xml:space="preserve"><value>Escanear solo lee. Los archivos se mueven únicamente en dos casos, y ambos tienes que pedirlos tú: una exportación en modo Mover, o al marcar "también enviar a la papelera lo que no elegí".</value></data>
+  <data name="NeverHardDeletedTitle" xml:space="preserve"><value>Nunca se elimina de forma permanente</value></data>
+  <data name="NeverHardDeletedBody" xml:space="preserve"><value>Eliminar significa enviar a la papelera de reciclaje. Cada lote queda en el historial con un botón de Restaurar al lado, mientras la papelera lo conserve.</value></data>
+  <data name="ShownOnceBanner" xml:space="preserve"><value>SE MUESTRA UNA SOLA VEZ. NO SE REPITE DESPUÉS.</value></data>
+</root>

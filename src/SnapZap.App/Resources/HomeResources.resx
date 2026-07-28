@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <data name="HistoryButton" xml:space="preserve"><value>History</value></data>
+  <data name="ExtractTooltip" xml:space="preserve"><value>Recover photos hidden inside a PNG</value></data>
+  <data name="ExtractAriaLabel" xml:space="preserve"><value>Extract hidden images</value></data>
+  <data name="HelpTooltip" xml:space="preserve"><value>Help and FAQ</value></data>
+  <data name="SetupTooltip" xml:space="preserve"><value>Setup</value></data>
+  <data name="MissingFeaturesTooltip" xml:space="preserve"><value>{0} optional feature(s) not installed</value></data>
+  <data name="ThemeToggleTooltip" xml:space="preserve"><value>Switch light/dark theme</value></data>
+  <data name="NounPhotosRead" xml:space="preserve"><value>photos read</value></data>
+  <data name="NounPhotosCompared" xml:space="preserve"><value>photos compared</value></data>
+  <data name="NounPhotosScored" xml:space="preserve"><value>photos scored</value></data>
+  <data name="NounPhotosMoved" xml:space="preserve"><value>photos moved</value></data>
+  <data name="ProgressOfAbout" xml:space="preserve"><value>of about {0} {1}</value></data>
+  <data name="ScanningEyebrowChecksums" xml:space="preserve"><value>Checksums</value></data>
+  <data name="ScanningEyebrowReused" xml:space="preserve"><value>Reused</value></data>
+  <data name="ScanningHint" xml:space="preserve"><value>Stopping keeps everything analysed so far — re-scanning picks up where this left off. Duplicate detection starts by itself the moment this finishes.</value></data>
+  <data name="RecycleBinHint" xml:space="preserve"><value>Every photo already moved is safely in the Recycle Bin and undoable from History — stopping just leaves the rest where they are.</value></data>
+  <data name="GenericBusyHint" xml:space="preserve"><value>Stopping keeps everything scored so far — re-running picks up where this left off.</value></data>
+  <data name="StopButton" xml:space="preserve"><value>Stop</value></data>
+  <data name="StoppingButton" xml:space="preserve"><value>Stopping…</value></data>
+  <data name="SelectAllShown" xml:space="preserve"><value>Select all {0} shown</value></data>
+  <data name="ScopeFlagged" xml:space="preserve"><value>Flagged</value></data>
+  <data name="NotSure" xml:space="preserve"><value>Not sure</value></data>
+  <data name="ScopeKeepers" xml:space="preserve"><value>Keepers</value></data>
+  <data name="FiltersButton" xml:space="preserve"><value>Filters</value></data>
+  <data name="ClearAllButton" xml:space="preserve"><value>Clear all</value></data>
+  <data name="ThumbnailSizeAriaLabel" xml:space="preserve"><value>Thumbnail size</value></data>
+  <data name="SizeEyebrow" xml:space="preserve"><value>Size</value></data>
+  <data name="ThumbSizeSmall" xml:space="preserve"><value>S</value></data>
+  <data name="ThumbSizeMedium" xml:space="preserve"><value>M</value></data>
+  <data name="ThumbSizeLarge" xml:space="preserve"><value>L</value></data>
+  <data name="SortEyebrow" xml:space="preserve"><value>Sort</value></data>
+  <data name="SortScanOrder" xml:space="preserve"><value>Scan order</value></data>
+  <data name="SortDateTaken" xml:space="preserve"><value>Date taken</value></data>
+  <data name="SortName" xml:space="preserve"><value>Name</value></data>
+  <data name="SortFileSize" xml:space="preserve"><value>File size</value></data>
+  <data name="SortSharpness" xml:space="preserve"><value>Sharpness</value></data>
+  <data name="SortExplicitContent" xml:space="preserve"><value>Explicit content</value></data>
+  <data name="SortDirDescending" xml:space="preserve"><value>Sorted descending — switch to ascending</value></data>
+  <data name="SortDirAscending" xml:space="preserve"><value>Sorted ascending — switch to descending</value></data>
+  <data name="DupeBannerTitle" xml:space="preserve"><value>{0} duplicate groups are waiting — {1} of them.</value></data>
+  <data name="DupeBannerSub" xml:space="preserve"><value>Found automatically when the scan finished. One group at a time, keeper already picked.</value></data>
+  <data name="StartReviewingButton" xml:space="preserve"><value>Start reviewing</value></data>
+  <data name="LaterButton" xml:space="preserve"><value>Later</value></data>
+  <data name="EmptyNoPhotosTitle" xml:space="preserve"><value>No photos in &lt;b&gt;{0}&lt;/b&gt;.</value></data>
+  <data name="EmptyUnsupportedOne" xml:space="preserve"><value>SnapZap found {0} file it can't read yet — see the note above the grid.</value></data>
+  <data name="EmptyUnsupportedMany" xml:space="preserve"><value>SnapZap found {0} files it can't read yet — see the note above the grid.</value></data>
+  <data name="EmptyCheckFolderHint" xml:space="preserve"><value>Check the folder is the right one, and that it holds images rather than a folder of folders you meant to point at instead.</value></data>
+  <data name="EmptyNoneMatchFilters" xml:space="preserve"><value>None of the {0} photos match these filters.</value></data>
+  <data name="EmptyUncheckedExplicit" xml:space="preserve"><value>{0} of them have not been checked for explicit content, so this filter hides them.</value></data>
+  <data name="ClearFiltersButton" xml:space="preserve"><value>Clear filters</value></data>
+  <data name="DupeFilterExtrasOnly" xml:space="preserve"><value>Extra copies only</value></data>
+  <data name="DupeFilterKeepersOnly" xml:space="preserve"><value>Keepers only</value></data>
+  <data name="DupeFilterBurstOnly" xml:space="preserve"><value>Burst frames</value></data>
+  <data name="NsfwFilterLikely" xml:space="preserve"><value>Likely explicit</value></data>
+  <data name="NsfwFilterReview" xml:space="preserve"><value>Likely or not sure</value></data>
+  <data name="NsfwFilterClean" xml:space="preserve"><value>Looks clean</value></data>
+  <data name="NsfwFilterUnchecked" xml:space="preserve"><value>Not checked yet</value></data>
+  <data name="BlurrierThan" xml:space="preserve"><value>Blurrier than {0}</value></data>
+  <data name="ThisFolderOnly" xml:space="preserve"><value>This folder only</value></data>
+</root>

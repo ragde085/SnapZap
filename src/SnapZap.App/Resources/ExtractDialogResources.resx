@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <data name="DialogAriaLabel" xml:space="preserve"><value>Extract hidden images</value></data>
+  <data name="Title" xml:space="preserve"><value>Extract hidden images</value></data>
+  <data name="Subtitle" xml:space="preserve"><value>Pick any image someone gave you — it doesn't need to be part of your scanned library — and, if it's encrypted, the passphrase used to hide photos inside it.</value></data>
+  <data name="SourceImageLabel" xml:space="preserve"><value>Source image</value></data>
+  <data name="SourceImagePlaceholder" xml:space="preserve"><value>Full path to the image that may contain hidden photos</value></data>
+  <data name="OutputFolderLabel" xml:space="preserve"><value>Output folder (recovered photos are written here)</value></data>
+  <data name="OutputFolderPlaceholder" xml:space="preserve"><value>Full path to a folder — created if it doesn't exist</value></data>
+  <data name="BrowseButton" xml:space="preserve"><value>Browse…</value></data>
+  <data name="PassphraseLabel" xml:space="preserve"><value>Passphrase (leave blank if the sender said it wasn't encrypted)</value></data>
+  <data name="ExtractButton" xml:space="preserve"><value>Extract</value></data>
+  <data name="ExtractingButton" xml:space="preserve"><value>Extracting…</value></data>
+  <data name="StopButton" xml:space="preserve"><value>Stop</value></data>
+  <data name="StoppingButton" xml:space="preserve"><value>Stopping…</value></data>
+  <data name="DoneButton" xml:space="preserve"><value>Done</value></data>
+  <data name="CancelButton" xml:space="preserve"><value>Cancel</value></data>
+  <data name="ValidateSourcePathError" xml:space="preserve"><value>Enter a full path, starting from the root of the drive.</value></data>
+  <data name="ValidateSourceNotFoundError" xml:space="preserve"><value>That file doesn't exist.</value></data>
+  <data name="ReadingStatus" xml:space="preserve"><value>Reading…</value></data>
+  <data name="PassphraseRequiredError" xml:space="preserve"><value>This file is passphrase-protected — enter the passphrase.</value></data>
+  <data name="DecryptingStatus" xml:space="preserve"><value>Decrypting…</value></data>
+  <data name="UnzippingStatus" xml:space="preserve"><value>Unzipping…</value></data>
+  <data name="RecoveredFileSingular" xml:space="preserve"><value>Recovered 1 file to {0}:</value></data>
+  <data name="RecoveredFilesPlural" xml:space="preserve"><value>Recovered {0} files to {1}:</value></data>
+  <data name="StoppedNoneRecovered" xml:space="preserve"><value>Stopped. No files were recovered.</value></data>
+  <data name="StoppedRecoveredSingular" xml:space="preserve"><value>Stopped. 1 file was already recovered to {0} before the cancel.</value></data>
+  <data name="StoppedRecoveredPlural" xml:space="preserve"><value>Stopped. {0} files were already recovered to {1} before the cancel.</value></data>
+  <data name="IncorrectPassphraseError" xml:space="preserve"><value>Incorrect passphrase or corrupted image.</value></data>
+  <data name="ExtractStoppedError" xml:space="preserve"><value>Extract stopped: {0}</value></data>
+</root>

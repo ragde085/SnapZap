@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <data name="EmptyStateHint" xml:space="preserve"><value>Scan a folder to see its structure.</value></data>
+  <data name="FindFolderPlaceholder" xml:space="preserve"><value>Find a folder…</value></data>
+  <data name="FindFolderAriaLabel" xml:space="preserve"><value>Find a folder</value></data>
+  <data name="TreeAriaLabel" xml:space="preserve"><value>Scanned folders</value></data>
+  <data name="AllFoldersLabel" xml:space="preserve"><value>All folders</value></data>
+  <data name="DupeGroupLegend" xml:space="preserve"><value>photos here are in a duplicate group ·</value></data>
+  <data name="CleanLegend" xml:space="preserve"><value>checked, none found</value></data>
+  <data name="PendingLegend" xml:space="preserve"><value>some analysis hasn't reached this folder yet</value></data>
+  <data name="KeyboardLegend" xml:space="preserve"><value>↑ ↓ move · → expand · ← collapse · Home / End jump</value></data>
+  <data name="StatusTitleComplete" xml:space="preserve"><value>{0:N0} photos — all steps complete</value></data>
+  <data name="StatusTitlePending" xml:space="preserve"><value>{0:N0} photos — {1}</value></data>
+  <data name="CollapseFolderLabel" xml:space="preserve"><value>Collapse {0}</value></data>
+  <data name="ExpandFolderLabel" xml:space="preserve"><value>Expand {0}</value></data>
+  <data name="DupeCountTitle" xml:space="preserve"><value>{0} in duplicate groups</value></data>
+  <data name="CleanTitle" xml:space="preserve"><value>Checked for duplicates — none found</value></data>
+  <data name="RescanFolderLabel" xml:space="preserve"><value>Rescan {0}</value></data>
+  <data name="IncludeSubfoldersLabel" xml:space="preserve"><value>Include subfolders</value></data>
+  <data name="SubfoldersOffNote" xml:space="preserve"><value>Only files directly in this folder — nothing in its subfolders.</value></data>
+</root>

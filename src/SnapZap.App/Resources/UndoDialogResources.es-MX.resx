@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <data name="DialogAriaLabel" xml:space="preserve"><value>Historial</value></data>
+  <data name="Title" xml:space="preserve"><value>Historial</value></data>
+  <data name="HistoryNote" xml:space="preserve"><value>Cada lote que SnapZap ha reciclado o movido, del más reciente al más antiguo. Restaurar regresa los archivos a donde estaban.</value></data>
+  <data name="EmptyState" xml:space="preserve"><value>Todavía no se ha reciclado nada.</value></data>
+  <data name="ColumnWhen" xml:space="preserve"><value>Cuándo</value></data>
+  <data name="ColumnWhatHappened" xml:space="preserve"><value>Qué pasó</value></data>
+  <data name="ColumnPhotos" xml:space="preserve"><value>Fotos</value></data>
+  <data name="BatchTimestamp" xml:space="preserve"><value>{0:d MMM yyyy} a las {0:h:mm tt}</value></data>
+  <data name="WhatMoved" xml:space="preserve"><value>Movido por una exportación</value></data>
+  <data name="WhatExportRecycled" xml:space="preserve"><value>Reciclado durante una exportación — las fotos que no elegiste</value></data>
+  <data name="WhatSelectionDeleted" xml:space="preserve"><value>Eliminado — reciclado desde una selección</value></data>
+  <data name="SubRelocated" xml:space="preserve"><value>Reubicado, no reciclado</value></data>
+  <data name="SubEmptied" xml:space="preserve"><value>Vaciado de la papelera desde entonces</value></data>
+  <data name="SubInBin" xml:space="preserve"><value>En la papelera de reciclaje</value></data>
+  <data name="SubRestoredCount" xml:space="preserve"><value>· {0} restauradas</value></data>
+  <data name="ButtonRestored" xml:space="preserve"><value>Restaurado</value></data>
+  <data name="ButtonRestoring" xml:space="preserve"><value>Restaurando…</value></data>
+  <data name="ButtonRestore" xml:space="preserve"><value>Restaurar</value></data>
+  <data name="RightClickHint" xml:space="preserve"><value>También puedes restaurar desde el menú del botón derecho de la papelera de reciclaje.</value></data>
+  <data name="CloseButton" xml:space="preserve"><value>Cerrar</value></data>
+</root>

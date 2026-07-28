@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <data name="OptionalFeaturesLabel" xml:space="preserve"><value>Funciones opcionales</value></data>
+  <data name="HeadingSingular" xml:space="preserve"><value>Un extra opcional</value></data>
+  <data name="HeadingPlural" xml:space="preserve"><value>{0} extras opcionales</value></data>
+  <data name="ReadyIntro" xml:space="preserve"><value>SnapZap está listo para usarse ahora mismo: el escaneo, los duplicados exactos, la exportación y la eliminación ya funcionan.</value></data>
+  <data name="UnlocksSingular" xml:space="preserve"><value>Este complemento desbloquea un filtro más cuando tú quieras.</value></data>
+  <data name="UnlocksPlural" xml:space="preserve"><value>Estos complementos desbloquean los filtros restantes cuando tú quieras.</value></data>
+  <data name="Checking" xml:space="preserve"><value>Comprobando…</value></data>
+  <data name="CheckAgain" xml:space="preserve"><value>Comprobar de nuevo</value></data>
+  <data name="ContinueWithoutThem" xml:space="preserve"><value>Continuar sin ellos</value></data>
+  <data name="SuppressPrompt" xml:space="preserve"><value>No mostrar esto al iniciar de nuevo</value></data>
+  <data name="HintSetup" xml:space="preserve"><value>Siempre puedes ver esto en &lt;b&gt;Configuración&lt;/b&gt; en la barra de herramientas de la izquierda.</value></data>
+</root>
