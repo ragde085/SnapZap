@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+          xmlns:tools="http://schemas.android.com/tools">
+
+  <!--
+    All-files access. SnapZap has to reach folders the system Photos library does not index
+    (docs/ANDROID-PORT-PLAN.md §1/§3) — that is the entire reason MediaStore/ContentResolver was
+    ruled out, and it is what lets SnapZap.Core's Scanner run on raw paths completely unmodified.
+
+    Google Play gates this permission hard. That is fine here and only here: SnapZap is sideloaded
+    for personal use and does not go through Play review. Revisit this the moment store
+    distribution is on the table, because it is the one decision that would block it.
+
+    tools:ignore silences the lint rule that (correctly, for a store app) flags it.
+  -->
+  <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
+                   tools:ignore="ScopedStorage" />
+
+  <!--
+    Pre-API-30 read access. Kept only so the manifest is honest about intent; the app's floor is
+    API 30 (SupportedOSPlatformVersion in the csproj) precisely because MANAGE_EXTERNAL_STORAGE
+    and its request intent are API 30+.
+  -->
+  <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+                   android:maxSdkVersion="32" />
+
+  <!--
+    Note what is NOT here: android.permission.INTERNET, and any networkSecurityConfig permitting
+    cleartext to 127.0.0.1. The port plan §3 required both, because its architecture ran Kestrel
+    in-process and pointed a WebView at loopback. That architecture is dead (ANDROID-PORT-ACS
+    §1.5), and the native UI that replaced it makes no network requests of any kind. An app that
+    reads your entire photo library and cannot talk to the network is a materially better thing to
+    hand someone — do not add INTERNET back without a specific reason.
+  -->
+
+  <application android:label="SnapZap" android:allowBackup="false" />
+</manifest>
