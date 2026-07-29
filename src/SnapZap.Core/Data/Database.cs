@@ -130,6 +130,7 @@ public sealed class Database : IDisposable
             AddColumnIfMissing("images", "dupe_checked_kinds", "INTEGER NOT NULL DEFAULT 0");
             AddColumnIfMissing("images", "phash", "BLOB");
             AddColumnIfMissing("images", "nsfw_tile_mean", "REAL");
+            AddColumnIfMissing("images", "burst_adjacent", "INTEGER NOT NULL DEFAULT 0");
             AddColumnIfMissing("undo_log", "content_hash", "TEXT");
 
             RenameSimilarToVariant();
@@ -291,6 +292,13 @@ public sealed class Database : IDisposable
           -- When duplicate detection last covered this row. Null means "never checked", which is
           -- what lets the folder tree tell a folder with no duplicates apart from one nobody has
           -- looked at yet. Cleared by Upsert, so re-analysing a changed file makes it stale again.
+          -- 1 when BurstFinder saw this photo in a qualifying burst relationship with another —
+          -- same camera, inside the EXIF window, visually close — regardless of whether it made
+          -- it into a burst *group*. Grouping is complete-linkage, so a real burst frame that sits
+          -- too far from the far end of the run is legitimately excluded from the clique and then
+          -- described only as a Variant, where it becomes bulk-selectable. This flag is what stops
+          -- that: it protects the photo without touching how groups are formed. See BurstFinder.
+          burst_adjacent INTEGER NOT NULL DEFAULT 0,
           dupe_checked_at INTEGER,
           -- Which detectors that run covered (DupeKinds bitmask). The timestamp alone lies once
           -- detectors are configurable — enabling one later must re-flag folders as pending.

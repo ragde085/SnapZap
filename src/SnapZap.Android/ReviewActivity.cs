@@ -6,6 +6,7 @@ using Android.Views;
 using Android.Widget;
 using SnapZap.Core;
 using SnapZap.Core.Data;
+using SnapZap.Core.Dedup;
 
 namespace SnapZap.Droid;
 
@@ -98,39 +99,32 @@ public sealed class ReviewActivity : Activity
         var groups = new DupeRepository(_catalog.Db).Groups();
         var images = _catalog.Images.All().ToDictionary(i => i.Id);
 
-        // ⚠ Second gate, and it is not redundant — filtering by the offering group's kind alone is
-        // NOT sufficient, which was proven on-device rather than reasoned about.
+        // One assignment per photo, resolved in Core with GroupReconciler's precedence, exactly as
+        // the desktop's AppState does. Deliberately shared rather than reimplemented here: a photo
+        // can belong to several groups at once (a Variant group that is a strict superset of a
+        // Burst group survives reconciliation), and picking the wrong one is what made every frame
+        // of a five-frame burst fixture eligible for bulk deletion. Precedence puts Burst ahead of
+        // Variant, so those frames now present as Burst and fail the IsBulkSelectable() gate.
         //
-        // GroupReconciler drops a group only when a stronger group contains *every* one of its
-        // members ("only exact cover is dropped" — its own remarks). A Variant group that is a
-        // strict SUPERSET of a Burst group is therefore not covered, and both survive. That is not
-        // hypothetical: a five-frame burst fixture produced a Burst group of four frames
-        // (complete-linkage correctly dropped the frame too far from the last one) and a Variant
-        // group of all five. Every burst frame then arrived here labelled "Variant", passed the
-        // IsBulkSelectable() check, and was offered for removal — the precise failure CLAUDE.md
-        // describes as making this a shredder rather than a deduplicator.
-        //
-        // So membership of ANY burst group disqualifies a photo, whatever group is offering it. A
-        // burst frame is a different photograph; that fact does not depend on which detector
-        // happens to be describing it.
-        var burstMembers = groups
-            .Where(g => g.Kind == DupeKind.Burst)
-            .SelectMany(g => g.Members.Select(m => m.ImageId))
-            .ToHashSet();
+        // Reading it from DupeAssignmentResolver is the point — two heads applying two subtly
+        // different rules to a delete decision is exactly the class of bug this codebase keeps
+        // designing out (cf. NsfwDecision, InScope).
+        var assignment = DupeAssignmentResolver.Resolve(groups, _catalog.Images.BurstAdjacentIds());
 
-        foreach (var g in groups)
+        foreach (var (imageId, a) in assignment)
         {
-            // First gate: Exact | Variant only — never a group that is itself a Burst.
-            if (!g.Kind.IsBulkSelectable()) continue;
-
-            foreach (var m in g.Members)
-            {
-                if (m.IsKeeper) continue;                        // keepers are never offered
-                if (burstMembers.Contains(m.ImageId)) continue;  // second gate — see above
-                if (!images.TryGetValue(m.ImageId, out var rec)) continue;
-                _queue.Add(new Candidate(m.ImageId, g.Id, g.Kind, rec.Path, ThumbFor(rec)));
-            }
+            // One predicate, shared with the desktop: not the keeper, a bulk-selectable kind, and
+            // not burst-adjacent. The third condition is the one that catches a burst frame which
+            // complete linkage kept out of the clique and Variant then claimed.
+            if (!a.IsBulkSelectableExtra) continue;
+            if (!images.TryGetValue(imageId, out var rec)) continue;
+            _queue.Add(new Candidate(imageId, a.GroupId, a.Kind, rec.Path, ThumbFor(rec)));
         }
+
+        // Stable order so the queue is a function of the catalogue, not of dictionary iteration.
+        _queue.Sort((x, y) => x.GroupId != y.GroupId
+            ? x.GroupId.CompareTo(y.GroupId)
+            : string.CompareOrdinal(x.Path, y.Path));
     }
 
     string? ThumbFor(ImageRecord rec)

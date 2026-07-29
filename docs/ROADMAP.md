@@ -153,7 +153,7 @@ from geometry measured in `interop.js`.
    picks selection first, else the folder focused in the tree, else the whole `ScanRoot`.
    The scan-action tooltip reflects the active scope. Covered by `NsfwScorerScopeTests`.
 
-### ⚠ Safety: burst frames are bulk-selectable through superset Variant groups — found 2026-07-29
+### ✅ Safety: burst frames were bulk-selectable through superset Variant groups — found and FIXED 2026-07-29
 
 **This affects the shipping desktop app, not just Android.** Found by building a real five-frame
 burst fixture (EXIF `DateTimeOriginal` one second apart, same camera, subject moving slightly) and
@@ -188,19 +188,29 @@ is only ever described as a Variant. Verified: after fixing A, `burst_1` is stil
 group disqualifies a photo regardless of which group offers it. That fixes A on Android and took
 the queue from 10 candidates to 7. It cannot fix B.
 
-**Proposed direction, needs a decision — this is safety-critical Core with existing tests:**
+**Fixed, both in Core so desktop and Android share one rule:**
 
-- For A: make bulk-selection exclude any image that is a member of a burst group, at the
-  predicate level (`InScope`/`IsBulkSelectable`'s call sites) rather than per-UI. One rule, one
-  place, both heads — the same argument CLAUDE.md already makes for `NsfwDecision`.
-- For B: consider **single-linkage for `BurstFinder` specifically**. CLAUDE.md's warning against
-  union-find is about perceptual similarity across a whole library, where chaining collapses
-  everything. A burst is already bounded by camera *and* an EXIF time window, so chaining within
-  those bounds cannot run away — and erring toward "these are burst frames" errs toward review
-  rather than deletion, which is the direction this codebase chooses everywhere else.
+- **A → `DupeAssignmentResolver`** (`Core/Dedup/DupeAssignment.cs`). Resolves the one group a photo
+  is presented as belonging to using `GroupReconciler`'s own precedence (Exact → Burst → Variant)
+  instead of letting the last group mentioned win. The desktop's `AppState` had been assigning in
+  enumeration order, so this was **order-dependent**, which is worse than first described.
+- **B → `images.burst_adjacent`**, set by `BurstFinder` for every photo in a qualifying burst
+  *relationship*, which is a strictly wider set than the burst *groups*. Grouping is untouched.
 
-⚠ The fixture is synthetic and its subject moves a lot across five frames, so the *prevalence* on
-real bursts is unknown — but the mechanism is proven, and both defects are real.
+  ⚠ **The originally proposed fix for B — single linkage in `BurstFinder` — was wrong, and the
+  code already said so.** `BurstFinder.Within` re-checks the time window precisely because
+  chaining through overlapping windows would "chain a continuous half-hour of shooting into one
+  burst". Widening *protection* rather than *grouping* gets the safety without that hazard, and
+  errs the right way: the worst case is a photo that must be reviewed individually rather than
+  selected in bulk.
+- Both feed one predicate, `DupeAssignment.IsBulkSelectableExtra`, now used by `InScope`,
+  `MatchesDupeFilter`, `ReclaimableBytes` and the Android review queue.
+
+**Verified end-to-end on the burst fixture:** the review queue went 10 → 7 → 5 → **4** candidates
+as each half landed, and no `burst_*` frame is offered. Covered by `DupeAssignmentTests` (8 tests).
+
+⚠ The fixture is synthetic and its subject moves a lot across five frames, so *prevalence* on real
+bursts is still unknown — the mechanism is proven and both defects are closed.
 
 ---
 
