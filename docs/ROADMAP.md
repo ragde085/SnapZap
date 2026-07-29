@@ -129,7 +129,7 @@ from geometry measured in `interop.js`.
    skew toward whatever mix of cache hits/misses came first in the run, so the estimator only
    keeps samples from the last 4s and recomputes the rate from that window on every report,
    which self-corrects as the actual hit/miss mix changes mid-run instead of needing to model it
-   explicitly. Shown in `Toolbar`'s progress line as "128 / 500 · ~40s left". Covered by
+   explicitly. Shown in the rail's progress line as "128 / 500 · ~40s left". Covered by
    `EtaEstimatorTests` (pure, ticks fed explicitly — no real waiting).
 
 ~~9. **Allow more than one keeper per duplicate group**~~ — ✅ **done 2026-07-26.**
@@ -151,7 +151,7 @@ from geometry measured in `interop.js`.
    `NsfwScorer.ScoreAllAsync` gained an `imageIds` scope (reusing the chunked
    `ImageRepository.ByIds` lookup, same convention as delete/export); `AppState.NsfwAsync`
    picks selection first, else the folder focused in the tree, else the whole `ScanRoot`.
-   Toolbar tooltip reflects the active scope. Covered by `NsfwScorerScopeTests`.
+   The scan-action tooltip reflects the active scope. Covered by `NsfwScorerScopeTests`.
 
 ### Backlog (from DESIGN §12, deliberately deferred)
 

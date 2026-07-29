@@ -285,7 +285,7 @@ early per-step.
    design here rather than needing a redesign. Concretely: the per-thumbnail restore button in
    `UndoDialog.razor` is hover-revealed (`.undo-thumb-restore` in `app.css`) and needs a
    touch-visible always-shown or tap-to-reveal treatment, since there's no hover on a touchscreen;
-   audit `Card.razor`/`FilterBar.razor`/`Toolbar.razor` for the same hover-only pattern before
+   audit `Card.razor`/`Rail.razor`/`Home.razor` for the same hover-only pattern before
    calling this done, rather than fixing only the one instance that's top of mind.
 
 ---

@@ -169,17 +169,42 @@ The sidecars are excluded from publish output (`CopyToPublishDirectory="Never"`)
 
 ### Key subdirectories in `App/`
 
-- **Components/** — Razor components. `Pages/Home.razor` composes the whole app; `Toolbar`
-  (scan bar), `FilterBar` (filters + selection menus, library actions), `SelectionBar`
-  (contextual Export/Delete/Hide, only while something is selected), `FolderTreeView` (the
-  entire left pane), `PhotoGrid`, `Card`, `Toast`, and the `ExportDialog` / `HideDialog` /
-  `ExtractDialog` / `UndoDialog` / `PreviewModal` / `DependencyDialog` / `SetupDialog` /
-  `ShortcutsDialog` overlays.
+- **Components/** — Razor components. `Pages/Home.razor` composes the whole app and owns the
+  chrome around the grid (the filter chips, sort and thumbnail-size controls).
+  - `Rail` is the entire left pane, and is where a lot of chrome that used to be top-level
+    ended up: it holds three tabs (`RailTab.Plan`, `Folders`, `Filters`), embeds
+    `FolderTreeView` in the Folders tab, and carries the Select command row. **There is no
+    `Toolbar` or `FilterBar`** — those names described a layout that no longer exists, and
+    their jobs are now split between `Rail` and `Home.razor`.
+  - `ScanForm` is the folder-input-and-Scan control, deliberately shared by `FirstRun` and the
+    rail's Plan tab "Change folder…" disclosure so the two entry points cannot drift on what
+    Enter does or when Scan is disabled.
+  - `FirstRun` is the pre-first-scan screen; once a folder has been scanned it never shows
+    again and the rail's Plan tab takes over.
+  - `SelectionBar` — contextual Export/Delete/Hide, only while something is selected.
+  - `DupeReview` — group-at-a-time duplicate review, the motion the flat grid can't express.
+  - `PhotoGrid`, `Card`, `Toast`, `JumpSearch` (search *around* the active filters, not another
+    one of them), `ScanIssues` (unsupported/unreadable files from the last scan),
+    `DependencyList` (status rows shared by the launch prompt and the Setup panel).
+  - Overlays: `ExportDialog` / `HideDialog` / `ExtractDialog` / `UndoDialog` / `PreviewModal` /
+    `DirectoryPickerDialog` / `DependencyDialog` / `SetupDialog` / `HelpDialog`. **Keyboard
+    shortcuts are documented in `HelpDialog`** — there is no `ShortcutsDialog`.
+
+  Note when reading Razor: `<ThumbSize>`, `<SortKey>`, `<HomeResources>` and `<FilterChip>` in
+  `Home.razor` are enums, resource marker types and a record — not components. Only `.razor`
+  files under `Components/` are components.
 - **Services/** — `AppState` (scoped per circuit: view state + operations, replaces the old
   `app.js` state object), `ImageView` (record wrapping `ImageRecord` for display),
-  `DependencyChecker` (validates the optional sidecars, singleton).
+  `DependencyChecker` (validates the optional sidecars, singleton), `SessionStore`,
+  `FolderTree`, `EtaEstimator`, `SettingsRequestCultureProvider`, and the `IAppHost`
+  implementations (`AppHost.cs` = `AppHostFactory` + `BrowserAppHost` + `ConsoleWindow`;
+  `PhotinoAppHost.cs` split out separately so it and its package can be excluded from a
+  non-desktop TFM — see the comment block in `SnapZap.App.csproj`).
+- **App root** — `Program.cs` is now only the desktop entry point; the reusable
+  `WebApplication` composition lives in `SnapZapWebHost.cs` / `SnapZapHostOptions.cs` so a
+  second head can build the same server without the desktop-only tail.
 - **wwwroot/** — `app.css` (the "Darkroom" design system), `interop.js` (grid geometry
-  measurement, scroll windowing, arrow-key focus movement), and two icon files. `favicon.ico`
+  measurement, scroll windowing, arrow-key focus movement), `fonts/`, and two icon files. `favicon.ico`
   is also the `.exe` icon (`<ApplicationIcon>` in the csproj points here so the tab, the
   taskbar and the window cannot disagree); `snapzap.png` is the same artwork at 128px for the
   mark beside the wordmark in `Home.razor`. Both are generated from
