@@ -441,8 +441,16 @@ public sealed class ReviewActivity : Activity
         var dims = g.Members.Select(m => (m.Width, m.Height)).Distinct().ToList();
 
         var sameDate = dayKeys.Count == 1 && dayKeys[0] is not null;
-        var sameCamera = cameras.Count == 1 && cameras[0].Length > 0;
         var sameDims = dims.Count == 1;
+
+        // ⚠ Absence of a field is not a difference between fields, and conflating the two makes
+        // the app state something false with total confidence. A group where nothing carries
+        // camera EXIF — screenshots, exports, anything stripped — has `cameras == [""]`, which is
+        // one distinct value but not evidence of anything. Reporting that as "different cameras
+        // recorded these" is a confident lie in a tool whose next screen deletes a photo.
+        var known = cameras.Where(c => c.Length > 0).ToList();
+        var sameCamera = known.Count == 1 && known.Count == cameras.Count;
+        var differentCameras = known.Count > 1;
 
         if (sameDate && sameCamera && !sameDims)
             return "Same date and camera on every copy, so only size tells them apart.";
@@ -450,9 +458,15 @@ public sealed class ReviewActivity : Activity
             return "Same date, camera and dimensions — only file size differs.";
         if (dayKeys.All(d => d is not null) && !sameDate)
             return "These were taken on different dates.";
-        if (!sameCamera)
+        if (differentCameras)
             return "Different cameras recorded these.";
-        return "These copies differ, but not in an obvious way.";
+        if (!sameDims)
+            return "Same shot at different sizes — the largest is kept.";
+        // Nothing on record distinguishes them, which for byte-identical copies is the truth
+        // rather than a gap: say so plainly instead of implying a difference nobody can see.
+        return known.Count == 0 && dayKeys.All(d => d is null)
+            ? "No date or camera recorded on any of these copies."
+            : "These copies differ, but not in an obvious way.";
     }
 
     void PromoteToKeeper(long imageId)
