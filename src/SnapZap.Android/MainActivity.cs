@@ -60,6 +60,10 @@ public sealed class MainActivity : Activity
 
     // Live scan read-outs, held so progress can update them without rebuilding the screen.
     TextView? _scanCount, _scanFile;
+
+    // What the last scan needs to say for itself beyond the photo count — nothing found, or files
+    // it counted but could not read. Null when the scan was unremarkable.
+    string? _scanNotice;
     View? _scanFill;
 
     // Screen 9 — selection is a mode you enter, not an always-on toolbar. Holding a photo enters
@@ -267,6 +271,24 @@ public sealed class MainActivity : Activity
     /// deliberate gap rather than something a future change quietly "fixes" into a raw filesystem
     /// picker without that being a decision.
     /// </summary>
+    const int RequestPickScanFolder = 3;
+
+    /// <summary>
+    /// Picks a new scan target — by browsing the filesystem, not by typing a path.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately <see cref="DirectoryPickerActivity"/> and not <see cref="FoldersActivity"/>:
+    /// the latter derives its tree from photos already catalogued, so it can only walk inside what
+    /// has been scanned, which is useless for reaching somewhere new. That is why this gap survived
+    /// review — the Folders browser looked like it covered the case and did not.
+    /// </remarks>
+    void ChangeScanFolder()
+    {
+        var i = new Intent(this, typeof(DirectoryPickerActivity));
+        i.PutExtra(DirectoryPickerActivity.ExtraPath, _folder);
+        StartActivityForResult(i, RequestPickScanFolder);
+    }
+
     void OpenFoldersForScan() =>
         StartActivityForResult(new Intent(this, typeof(FoldersActivity)), RequestFolderForScan);
 
@@ -286,6 +308,16 @@ public sealed class MainActivity : Activity
     {
         base.OnActivityResult(requestCode, resultCode, data);
         if (resultCode != Result.Ok) return;
+        if (requestCode == RequestPickScanFolder)
+        {
+            var chosen = data?.GetStringExtra(DirectoryPickerActivity.ExtraPath);
+            if (string.IsNullOrEmpty(chosen) || !await Task.Run(() => Directory.Exists(chosen))) return;
+            _folder = chosen!;
+            _libraryScope = null;   // a new scan root makes the old library scope meaningless
+            StartScan();
+            return;
+        }
+
         if (requestCode != RequestFolderForScan && requestCode != RequestFolderForScope) return;
 
         var picked = data?.GetStringExtra(FoldersActivity.ExtraSelectedFolder);
@@ -320,6 +352,17 @@ public sealed class MainActivity : Activity
         body.AddView(wordmark);
         body.AddView(Gap(28));
 
+        if (_scanNotice is not null)
+        {
+            // Persisted on the screen, not only in a toast: a toast that has already faded cannot
+            // answer "did that do anything?", which is the exact question an empty scan raises.
+            var notice = Design.Callout(this);
+            notice.AddView(Design.Body(this, "Last scan found nothing to add", 13f, bold: true));
+            notice.AddView(Design.Note(this, _scanNotice, Design.Accent700));
+            body.AddView(notice);
+            body.AddView(Gap(16));
+        }
+
         body.AddView(Design.Eyebrow(this, "Nothing scanned yet"));
         body.AddView(Gap(12));
 
@@ -348,7 +391,7 @@ public sealed class MainActivity : Activity
 
         var browse = Design.Button(this, "Browse…", Design.Btn.Secondary, 52f);
         browse.LayoutParameters = Wide();
-        browse.Click += (_, _) => OpenFoldersForScan();
+        browse.Click += (_, _) => ChangeScanFolder();
         body.AddView(browse);
         body.AddView(Gap(24));
 
@@ -480,10 +523,18 @@ public sealed class MainActivity : Activity
 
             _photos = await Task.Run(() => _catalog!.Images.All().ToList());
             _hasScanned = _photos.Count > 0;
+            _scanNotice = ScanNotice(_lastScan);
 
             Android.Util.Log.Info(Tag,
                 $"{_lastScan.Total} photos · {_lastDupes.ExactGroups} exact · "
-                + $"{_lastDupes.VariantGroups} variant · {_lastDupes.BurstGroups} burst");
+                + $"{_lastDupes.VariantGroups} variant · {_lastDupes.BurstGroups} burst · "
+                + $"{_lastScan.UnsupportedTotal} unsupported · {_lastScan.Failed} failed");
+
+            // A scan that finds nothing used to return to first run unchanged: same screen, same
+            // button, no message. The user could not tell whether it had run, failed, or found
+            // nothing — and if the folder was full of HEIC, "found nothing" was actively wrong.
+            if (_scanNotice is not null)
+                Toast.MakeText(this, _scanNotice, ToastLength.Long)!.Show();
         }
         catch (Exception ex)
         {
@@ -521,11 +572,12 @@ public sealed class MainActivity : Activity
         _content.AddView(sum);
         _content.AddView(Design.Rule(this, 2f, Design.Divider));
 
-        if (_reviewable > 0)
+        var waiting = ScopedExtras().Count;
+        if (waiting > 0)
         {
             var callout = Design.Callout(this);
             callout.AddView(Design.Body(this,
-                $"{_reviewable:N0} extra {(_reviewable == 1 ? "copy is" : "copies are")} waiting", 15f, bold: true));
+                $"{waiting:N0} extra {(waiting == 1 ? "copy is" : "copies are")} waiting", 15f, bold: true));
             callout.AddView(Design.Note(this,
                 "Keeper already picked for each — you just confirm. Bursts are held back.",
                 Design.Accent700));
@@ -808,11 +860,50 @@ public sealed class MainActivity : Activity
         _ => $"{b} B",
     };
 
+    /// <summary>
+    /// The one thing a finished scan still owes the user, or null.
+    /// </summary>
+    /// <remarks>
+    /// Unreadable formats are the case that matters. <c>ScanResult.UnsupportedByFormat</c> has
+    /// always been populated and the mobile design shows it in as many words ("1,204 HEIC and 312
+    /// RAW counted, not readable"), but nothing rendered it — so a library of HEIC, which is the
+    /// default on modern phones rather than an edge case, reported "0 photos" and read as a broken
+    /// app. Naming the format is what turns that into an explanation.
+    /// </remarks>
+    static string? ScanNotice(ScanResult r)
+    {
+        var formats = r.UnsupportedByFormat
+            .OrderByDescending(kv => kv.Value)
+            .Select(kv => $"{kv.Value:N0} {kv.Key.TrimStart('.').ToUpperInvariant()}")
+            .Take(3)
+            .ToList();
+
+        if (r.Total == 0)
+            return formats.Count > 0
+                ? $"No readable photos here. Counted {string.Join(", ", formats)} — SnapZap cannot read those."
+                : "No photos found in that folder.";
+
+        if (formats.Count > 0)
+            return $"{r.Total:N0} photos. {string.Join(", ", formats)} counted but not readable — listed, never touched.";
+
+        return r.Failed > 0 ? $"{r.Total:N0} photos · {r.Failed:N0} could not be read." : null;
+    }
+
+    /// <summary>
+    /// Counts here follow the active folder scope, like the header count and the Filters sheet do.
+    /// A scoped view that still reports whole-library extras is the same disagreement-between-
+    /// counts problem this codebase keeps designing out.
+    /// </summary>
     string SummaryNote()
     {
         var when = _lastScan is null ? "from the catalogue" : "scanned just now";
-        return _reviewable > 0 ? $"{when} · {_reviewable:N0} extras" : when;
+        var extras = ScopedExtras().Count;
+        return extras > 0 ? $"{when} · {extras:N0} extra{(extras == 1 ? "" : "s")}" : when;
     }
+
+    /// <summary>Extras inside the active scope — the set "Select all" would take.</summary>
+    List<ImageRecord> ScopedExtras() =>
+        ScopedPhotos().Where(p => _assign.TryGetValue(p.Id, out var a) && a.IsBulkSelectableExtra).ToList();
 
     /// <summary>The plan's five steps, compressed to a progress strip (handoff §3).</summary>
     View PlanStrip()
@@ -854,14 +945,19 @@ public sealed class MainActivity : Activity
         body.AddView(head);
         body.AddView(Design.Rule(this, 2f, Design.Divider));
 
+        // Two actions, because they are different questions. Re-scan re-reads the same folder;
+        // Change folder picks a new scan target — which the app previously had no way to do at all
+        // once the first scan existed, since the folder input lives only on first run and the
+        // Folders browser can only walk what is already catalogued. The desktop has always had
+        // "Change folder…" in its Plan rail; this is the same affordance.
         body.AddView(Step(1, _hasScanned, "Scan",
             _lastScan is { } s ? $"{s.Total:N0} photos · {s.ElapsedMs:N0} ms" : $"{_photos.Count:N0} photos",
-            "Re-scan", StartScan));
+            "Re-scan", StartScan, secondary: ("Change folder…", ChangeScanFolder)));
 
         body.AddView(Step(2, _reviewable > 0 || _lastDupes is not null, "Duplicates",
             _reviewable == 0 && _lastDupes is null
                 ? "Runs on its own when the scan finishes"
-                : $"{_reviewable:N0} extras · {_burstGroups:N0} burst groups held back",
+                : $"{_reviewable:N0} extras · {_burstGroups:N0} burst {(_burstGroups == 1 ? "group" : "groups")} held back",
             _reviewable > 0 ? $"Review {_reviewable:N0} extras" : null, OpenReview,
             highlight: _reviewable > 0));
 
@@ -888,7 +984,8 @@ public sealed class MainActivity : Activity
         _content.AddView(Scroll(body));
     }
 
-    View Step(int n, bool done, string title, string note, string? action, Action? onAction, bool highlight = false)
+    View Step(int n, bool done, string title, string note, string? action, Action? onAction,
+              bool highlight = false, (string Label, Action OnTap)? secondary = null)
     {
         var row = new LinearLayout(this) { Orientation = Orientation.Horizontal };
         row.SetPadding(Design.Dp(this, highlight ? 12 : 16), Design.Dp(this, 11),
@@ -918,6 +1015,15 @@ public sealed class MainActivity : Activity
             b.LayoutParameters = Wide();
             if (onAction is not null) b.Click += (_, _) => onAction();
             col.AddView(b);
+        }
+
+        if (secondary is { } sec)
+        {
+            col.AddView(Gap(8));
+            var b2 = Design.Button(this, sec.Label, Design.Btn.Ghost, 40f);
+            b2.LayoutParameters = Wide();
+            b2.Click += (_, _) => sec.OnTap();
+            col.AddView(b2);
         }
         row.AddView(col);
 
