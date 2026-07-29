@@ -5,6 +5,7 @@ using Android.Provider;
 using Android.Views;
 using Android.Widget;
 using SnapZap.Core;
+using SnapZap.Core.Dedup;
 using SnapZap.Core.Scanning;
 
 namespace SnapZap.Droid;
@@ -141,6 +142,10 @@ public sealed class MainActivity : Activity
         grid.SetVerticalSpacing(4);
         grid.SetHorizontalSpacing(4);
 
+        var reviewBtn = Button("Review duplicates", () =>
+            StartActivity(new Intent(this, typeof(ReviewActivity))));
+        reviewBtn.Enabled = false;
+
         scanBtn.Click += async (_, _) =>
         {
             if (_scanning) return;
@@ -168,6 +173,24 @@ public sealed class MainActivity : Activity
 
                 Android.Util.Log.Info(Tag, status.Text);
                 grid.Adapter = new ThumbAdapter(this, items, cell, _catalog.ThumbDir);
+
+                // Dedup runs as part of the scan rather than behind its own button. On desktop
+                // these are two actions because a 40k-photo detection pass is worth deferring;
+                // here the scan the user just waited for is worthless without it, since finding
+                // duplicates is the entire reason to point SnapZap at a folder on a phone.
+                status.Text += " · finding duplicates…";
+                var report = await Task.Run(() =>
+                    new DuplicateService(_catalog.Db, _catalog.Imaging, _catalog.ThumbDir)
+                        .DetectAsync(root));
+
+                status.Text =
+                    $"{result.Total} photos · {report.ExactGroups} exact · {report.VariantGroups} variant"
+                    + $" · {report.BurstGroups} burst · {result.ElapsedMs} ms";
+                Android.Util.Log.Info(Tag, status.Text);
+
+                // Exact + Variant only. Burst groups exist and are counted, but they are not
+                // reviewable — see ReviewActivity's remarks for why that gate is safety-critical.
+                reviewBtn.Enabled = report.ExactGroups + report.VariantGroups > 0;
             }
             catch (Exception ex)
             {
@@ -183,6 +206,7 @@ public sealed class MainActivity : Activity
 
         _root.AddView(scanBtn);
         _root.AddView(status);
+        _root.AddView(reviewBtn);
 
         // Height 0 + weight 1: the grid takes whatever vertical space the controls above and the
         // button below do not, and scrolls within it. This is the whole reason the native head

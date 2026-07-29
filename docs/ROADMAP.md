@@ -158,7 +158,16 @@ from geometry measured in `interop.js`.
 Four notes from a design conversation, checked against the code as they were written so each one
 says whether it is a change or already true.
 
-11. **Swipe-based duplicate review (Android first).** Keep/remove one photo at a time by swiping —
+11. ✅ **Partly done 2026-07-29 (Android).** `ReviewActivity` in `src/SnapZap.Android` implements
+    the swipe motion — right to keep, left to mark — over `DupeRepository.Groups()`, gated to
+    `IsBulkSelectable()` kinds. Verified on an emulator: right swipe promotes a keeper via
+    `ToggleKeeper`, left swipe marks, and a sub-threshold drag correctly decides nothing. **Not yet
+    done:** the marked set is not wired to `DeleteService`, so nothing is deleted — item 14's
+    history questions land before that can be finished. ⚠ The burst exclusion is code-verified but
+    *not* empirically exercised: the test fixture produced 0 burst groups, so a fixture with a real
+    burst is still needed to prove the gate holds in practice.
+
+    **Swipe-based duplicate review (Android first).** Keep/remove one photo at a time by swiping —
     right to keep, left to remove — rather than by multi-select. This is the touch replacement for
     `DupeReview.razor`, which already models the right motion (group-at-a-time, "the core motion of
     the app, which the flat grid can't express") but expresses it with desktop affordances. Natural
