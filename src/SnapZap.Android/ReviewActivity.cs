@@ -7,6 +7,7 @@ using Android.Widget;
 using SnapZap.Core;
 using SnapZap.Core.Data;
 using SnapZap.Core.Dedup;
+using SnapZap.Core.Delete;
 
 namespace SnapZap.Droid;
 
@@ -43,7 +44,9 @@ public sealed class ReviewActivity : Activity
 
     ImageView _photo = null!;
     TextView _caption = null!, _tally = null!;
-    int _kept, _marked;
+    int _kept;
+    readonly List<long> _markedIds = [];
+    Button _commit = null!;
 
     /// <summary>One reviewable photo: a non-keeper in a bulk-selectable group.</summary>
     sealed record Candidate(long ImageId, long GroupId, DupeKind Kind, string Path, string? ThumbPath);
@@ -84,6 +87,10 @@ public sealed class ReviewActivity : Activity
         buttons.AddView(remove);
         buttons.AddView(keep);
         root.AddView(buttons);
+
+        _commit = new Button(this) { Text = "Nothing marked", Enabled = false };
+        _commit.Click += (_, _) => ConfirmAndDelete();
+        root.AddView(_commit);
 
         // Buttons as well as swipe, deliberately: the gesture is the primary motion, but a
         // destructive action reachable only by an unlabelled gesture is undiscoverable, and the
@@ -142,13 +149,17 @@ public sealed class ReviewActivity : Activity
                 ? "No duplicates to review.\n\nRun a scan first, or there are none in this folder."
                 : "Review complete.";
             _photo.SetImageBitmap(null);
-            _tally.Text = $"Kept {_kept} · marked for removal {_marked}";
+            _tally.Text = $"Kept {_kept} · marked for removal {_markedIds.Count}";
+            _commit.Enabled = _markedIds.Count > 0;
+            _commit.Text = _markedIds.Count > 0
+                ? $"Move {_markedIds.Count} to trash"
+                : "Nothing marked";
             return;
         }
 
         var c = _queue[_index];
         _caption.Text = $"{c.Kind} duplicate · {_index + 1} of {_queue.Count}\n{System.IO.Path.GetFileName(c.Path)}";
-        _tally.Text = $"Kept {_kept} · marked {_marked}";
+        _tally.Text = $"Kept {_kept} · marked {_markedIds.Count}";
 
         Bitmap? bmp = null;
         try { if (c.ThumbPath is not null && File.Exists(c.ThumbPath)) bmp = BitmapFactory.DecodeFile(c.ThumbPath); }
@@ -174,10 +185,81 @@ public sealed class ReviewActivity : Activity
             catch (Exception ex) { Android.Util.Log.Warn("SnapZap", $"ToggleKeeper failed: {ex.Message}"); }
             _kept++;
         }
-        else _marked++;
+        else _markedIds.Add(c.ImageId);
 
         _index++;
         ShowCurrent();
+    }
+
+    /// <summary>
+    /// Commits the marked set. Deliberately a separate, confirmed step rather than something a
+    /// left swipe does directly: swiping is fast and per-photo, and a gesture that deleted on
+    /// contact would have no moment at which the user can see what they are about to lose.
+    /// </summary>
+    void ConfirmAndDelete()
+    {
+        if (_markedIds.Count == 0) return;
+
+        new AlertDialog.Builder(this)
+            .SetTitle("Move to trash?")!
+            .SetMessage($"{_markedIds.Count} photo(s) will be moved to SnapZap's trash.\n\n"
+                      + "Nothing is deleted from your device — the files are moved inside the app "
+                      + "and can be restored from History.")!
+            .SetNegativeButton("Cancel", (System.EventHandler<DialogClickEventArgs>?)null)!
+            .SetPositiveButton("Move to trash", (s, e) => RunDelete())!
+            .Show();
+    }
+
+    async void RunDelete()
+    {
+        var ids = _markedIds.ToList();
+        _commit.Enabled = false;
+        _commit.Text = "Moving to trash…";
+
+        try
+        {
+            // DeleteService, not File.Delete: it recycles rather than hard-deletes, writes an
+            // undo_log row per file so the batch can be restored, and prunes the catalogue row
+            // while leaving the thumbnail in place — which is what lets History show a preview of
+            // something that no longer has an images row (ROADMAP item 13).
+            var result = await Task.Run(() => _catalog.NewDeleteService().RecycleAsync(ids));
+
+            _markedIds.Clear();
+            _caption.Text = "Moved to trash.";
+            _tally.Text = $"{result.Recycled} moved"
+                        + (result.Failed > 0 ? $" · {result.Failed} failed" : "")
+                        + $" · batch {result.BatchId}";
+            _commit.Text = "Undo — restore this batch";
+            _commit.Enabled = result.Recycled > 0;
+            _commit.Click += (_, _) => RunUndo(result.BatchId);
+
+            Android.Util.Log.Info("SnapZap", $"recycled {result.Recycled}, failed {result.Failed}, batch {result.BatchId}");
+        }
+        catch (Exception ex)
+        {
+            _tally.Text = $"Delete failed: {ex.Message}";
+            _commit.Enabled = true;
+            _commit.Text = $"Move {ids.Count} to trash";
+            Android.Util.Log.Error("SnapZap", ex.ToString());
+        }
+    }
+
+    async void RunUndo(string batchId)
+    {
+        _commit.Enabled = false;
+        _commit.Text = "Restoring…";
+        try
+        {
+            var r = await Task.Run(() => _catalog.NewDeleteService().RestoreAsync(batchId));
+            _tally.Text = $"Restored {r.Restored}" + (r.Missing > 0 ? $" · {r.Missing} missing" : "");
+            _commit.Text = "Restored";
+            _caption.Text = "Restored. Re-scan to see them in the grid again.";
+        }
+        catch (Exception ex)
+        {
+            _tally.Text = $"Restore failed: {ex.Message}";
+            Android.Util.Log.Error("SnapZap", ex.ToString());
+        }
     }
 
     sealed class SwipeListener(ReviewActivity owner) : Java.Lang.Object, View.IOnTouchListener

@@ -222,9 +222,13 @@ says whether it is a change or already true.
 11. ✅ **Partly done 2026-07-29 (Android).** `ReviewActivity` in `src/SnapZap.Android` implements
     the swipe motion — right to keep, left to mark — over `DupeRepository.Groups()`, gated to
     `IsBulkSelectable()` kinds. Verified on an emulator: right swipe promotes a keeper via
-    `ToggleKeeper`, left swipe marks, and a sub-threshold drag correctly decides nothing. **Not yet
-    done:** the marked set is not wired to `DeleteService`, so nothing is deleted — item 14's
-    history questions land before that can be finished. ⚠ The burst exclusion is code-verified but
+    `ToggleKeeper`, left swipe marks, and a sub-threshold drag correctly decides nothing. ✅ **Delete wired 2026-07-29:** the marked set now goes through
+    `DeleteService.RecycleAsync` behind an explicit confirmation, with `FolderTrashService` as the
+    `ITrashService`. Verified on-device end to end: source folder 11 → 9 files, both originals in
+    the app trash under collision-safe names, catalogue rows pruned, **thumbnails retained**
+    (item 13's invariant, now observed rather than assumed), and one-tap undo restoring 9 → 11 with
+    the trash left empty. Committing is a separate confirmed step, never the swipe itself — a
+    gesture that deleted on contact gives the user no moment to see what they are about to lose. ⚠ The burst exclusion is code-verified but
     *not* empirically exercised: the test fixture produced 0 burst groups, so a fixture with a real
     burst is still needed to prove the gate holds in practice.
 

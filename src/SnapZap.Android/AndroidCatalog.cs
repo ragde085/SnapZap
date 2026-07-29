@@ -1,4 +1,6 @@
 using SnapZap.Core.Data;
+using SnapZap.Core.Delete;
+using SnapZap.Core.Platform;
 using SnapZap.Core.Imaging;
 using SnapZap.Core.Scanning;
 
@@ -33,10 +35,37 @@ public sealed class AndroidCatalog : IDisposable
             "SnapZap");
         ThumbDir = Path.Combine(AppDataDir, "thumbs");
         Directory.CreateDirectory(ThumbDir);
+        TrashDir = Path.Combine(AppDataDir, "trash");
+        Directory.CreateDirectory(TrashDir);
         Db = new Database(Path.Combine(AppDataDir, "catalog.db"));
     }
 
     public Scanner NewScanner() => new(Db, Imaging, ThumbDir);
+
+    /// <summary>
+    /// Trash root. App-private external storage: writable with no permission at all even under
+    /// scoped storage, survives restarts, and is cleared on uninstall — which is the expected
+    /// lifetime for a trash.
+    ///
+    /// This is <b>not</b> the system Gallery's trash. It plays the same role as <c>~/.Trash</c>
+    /// does in the macOS implementation, without OS-level integration, and it is deliberately
+    /// outside the folders the user scans so recycling never writes into their library
+    /// (DESIGN §7.5).
+    ///
+    /// ⚠ It is also invisible to the user's file manager, so it needs a size read-out and an
+    /// empty action before v1 — tracked as AC-3.6. Deleting from a large library moves originals
+    /// here, and silently consuming storage with no way to see or reclaim it is not acceptable.
+    /// </summary>
+    public string TrashDir { get; }
+
+    /// <summary>
+    /// The same portable, unit-tested implementation the desktop would use for a folder-backed
+    /// trash — no Android SDK types, so its behaviour is pinned by tests running on macOS rather
+    /// than only ever exercised on a phone.
+    /// </summary>
+    public ITrashService Trash => new FolderTrashService(TrashDir);
+
+    public DeleteService NewDeleteService() => new(Db, Trash);
 
     public ImageRepository Images => new(Db);
 
