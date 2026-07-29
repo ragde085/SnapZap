@@ -214,6 +214,31 @@ bursts is still unknown — the mechanism is proven and both defects are closed.
 
 ---
 
+### Direct delete from the comparison — done 2026-07-29
+
+Deleting used to require leaving the decision behind: close the compare view, find the photo in
+the grid, select it, delete. But judging two copies side by side is exactly the moment the answer
+is obvious, and making the user walk away from the comparison loses the thing that produced the
+decision. Both heads now delete in place.
+
+- **Desktop** — a Delete button beside Keep in `DupeReview`'s compare pane, calling
+  `AppState.DeleteAsync`. Disabled on the group's keeper: the group would be left with nothing,
+  and "delete the one I just said to keep" is not a thing anyone means. Guarded in the handler as
+  well as by the attribute, since the keeper flag can change between render and click.
+- **Android** — swipe **down** on the photo deletes it immediately. Left still marks for the
+  batch; down is "this one, now". A sloppy diagonal resolves to whichever axis moved further, and
+  an upward flick does nothing at all.
+- **Android also now shows the original, not the thumbnail** (downsampled via `inSampleSize` —
+  a 24 MP original is ~96 MB as ARGB_8888). Reviewing duplicates is the one place the pixels
+  *are* the decision; a 256px thumbnail of two near-identical frames tells you nothing about
+  which is sharper.
+
+Neither path hard-deletes. Both go through `DeleteService.RecycleAsync`, so the file moves to the
+trash, an undo-log row is written and it is restorable — which is why the swipe needs no
+confirmation dialog: it is fast, not irreversible.
+
+---
+
 ### Delete/history model + swipe review — captured 2026-07-29
 
 Four notes from a design conversation, checked against the code as they were written so each one

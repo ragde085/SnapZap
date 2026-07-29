@@ -47,6 +47,8 @@ public sealed class ReviewActivity : Activity
     int _kept;
     readonly List<long> _markedIds = [];
     Button _commit = null!;
+    string? _lastDeletedBatch;
+    TextView _root_hint = null!;
 
     /// <summary>One reviewable photo: a non-keeper in a bulk-selectable group.</summary>
     sealed record Candidate(long ImageId, long GroupId, DupeKind Kind, string Path, string? ThumbPath);
@@ -76,6 +78,10 @@ public sealed class ReviewActivity : Activity
         _tally = new TextView(this);
         _tally.SetTextSize(Android.Util.ComplexUnitType.Sp, 13f);
         root.AddView(_tally);
+
+        _root_hint = new TextView(this) { Text = "Swipe ▶ keep · ◀ mark · ▼ delete now" };
+        _root_hint.SetTextSize(Android.Util.ComplexUnitType.Sp, 12f);
+        root.AddView(_root_hint);
 
         var buttons = new LinearLayout(this) { Orientation = Orientation.Horizontal };
         var remove = new Button(this) { Text = "◀  Remove" };
@@ -161,10 +167,83 @@ public sealed class ReviewActivity : Activity
         _caption.Text = $"{c.Kind} duplicate · {_index + 1} of {_queue.Count}\n{System.IO.Path.GetFileName(c.Path)}";
         _tally.Text = $"Kept {_kept} · marked {_markedIds.Count}";
 
-        Bitmap? bmp = null;
-        try { if (c.ThumbPath is not null && File.Exists(c.ThumbPath)) bmp = BitmapFactory.DecodeFile(c.ThumbPath); }
-        catch (Exception) { /* an undecodable thumbnail is a blank frame, not a crash */ }
-        _photo.SetImageBitmap(bmp);
+        _photo.SetImageBitmap(LoadFull(c));
+    }
+
+    /// <summary>
+    /// Decodes the original at roughly screen size rather than showing the grid thumbnail.
+    /// Reviewing duplicates is the one place the pixels themselves are the decision — a 256px
+    /// thumbnail of two near-identical frames tells you nothing about which is sharper.
+    /// </summary>
+    /// <remarks>
+    /// Downsampled via <c>inSampleSize</c> instead of decoding full-resolution: a 24 MP original
+    /// is ~96 MB as an ARGB_8888 bitmap and a handful of those is an OutOfMemoryError on any
+    /// phone. Falls back to the cached thumbnail when the original will not decode, so a corrupt
+    /// or unreadable file is a degraded frame rather than a dead screen.
+    /// </remarks>
+    Bitmap? LoadFull(Candidate c)
+    {
+        try
+        {
+            if (File.Exists(c.Path))
+            {
+                var bounds = new BitmapFactory.Options { InJustDecodeBounds = true };
+                BitmapFactory.DecodeFile(c.Path, bounds);
+
+                var target = Math.Max(Resources!.DisplayMetrics!.WidthPixels, 1);
+                int sample = 1;
+                while (bounds.OutWidth / (sample * 2) >= target) sample *= 2;
+
+                var bmp = BitmapFactory.DecodeFile(c.Path, new BitmapFactory.Options { InSampleSize = sample });
+                if (bmp is not null) return bmp;
+            }
+        }
+        catch (Exception ex) { Android.Util.Log.Warn("SnapZap", $"full decode failed: {ex.Message}"); }
+
+        try { if (c.ThumbPath is not null && File.Exists(c.ThumbPath)) return BitmapFactory.DecodeFile(c.ThumbPath); }
+        catch (Exception) { }
+        return null;
+    }
+
+    /// <summary>
+    /// Deletes the photo on screen immediately — the swipe-down gesture.
+    /// </summary>
+    /// <remarks>
+    /// <para>Distinct from a left swipe on purpose. Left marks, and marks are committed later in
+    /// one confirmed batch; down is "this one, now", for when the comparison already made the
+    /// answer obvious and queueing it would just be ceremony.</para>
+    ///
+    /// <para>"Immediately" still means <c>DeleteService.RecycleAsync</c>: the file moves to the
+    /// app trash, an undo_log row is written, and it is restorable from Trash &amp; history. There
+    /// is no path in this app that hard-deletes a photo, and adding a fast gesture is not a reason
+    /// to open one — so this needs no confirmation dialog, because it is not irreversible.</para>
+    /// </remarks>
+    async void DeleteNow()
+    {
+        if (_index >= _queue.Count) return;
+        var c = _queue[_index];
+
+        try
+        {
+            var result = await Task.Run(() => _catalog.NewDeleteService().RecycleAsync([c.ImageId]));
+            _lastDeletedBatch = result.Recycled > 0 ? result.BatchId : null;
+
+            Toast.MakeText(this,
+                result.Recycled > 0
+                    ? $"Moved {System.IO.Path.GetFileName(c.Path)} to trash"
+                    : "Could not move that photo to the trash",
+                ToastLength.Short)!.Show();
+
+            // Drop it from the queue rather than advancing past it: it no longer exists to review,
+            // and leaving it in would make "3 of 7" count photos that are gone.
+            _queue.RemoveAt(_index);
+            ShowCurrent();
+        }
+        catch (Exception ex)
+        {
+            Toast.MakeText(this, $"Delete failed: {ex.Message}", ToastLength.Long)!.Show();
+            Android.Util.Log.Error("SnapZap", ex.ToString());
+        }
     }
 
     /// <summary>
@@ -264,7 +343,7 @@ public sealed class ReviewActivity : Activity
 
     sealed class SwipeListener(ReviewActivity owner) : Java.Lang.Object, View.IOnTouchListener
     {
-        float _downX;
+        float _downX, _downY;
         const float Threshold = 120f;
 
         public bool OnTouch(View? v, MotionEvent? e)
@@ -274,12 +353,25 @@ public sealed class ReviewActivity : Activity
             {
                 case MotionEventActions.Down:
                     _downX = e.GetX();
+                    _downY = e.GetY();
                     return true;
+
                 case MotionEventActions.Up:
                     var dx = e.GetX() - _downX;
+                    var dy = e.GetY() - _downY;
+
                     // A short drag is not a decision. Below the threshold nothing happens, so a
-                    // stray touch on a destructive control cannot mark a photo.
-                    if (Math.Abs(dx) >= Threshold) owner.Decide(keepIt: dx > 0);
+                    // stray touch cannot mark or delete a photo.
+                    if (Math.Abs(dx) < Threshold && Math.Abs(dy) < Threshold) return true;
+
+                    // Whichever axis moved further wins, so a sloppy diagonal resolves to the
+                    // gesture the user was more clearly making rather than to whichever axis is
+                    // tested first. Down deletes; a stray upward flick does nothing at all.
+                    if (Math.Abs(dy) > Math.Abs(dx))
+                    {
+                        if (dy > 0) owner.DeleteNow();
+                    }
+                    else owner.Decide(keepIt: dx > 0);
                     return true;
             }
             return false;

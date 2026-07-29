@@ -35,4 +35,7 @@
   <data name="DistinguisherChooseByLocation" xml:space="preserve"><value>identical copies — choose by location</value></data>
   <data name="DistinguisherChooseByName" xml:space="preserve"><value>identical copies — choose by name</value></data>
   <data name="DistinguisherIdenticalCopies" xml:space="preserve"><value>identical copies</value></data>
+  <data name="DeleteThisButton" xml:space="preserve"><value>Delete this</value></data>
+  <data name="DeleteThisTitle" xml:space="preserve"><value>Move this photo to the recycle bin. It stays restorable from History.</value></data>
+  <data name="CannotDeleteKeeperHint" xml:space="preserve"><value>This is the copy the group is keeping — mark another one first.</value></data>
 </root>
