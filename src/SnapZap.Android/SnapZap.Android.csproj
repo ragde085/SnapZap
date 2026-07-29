@@ -33,6 +33,29 @@
   </PropertyGroup>
 
   <!--
+    AdditionalProperties="IncludeAndroid=true" is required, not decorative. SnapZap.Core only
+    grows its net10.0-android36.0 leg under that flag (AC-2.7's opt-in, see SnapZap.Core.csproj);
+    without it this reference resolves against Core's plain net10.0 leg, which carries the macOS
+    and Win32 SkiaSharp native assets and none of the Android ones — an APK that builds and then
+    dies at the first decode.
+
+    ⚠ AdditionalProperties alone is NOT sufficient, and this build fails without help. It flows
+    the flag to Core's *build*, but NuGet's restore walks its own graph and does not honour it, so
+    Core's obj/project.assets.json comes out with no net10.0-android36.0 target and the build dies
+    with NETSDK1005 ("Assets file doesn't have a target for net10.0-android36.0"). Pass the flag
+    globally instead, which reaches restore and build alike:
+
+        dotnet build src/SnapZap.Android -p:IncludeAndroid=true
+
+    The AdditionalProperties attribute is kept because it documents the dependency at the point it
+    exists and makes the build fail loudly rather than silently resolving Core's desktop leg.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\SnapZap.Core\SnapZap.Core.csproj"
+                      AdditionalProperties="IncludeAndroid=true" />
+  </ItemGroup>
+
+  <!--
     Deliberately NOT listed in SnapZap.slnx. Adding it makes the plain `dotnet build` at the repo
     root require an Android SDK, which is precisely the tax the opt-in decision in
     docs/ANDROID-PORT-ACS.md AC-2.7 exists to avoid for SnapZap.Core. Build it explicitly:
