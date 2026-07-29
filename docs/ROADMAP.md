@@ -153,6 +153,56 @@ from geometry measured in `interop.js`.
    picks selection first, else the folder focused in the tree, else the whole `ScanRoot`.
    The scan-action tooltip reflects the active scope. Covered by `NsfwScorerScopeTests`.
 
+### Delete/history model + swipe review — captured 2026-07-29
+
+Four notes from a design conversation, checked against the code as they were written so each one
+says whether it is a change or already true.
+
+11. **Swipe-based duplicate review (Android first).** Keep/remove one photo at a time by swiping —
+    right to keep, left to remove — rather than by multi-select. This is the touch replacement for
+    `DupeReview.razor`, which already models the right motion (group-at-a-time, "the core motion of
+    the app, which the flat grid can't express") but expresses it with desktop affordances. Natural
+    fit for the native Android head; not proposed for desktop, where multi-select is faster.
+
+12. **A photo marked "keep" must never be deleted.** ⚠ Safety-critical, and the swipe UI *changes
+    the shape of this risk* rather than inheriting it: decisions become per-photo and fast, so an
+    accidental swipe is one gesture away from a deletion, with no selection state visible to
+    review before committing.
+    The existing machinery is the right foundation and must not be bypassed — `AppState.InScope`
+    filters to `DupeKindExtensions.IsBulkSelectable()` (i.e. `Exact | Variant`, never `Burst`), and
+    `DuplicateKeepers` is deliberately unfiltered. Requirements: an explicit keep mark is
+    authoritative, survives the batch operation that follows, and is covered by a test that fails
+    if a keeper ever lands in a delete set. Do not re-derive the rule at the swipe UI — read it
+    through the same predicate, exactly as CLAUDE.md requires of the existing callers.
+
+13. **Delete removes the catalog row but must NOT remove the thumbnail.** Both halves are
+    **already true today** — this item is about pinning them, not building them:
+    - `DeleteService.DeleteRow` already does `DELETE FROM images WHERE id=$id`.
+    - Nothing anywhere deletes from `CatalogService.ThumbDir`.
+    - `undo_log.content_hash` is the mechanism that makes this work: it is how history renders a
+      preview *after* the `images` row is gone.
+
+    ⚠ **The risk is that this is implicit.** Nothing states it, and no test pins it, so a
+    reasonable future change — a "prune orphaned thumbnails" cleanup, reclaiming space for
+    thumbnails with no matching `images` row — would silently break every history preview. Write
+    the invariant down (DESIGN §7) and add a test asserting a thumbnail survives the delete of its
+    image. Note the standing tension: thumbnails then grow unbounded, so any eventual cleanup must
+    be driven by `undo_log` retention, never by orphan detection.
+
+14. **Let a record be removed from history.** ⚠ **Genuine gap** — `undo_log` is only ever
+    `INSERT`ed and `UPDATE`d (`restored=1`); there is no `DELETE` against it anywhere, so history
+    grows forever and cannot be pruned. Wanted: remove a single record, and probably a whole batch.
+
+    One design consequence to settle before building it, because it collides with a safety
+    invariant: **`undo_log.new_location` is the only pointer to the trashed file.** Drop the record
+    and the file is orphaned in the app trash forever, invisible and unreclaimable. So "remove from
+    history" naturally wants to purge the trashed file too — which would be the app's *first hard
+    delete*, against DESIGN's "nothing is hard-deleted" rule. Decide deliberately: either the
+    record removal is forget-only (leaving orphans, needing a separate trash-purge story), or it
+    purges and that becomes an explicit, confirmed, documented exception to the invariant. On
+    Android this compounds with AC-3.6 — the app-private trash already needs a size read-out and an
+    empty action.
+
 ### Backlog (from DESIGN §12, deliberately deferred)
 
 - Plex path-scoped refresh (unnecessary — Plex watches the export destination).
