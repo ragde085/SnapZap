@@ -155,6 +155,7 @@ The sidecars are excluded from publish output (`CopyToPublishDirectory="Never"`)
 | `docs/BLAZOR-MIGRATION.md` | The SPA → Blazor Server migration (completed) |
 | `docs/UI-FEATURES.md` | Quick per-feature reference for recent UI work — what each does, where the code lives, the one invariant not to regress |
 | `docs/WINDOWS-VERIFY.md` | Checklist for four Windows-only code paths |
+| `docs/ANDROID-PORT-PLAN.md` | Implementation plan for an Android port (not started) — architecture bet, `IPlatformServices` Android impl, storage model, ordered tasks |
 | `installer/SnapZap.iss` | Inno Setup definition for the Windows installer (per-user, optional model component, WebView2 bootstrap) |
 | `scripts/build-installer.bat` | Publish + package in one step; the supported way to build the Windows installer |
 | `installer-mac/` | `.app` bundle template (`Info.plist.template`, `launcher.sh`, `find-dotnet.sh`) + `.pkg` postinstall scripts (`postinstall-app.sh`, `postinstall-model.sh`, `notify.sh`) |
