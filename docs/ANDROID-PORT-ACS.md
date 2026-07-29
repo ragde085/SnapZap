@@ -43,6 +43,45 @@ fails only at `Xamarin.Android.Tooling.targets` with **XA5300: The Android SDK d
 be found**. So the single missing prerequisite is the **Android SDK itself** (command-line tools /
 platform-tools / a platform image) — not the .NET workload.
 
+#### Toolchain state as of this writing
+
+Android Studio, the `android` workload and `android-commandlinetools` have since been installed.
+Current measured state:
+
+| Component | State |
+|---|---|
+| .NET Android packs | ✅ `Microsoft.Android.Sdk.Darwin/36.1.69` + arm/arm64/x64/x86 runtime packs |
+| Android SDK | ✅ `~/Library/Android/sdk` (`build-tools/36.0.0`, `platform-tools`, `emulator`) |
+| `adb` | ✅ works — `~/Library/Android/sdk/platform-tools/adb`, v1.0.41 |
+| Devices attached | ❌ none yet (`adb devices` empty) |
+| **API 36 platform** | ❌ **the one blocker** — see below |
+| `ANDROID_HOME` / PATH | ❌ unset; every build so far passed `-p:AndroidSdkDirectory=` explicitly |
+
+**The remaining blocker is narrow and specific.** The SDK has `platforms/android-36.1`, but .NET's
+`net10.0-android36.0` target looks for `platforms/android-36/android.jar` **exactly** — the
+directory names are not interchangeable, and the build fails with **XA5207**. Installing it
+requires accepting Google's Android SDK license agreements
+(`-p:AcceptAndroidSDKLicenses=true`), which is the user's agreement to make, not this project's:
+
+```bash
+dotnet build src/SnapZap.Core -t:InstallAndroidDependencies -f net10.0-android36.0 \
+  -p:IncludeAndroid=true -p:AcceptAndroidSDKLicenses=true \
+  -p:AndroidSdkDirectory=$HOME/Library/Android/sdk
+```
+
+Or install **Android 16 / API level 36** from Android Studio's SDK Manager.
+
+Recommended once done, so no later command needs the explicit SDK path:
+
+```bash
+export ANDROID_HOME="$HOME/Library/Android/sdk"
+export PATH="$PATH:$ANDROID_HOME/platform-tools"
+```
+
+Notably, in the same failing invocation the **`net10.0` leg compiled clean** — confirming the
+opt-in multi-targeting (AC-2.7) leaves the desktop build undisturbed even while the Android leg
+is broken.
+
 Two things that restore proved along the way, which were open questions before:
 
 - `SkiaSharp.NativeAssets.Android/4.150.1` **resolves** for `net10.0-android36.0`, confirming both
@@ -155,7 +194,7 @@ none noted in the plan:
 
 | ID | Gate | Criterion |
 |---|---|---|
-| **AC-0.1** | 🟡 SDK | The Android **SDK** is installed and discoverable (`ANDROID_HOME`, or `-p:AndroidSdkDirectory=`), `adb devices` resolves, and `dotnet build src/SnapZap.Core -p:IncludeAndroid=true` succeeds. ✅ **Partially done already:** the .NET Android workload/packs are present (§1.1) and restore succeeds — only the Android SDK is missing, which is what XA5300 reports. Do **not** start by running `dotnet workload install android`; it is not what is missing. |
+| **AC-0.1** | 🟡 SDK | The Android **SDK** is installed and discoverable (`ANDROID_HOME`, or `-p:AndroidSdkDirectory=`), `adb devices` resolves, and `dotnet build src/SnapZap.Core -p:IncludeAndroid=true` succeeds. **Mostly done** — see §1.1's toolchain table. Workload packs ✅, SDK ✅, `adb` ✅, restore ✅. Outstanding: **the API 36 platform (XA5207)**, which needs a Google license acceptance, and `ANDROID_HOME`/PATH. Do **not** run `dotnet workload install android`; it is not what is missing. |
 | **AC-0.2** | 🟡 SDK | A throwaway `net10.0-android` project builds with a `WebApplication.CreateBuilder(...)` call that binds `http://127.0.0.1:0` and serves a route returning `200 hello`, launched from inside an `Activity`. The bound port is read back off `app.Urls` and logged. |
 | **AC-0.3** | 🔴 DEVICE | On **both** devices, a plain `Android.Webkit.WebView` `LoadUrl`s that loopback address and renders the response body. A blank screen is a fail, not a "needs config" — the config (INTERNET + cleartext, E4) must be in place for this AC to be attempted. |
 | **AC-0.4** | 🔴 DEVICE | On **both** devices, a real `SnapZap.App` page loads in that WebView, the Blazor circuit connects over the SignalR **WebSocket** transport (not long-polling fallback), and one interactive button click round-trips. Transport is asserted from the log, not inferred from the click working. |

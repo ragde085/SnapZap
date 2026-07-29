@@ -1,8 +1,9 @@
 # Android verification checklist
 
-Mirrors [WINDOWS-VERIFY.md](WINDOWS-VERIFY.md)'s role: this app is developed on macOS with no
-Android SDK, no `adb`, and no physical Android hardware in this working tree (confirmed in
-[ANDROID-PORT-ACS.md](ANDROID-PORT-ACS.md) §1.1). Every criterion below is gated 🔴 **DEVICE** in
+Mirrors [WINDOWS-VERIFY.md](WINDOWS-VERIFY.md)'s role: this app is developed on macOS, and while
+the Android toolchain is now partly in place (SDK at `~/Library/Android/sdk`, working `adb`, .NET
+Android packs — see [ANDROID-PORT-ACS.md](ANDROID-PORT-ACS.md) §1.1), there is still **no physical
+Android hardware attached** and no Android build of SnapZap has ever run. Every criterion below is gated 🔴 **DEVICE** in
 the acceptance-criteria document — it cannot be faked by an emulator, code inspection, or
 `dotnet test`, because the entire reason two physical phones are in scope is OEM WebView and
 permission-flow variance that an emulator doesn't reproduce. Run through this once both devices
