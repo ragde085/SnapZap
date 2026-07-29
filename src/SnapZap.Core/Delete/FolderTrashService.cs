@@ -33,6 +33,61 @@ public sealed class FolderTrashService : ITrashService
         _primaryMove = primaryMove;
     }
 
+    /// <summary>How much the trash currently holds. Cheap enough to call on every screen open.</summary>
+    /// <remarks>
+    /// Needed because a folder-backed trash is <b>invisible</b>: it sits in app-private storage
+    /// where no file manager will show it, so unlike the Recycle Bin or Finder's Trash the user has
+    /// no other way to discover that deleting a thousand photos is still holding their bytes. A
+    /// trash the user cannot see the size of is a storage leak with good intentions.
+    /// </remarks>
+    public (int Files, long Bytes) Measure()
+    {
+        if (!Directory.Exists(_trashRoot)) return (0, 0);
+
+        int files = 0; long bytes = 0;
+        foreach (var f in Directory.EnumerateFiles(_trashRoot, "*", SearchOption.AllDirectories))
+        {
+            try { bytes += new FileInfo(f).Length; files++; }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // A file that vanished mid-walk is not an error worth failing a size read-out over.
+            }
+        }
+        return (files, bytes);
+    }
+
+    /// <summary>
+    /// Permanently deletes everything in the trash. Returns how many files were removed.
+    /// </summary>
+    /// <remarks>
+    /// <para>⚠ <b>This is the one place in SnapZap that hard-deletes, and it is deliberate.</b>
+    /// DESIGN's invariant is that no destructive step happens without the user asking for it and
+    /// without a reversible path first — recycling gives that reversible path, and emptying the
+    /// trash is the user spending it. Every other delete route in the app moves files here; this
+    /// is the only exit. Callers must confirm explicitly before calling it.</para>
+    ///
+    /// <para><b>What it costs.</b> <c>undo_log</c> rows that point at these files survive, and
+    /// restoring one afterwards reports it as missing rather than failing — <c>RestoreAsync</c>
+    /// already counts missing separately for exactly this reason. That is the honest behaviour,
+    /// but it does leave history entries that can no longer be acted on, which is the other half
+    /// of ROADMAP item 14.</para>
+    ///
+    /// <para>Best-effort per file: one unreadable entry does not abandon the rest, since a trash
+    /// that cannot be emptied because of a single stuck file is a trash that grows forever.</para>
+    /// </remarks>
+    public int Empty()
+    {
+        if (!Directory.Exists(_trashRoot)) return 0;
+
+        int removed = 0;
+        foreach (var f in Directory.EnumerateFiles(_trashRoot, "*", SearchOption.AllDirectories).ToList())
+        {
+            try { File.Delete(f); removed++; }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+        }
+        return removed;
+    }
+
     public Task<string?> SendToTrashAsync(string path, CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();

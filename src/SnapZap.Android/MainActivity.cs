@@ -215,6 +215,9 @@ public sealed class MainActivity : Activity
             ViewGroup.LayoutParams.MatchParent, 0, 1f);
         _root.AddView(grid);
 
+        _root.AddView(Button("Trash & history", () =>
+            StartActivity(new Intent(this, typeof(TrashActivity)))));
+
         _root.AddView(Button("Run Core self-test", async () =>
         {
             status.Text = "Running self-test…";

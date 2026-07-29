@@ -237,4 +237,64 @@ public class FolderTrashTests : IDisposable
     {
         try { if (Directory.Exists(_work)) Directory.Delete(_work, true); } catch { }
     }
+
+    // ---- Measure / Empty (AC-3.6: a folder-backed trash is invisible, so it must be reportable) ----
+
+    [Fact]
+    public async Task Measure_reports_the_file_count_and_total_bytes_held()
+    {
+        var trash = new FolderTrashService(_trash);
+        Assert.Equal((0, 0L), trash.Measure());
+
+        var a = Path.Combine(_photos, "a.jpg"); WriteBytes(a, new byte[100]);
+        var b = Path.Combine(_photos, "b.jpg"); WriteBytes(b, new byte[250]);
+        await trash.SendToTrashAsync(a);
+        await trash.SendToTrashAsync(b);
+
+        var (files, bytes) = trash.Measure();
+        Assert.Equal(2, files);
+        Assert.Equal(350L, bytes);
+    }
+
+    [Fact]
+    public void Measure_on_a_trash_that_was_never_created_is_zero_not_an_error()
+    {
+        var trash = new FolderTrashService(Path.Combine(_work, "never-made"));
+        Assert.Equal((0, 0L), trash.Measure());
+    }
+
+    /// <summary>
+    /// Emptying is the one hard delete in the app. It must actually reclaim the bytes — a trash
+    /// that reports a size and cannot be emptied is worse than no read-out at all.
+    /// </summary>
+    [Fact]
+    public async Task Empty_removes_everything_and_reports_how_many()
+    {
+        var trash = new FolderTrashService(_trash);
+        var a = Path.Combine(_photos, "a.jpg"); WriteBytes(a, new byte[10]);
+        var b = Path.Combine(_photos, "b.jpg"); WriteBytes(b, new byte[20]);
+        await trash.SendToTrashAsync(a);
+        await trash.SendToTrashAsync(b);
+
+        Assert.Equal(2, trash.Empty());
+        Assert.Equal((0, 0L), trash.Measure());
+        Assert.Equal(0, trash.Empty());   // idempotent
+    }
+
+    /// <summary>
+    /// After emptying, a restore must fail cleanly rather than throw — the undo_log row still
+    /// exists and the user can still press Restore. DeleteService counts these as "missing".
+    /// </summary>
+    [Fact]
+    public async Task Restoring_something_that_was_emptied_returns_false_rather_than_throwing()
+    {
+        var trash = new FolderTrashService(_trash);
+        var src = Path.Combine(_photos, "a.jpg"); WriteBytes(src, new byte[10]);
+        var loc = await trash.SendToTrashAsync(src);
+
+        trash.Empty();
+
+        Assert.False(await trash.RestoreAsync(src, loc));
+        Assert.False(File.Exists(src));
+    }
 }

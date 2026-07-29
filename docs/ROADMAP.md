@@ -274,8 +274,9 @@ says whether it is a change or already true.
     delete*, against DESIGN's "nothing is hard-deleted" rule. Decide deliberately: either the
     record removal is forget-only (leaving orphans, needing a separate trash-purge story), or it
     purges and that becomes an explicit, confirmed, documented exception to the invariant. On
-    Android this compounds with AC-3.6 — the app-private trash already needs a size read-out and an
-    empty action.
+    Android this compounds with AC-3.6 — ✅ now done: `TrashActivity` provides the size read-out
+    and the empty action, and emptying is where the orphaning becomes visible, since the confirmation
+    has to warn that history entries stop being restorable.
 
 ### Backlog (from DESIGN §12, deliberately deferred)
 
