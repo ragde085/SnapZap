@@ -5,6 +5,7 @@ using SnapZap.Core.Analysis;
 using SnapZap.Core.Data;
 using SnapZap.Core.Dedup;
 using SnapZap.Core.Imaging;
+using SnapZap.Core.Nsfw;
 
 namespace SnapZap.Droid;
 
@@ -36,6 +37,15 @@ public static class CoreSelfTest
     const double RefBlurScore = 291.10588906865104;
     const double BlurTolerance = 1e-6;
 
+    // NSFW inference on the same fixture. Tolerance is far looser than the hash comparisons on
+    // purpose: this is float matmul through ONNX Runtime, where a different build, kernel or
+    // thread count legitimately shifts the last few digits. Nothing in the app compares scores
+    // for equality — NsfwSettings thresholds them — so agreement to ~1e-3 is what "the same
+    // model behaving the same way" actually means here.
+    const double RefNsfwWhole = 0.0010935845;
+    const double RefNsfwTileMean = 0.0022139877;
+    const double NsfwTolerance = 1e-3;
+
     /// <summary>
     /// The deterministic fixture generator copied verbatim from <c>GoldenValueTests.Scene</c>.
     /// Duplicated rather than shared because the test project is not referenced from here and
@@ -59,7 +69,12 @@ public static class CoreSelfTest
 
     public sealed record Result(string Name, bool Pass, string Detail);
 
-    public static List<Result> Run(string workDir)
+    /// <param name="modelPath">
+    /// Where <c>nsfw.onnx</c> was pushed on this device. Optional in exactly the way it is on
+    /// desktop: a missing model disables NSFW scoring and nothing else, so its absence is
+    /// reported as a skip rather than a failure.
+    /// </param>
+    public static List<Result> Run(string workDir, string? modelPath = null)
     {
         var results = new List<Result>();
         void Check(string name, Func<string> body)
@@ -142,7 +157,39 @@ public static class CoreSelfTest
             return $"schema created, images row count = {n}, file {new FileInfo(dbPath).Length} bytes";
         });
 
-        // 6. Where LocalApplicationData actually resolves on this device (AC-0.5 / AC-5.4). The
+        // 6. ONNX Runtime (AC-2.4) — the last native unknown, and the one with a live upstream
+        //    bug matching this project's exact topology: microsoft/onnxruntime#29270, where a
+        //    plain-net10.0 library ProjectReference'd from a net10.0-android head and built on a
+        //    macOS host gets the wrong Linux/glibc native library bundled and dies at launch.
+        //    Constructing the session is what would trip that, so this check is meaningful even
+        //    before it looks at the score.
+        //
+        //    A failure here costs NSFW scoring and nothing else — exactly the graceful
+        //    degradation a missing model already produces on desktop — so it is not a v1 blocker.
+        if (modelPath is null || !File.Exists(modelPath))
+        {
+            results.Add(new Result("onnx_nsfw", true,
+                $"SKIPPED — no model at '{modelPath ?? "(null)"}'. Push nsfw.onnx to run this check."));
+        }
+        else
+        {
+            Check("onnx_nsfw", () =>
+            {
+                using var clf = new OnnxNsfwClassifier(modelPath);
+                var whole = clf.ScoreFile(pngPath);
+                var verdict = clf.ScoreFile(pngPath, NsfwDepth.Tiled);
+
+                var dw = Math.Abs(whole - RefNsfwWhole);
+                var dt = verdict.TileMean is { } tm ? Math.Abs(tm - RefNsfwTileMean) : double.NaN;
+                var ok = dw <= NsfwTolerance && (double.IsNaN(dt) || dt <= NsfwTolerance);
+
+                return ok
+                    ? $"whole={whole:F7} (Δ{dw:E2}) tileMean={verdict.TileMean:F7} (Δ{dt:E2}), config_from_file={clf.ConfigFromFile}"
+                    : $"DIFFERS whole={whole:R} (desktop {RefNsfwWhole:R}, Δ{dw:E2}) tileMean={verdict.TileMean} (desktop {RefNsfwTileMean:R}, Δ{dt:E2})";
+            });
+        }
+
+        // 7. Where LocalApplicationData actually resolves on this device (AC-0.5 / AC-5.4). The
         //    plan assumes app-private internal storage; a wrong answer fails quietly by writing
         //    the catalogue somewhere unexpected rather than by erroring.
         Check("special_folders", () =>

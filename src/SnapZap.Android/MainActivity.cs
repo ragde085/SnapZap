@@ -48,11 +48,14 @@ public sealed class MainActivity : Activity
                 // permission at all, even under scoped storage. The real storage model
                 // (MANAGE_EXTERNAL_STORAGE, docs/ANDROID-PORT-PLAN.md §3) is a later step; this
                 // only needs somewhere to put a PNG and a SQLite file.
-                var work = Path.Combine(
-                    GetExternalFilesDir(null)?.AbsolutePath ?? CacheDir!.AbsolutePath,
-                    "selftest");
+                var external = GetExternalFilesDir(null)?.AbsolutePath ?? CacheDir!.AbsolutePath;
+                var work = Path.Combine(external, "selftest");
 
-                var results = CoreSelfTest.Run(work);
+                // Same resolution order the desktop uses (DependencyChecker): the model is an
+                // optional sidecar beside the app's data, and its absence degrades gracefully.
+                var model = Path.Combine(external, "models", "nsfw.onnx");
+
+                var results = CoreSelfTest.Run(work, model);
                 allPassed = results.All(r => r.Pass);
                 report = CoreSelfTest.Format(results);
             }
