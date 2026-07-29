@@ -1,65 +1,88 @@
 # Android port — implementation plan
 
-**Status:** Ready to execute in a local session with the Android SDK/workload installed.
-**Supersedes:** the earlier research proposal (Option A / MAUI Blazor Hybrid), refined against
-three decisions: the app needs to reach folders outside the system Photos library, export mode
-is not needed for v1, and the two test devices are a Samsung Galaxy S23 Ultra and a mid-range
-Motorola.
+> ## ⚠ Status: partly superseded — read this box first
+>
+> This plan was written in a sandbox with no .NET SDK, no Android SDK and no `adb`. It has since
+> been executed far enough to settle its central question, and **its architecture was wrong**.
+>
+> | | |
+> |---|---|
+> | **§0's bet — Kestrel in-process + a WebView** | ⛔ **Impossible.** ASP.NET Core publishes no runtime pack for any mobile RID. Proven, not guessed — see [ANDROID-PORT-ACS.md](ANDROID-PORT-ACS.md) §1.5. |
+> | **§0's fallback — BlazorWebView + a small Kestrel for `/api/thumb`** | ⛔ Also impossible: *no* Kestrel means not even a small one. |
+> | **What replaced them** | A **native C# Android UI over `SnapZap.Core`** — no WebView, no HTTP, no Blazor on Android. Rationale in §0 below. |
+> | **§1 scope, §3 storage model, §5 risks** | ✅ Still valid and still the right calls. |
+> | **§2 platform services** | Partly valid — `IAppHost` is void, trash/link survive in better form. |
+> | **§4 task list, §7 estimate** | Rewritten below. |
+>
+> Acceptance criteria, per-item status and all measured evidence live in
+> [ANDROID-PORT-ACS.md](ANDROID-PORT-ACS.md); that document is now the source of truth for
+> *whether* something works. This one says what to build next.
 
-This plan was written in a sandbox with **no .NET SDK, no Android SDK, and no `adb`** — every
-file below was authored by hand against the actual `SnapZap.Core`/`SnapZap.App` source, but none
-of it has been compiled. Treat step 0 as mandatory and non-skippable: it's the one thing this
-whole plan bets on, and it needs a real build to confirm before anything else is built on top of
-it.
+**Test devices:** Samsung Galaxy S23 Ultra and a mid-range Motorola. Neither has been used yet —
+everything so far is an `arm64-v8a` emulator, which shares the handsets' ABI and therefore loads
+the same native libraries.
 
 ---
 
-## 0. The one architectural bet — validate this first
+## 0. The architecture — settled, the hard way
 
-The obvious way to port a Blazor app to Android is **Blazor Hybrid**: a `BlazorWebView` control
-that runs the Razor component tree directly inside a WebView, no HTTP server involved. That's
-real work — it means moving off Blazor Server's render mode, and re-hosting the app's two minimal
-API endpoints (`/api/thumb/{hash}`, `/api/full/{id}` — `Program.cs:93-136`) some other way, since
-`BlazorWebView` doesn't run inside a normal ASP.NET Core pipeline.
+The original bet was that Android could be a fifth `IAppHost`: run the same `WebApplication`
+in-process bound to loopback, point a system `WebView` at it, and reuse `Program.cs`, both API
+endpoints, Blazor Server's render mode, `AppState` and every Razor component unmodified.
 
-There's a cheaper option worth trying first: **`SnapZap.App` already runs its own embedded
-Kestrel server** (`Program.cs:26-43`) and hands the bound URL to whatever `IAppHost` shows it —
-Photino on Windows, a plain browser tab on macOS (`AppHostFactory`, `App/Services/AppHost.cs`).
-Android can be a fifth `IAppHost`: **run the exact same `WebApplication` in-process inside the
-Android app, bound to loopback, and point a plain system `WebView` at it** instead of Photino.
+**It cannot work.** A real `net10.0-android36.0` head hits two errors:
 
-If this works, the payoff is large: `Program.cs`, both API endpoints, Blazor Server's render
-mode, `AppState`, and every Razor component are reused completely unmodified — the only new code
-is a small Android host shell and the platform-services implementation in §2. If it doesn't work
-(ASP.NET Core's hosting stack turns out not to run cleanly under the `net10.0-android` TFM, or
-Android's WebView refuses loopback traffic for some unresolvable reason), the fallback is classic
-`BlazorWebView`/Blazor Hybrid — more work, described briefly at the end of §0, not worth designing
-in detail until the cheap option is actually ruled out.
+1. `NETSDK1150` — an Android app is a self-contained executable and cannot reference
+   `SnapZap.App`, a non-self-contained `Exe`. (`SnapZap.App` must stay `OutputType=Exe` *exactly*
+   or Blazor's static web assets are silently dropped — CLAUDE.md gotcha 9.) There is a documented
+   escape hatch, and it leads to:
+2. `NETSDK1082` — *no runtime pack for `Microsoft.AspNetCore.App` for RID `android-arm64`.*
 
-**Day-1 spike — do this before writing anything else in this plan:**
+The second is not configuration. Verified against nuget.org: `microsoft.aspnetcore.app.runtime`
+resolves for `win-x64`, `osx-arm64` and `linux-arm64`, and **404s for `android-arm64` and
+`ios-arm64`**. There is no ASP.NET Core on mobile, by design — it is why MAUI ships
+`BlazorWebView` rather than hosting Kestrel. That also invalidates this plan's own fallback, which
+assumed "a small in-process Kestrel *only* for the two file-serving endpoints".
 
-1. `dotnet workload install android` (or install via Visual Studio's MAUI workload, which
-   includes it).
-2. Create a throwaway `net10.0-android` project. Reference `Microsoft.AspNetCore.App`'s
-   constituent packages directly (`Microsoft.AspNetCore.Hosting`, `Microsoft.AspNetCore.Server.Kestrel`,
-   or just try `WebApplication.CreateBuilder` the normal way and see what resolves) and confirm a
-   minimal `WebApplication` binds `http://127.0.0.1:0` and serves a "hello" route inside an Android
-   `Activity`.
-3. Confirm a plain `Android.Webkit.WebView` (or MAUI's `WebView` control, if using MAUI project
-   scaffolding rather than a bare Android head) can `LoadUrl` that loopback address and render the
-   response. Watch for Android's cleartext-traffic block (§3) — this is the most likely reason
-   step 3 shows a blank white screen even when step 2 works.
-4. Confirm SignalR's WebSocket transport survives the trip (load a real page from `SnapZap.App`,
-   not just a hello route, and check the Blazor circuit actually connects — an interactive button
-   click is the simplest proof).
+### What replaced it: a native head over the shared Core
 
-If all four pass: proceed with the rest of this plan as written. If step 2 or 4 fails outright
-(not just needs a config tweak): stop, and re-scope around `BlazorWebView` instead — extract
-`Components/`, `Services/`, and `wwwroot/` into a Razor Class Library referenced by both
-`SnapZap.App` and a new MAUI head, keep a small in-process Kestrel *only* for the two file-serving
-endpoints (BlazorWebView still needs *some* way to serve `<img src="/api/thumb/...">`), and let
-BlazorWebView own the component rendering instead of Blazor Server. That's meaningfully more
-surgery than §1-§5 below, which all assume the spike passed.
+`SnapZap.Core` multi-targets `net10.0-android36.0` (behind an opt-in flag, AC-2.7) and a native
+C# Android UI drives it directly. No WebView, no HTTP, no Blazor, no SignalR.
+
+The reasoning, in one line: **the expensive, dangerous-to-rebuild part of SnapZap is Core, not the
+UI.** The perceptual hash with all four rotations, complete-linkage grouping, the NSFW mean-not-max
+tiling rule and its measured thresholds, the burst safety gate — these are tuned behaviours backed
+by 245 tests whose failure mode is *silently deleting photos that should have been kept*. The UI is
+the cheap part, and it is also the part that does not transfer to touch anyway. A full native
+rewrite in Kotlin would have inverted that trade; sharing an RCL with the desktop would have
+refactored the shipping Windows/macOS product to serve a port that has not shipped.
+
+Three things this buys that the WebView architecture could not:
+
+- **No `INTERNET` permission at all.** It was only ever needed so a WebView could reach loopback.
+  An app that reads the user's entire photo library and cannot talk to the network is a strictly
+  better thing to ship. Defend this.
+- **No scroll-windowing risk.** `PhotoGrid`/`interop.js` window rows by hand because
+  `<Virtualize>` cannot resolve a viewport in that flex layout. Android's view recycling does it
+  natively — so AC-6.5, the highest-risk item in this plan's original risk table, does not exist.
+- **The desktop app is untouched.** No RCL extraction, no render-mode change, no new risk to
+  Windows/macOS.
+
+The cost, stated plainly: **two UIs to maintain.** Accepted, because a shared UI would have
+diverged through touch conditionals immediately anyway.
+
+### Proven on-device (arm64 emulator, API 37)
+
+Every native dependency works, and results are identical to the dev Mac:
+
+| | |
+|---|---|
+| SkiaSharp | loads; PNG encode byte-identical; blur Δ0.00E+000 |
+| Perceptual hash | **bit-exact** vs desktop — dedup agrees across platforms |
+| SQLite | opens, schema created, no `Batteries_V2.Init()` needed |
+| ONNX / NSFW | Δ3.8e-11 vs desktop; onnxruntime#29270 does not reproduce |
+
+Re-runnable at any time from the app's own **Run Core self-test** button (`CoreSelfTest.cs`).
 
 ---
 
@@ -91,6 +114,12 @@ inference, anything Windows-only that doesn't apply here anyway.
 
 ## 2. `IPlatformServices` — Android implementation
 
+> **Status:** the *instinct* here was right and the *placement* advice was wrong in one direction
+> and right in the other. Keeping Android SDK types out of `SnapZap.Core` held — `FolderTrashService`
+> is portable and unit-tested on macOS. But "keep Core free of any Android workload dependency"
+> did **not** hold: `SkiaSharp.NativeAssets.Android` is TFM-gated, so Core must multi-target
+> regardless (AC-2.7). `IAppHost` is void — see below.
+
 Add `src/SnapZap.Core/Platform/AndroidServices.cs` (new file, same pattern as
 `MacOsServices.cs`/`WindowsServices.cs`) or the new Android host project if `SnapZap.Core` should
 stay free of any Android SDK reference — **prefer keeping it out of `SnapZap.Core`** so that
@@ -102,6 +131,17 @@ no SDK dependency of their own — `osascript`/Win32 P/Invoke don't need a workl
 pattern for.)
 
 ### `AndroidTrashService : ITrashService`
+
+> ✅ **Built, better than drafted.** The draft below takes an Android `Context` purely to resolve a
+> directory path, which would have made the risky half untestable off-device for no reason. What
+> shipped instead is `SnapZap.Core.Delete.FolderTrashService` — portable, takes its trash root as a
+> constructor parameter, no SDK types, **10 unit tests running on macOS today**. The Android head
+> supplies the path.
+>
+> It also fixes a real bug in the draft: `RestoreAsync` used `File.Move(..., overwrite: false)`,
+> which *throws* when the original path is occupied, while `ITrashService`'s own contract says
+> return `false`. Cross-volume moves fall back to copy+delete, which matters when the trash root
+> and an SD-card source differ.
 
 No `MediaStore` dependency — the app needs to recycle files outside the indexed Photos
 collection, and `createTrashRequest` only operates on already-indexed `content://` URIs. Simplest
@@ -172,28 +212,35 @@ mobile .NET targets ([microsoft/onnxruntime#11618](https://github.com/microsoft/
 Test this explicitly and early (§4) — construct an `OnnxNsfwClassifier` against the real model
 file on-device and score one image, before assuming NSFW scoring works at all on Android.
 
-### `IAppHost`
+### `IAppHost` — ⛔ void
 
-Only relevant if the §0 spike passes. Add `AndroidWebViewAppHost : IAppHost` in the new host
-project:
+Presumed §0's architecture. `IAppHost` exists to hand a bound URL to something that displays it;
+with no server there is no URL, and with a native UI there is nothing to display it in. No
+`AndroidWebViewAppHost` was written and none should be. `AppHostFactory` keeps its Windows/macOS
+branches untouched.
 
-```csharp
-public sealed class AndroidWebViewAppHost(Android.Webkit.WebView webView) : IAppHost
-{
-    public void Run(string url) => webView.LoadUrl(url);
-}
-```
-
-`AppHostFactory` (`App/Services/AppHost.cs`) currently branches on `RuntimeInformation.IsOSPlatform`
-to pick Photino vs. browser — it needs a third branch for `OSPlatform.Create("ANDROID")` (or
-however `RuntimeInformation` reports on this TFM — confirm during the spike) resolving to this
-type instead. Since `Program.cs`'s `AppHostFactory.Create(...).Run(url)` call already expects to
-hand off to *something* that shows the URL, this is a small, contained change to an existing
-switch, not new plumbing.
+The one piece of this that did land is in `SnapZap.App`: `PhotinoAppHost` was split into its own
+file so it and its package can be excluded from a non-desktop TFM. That is scaffolding for a future
+multi-targeted `SnapZap.App`, not something Android uses.
 
 ---
 
 ## 3. Storage: full filesystem access, not `MediaStore`
+
+> ✅ **Validated on-device.** A folder created by `adb push` and never opened in the Gallery — so
+> not `MediaStore`-indexed — scanned end-to-end: enumerated, hashed, thumbnailed, catalogued
+> (AC-4.5). This was the single assumption the whole storage model rested on.
+>
+> ⚠ **Items 3 and 4 below are obsolete.** `INTERNET` and the loopback cleartext config existed
+> only so a WebView could reach in-process Kestrel. The native head makes **no network requests of
+> any kind**, so neither is declared, and the manifest is better for it. Do not add them back
+> without a specific reason.
+>
+> ✅ Item 5 (`DirectoryPickerDialog`) shipped as `SnapZap.Core.Platform.DirectoryRoots`, a testable
+> seam with an Android branch returning `/storage/emulated/0`. Item 6 (`CatalogService`'s location)
+> was measured, not assumed: `LocalApplicationData` → `/data/user/0/com.snapzap.android/files`.
+> Note `UserProfile` resolves to the *same* app-private path, so the old default would have opened
+> a directory the user has no reason to recognise — which is exactly what the Android branch fixes.
 
 Because v1 needs to reach folders the system Photos library doesn't index, this **does not**
 build on `ContentResolver`/`MediaStore` at all — that would only satisfy the Play Store's
@@ -248,45 +295,40 @@ Instead:
 
 ## 4. Ordered task list
 
-Each step should be a working, testable increment on both devices — don't stack three steps and
-test once, since the whole point of having two test phones is catching OEM-specific breakage
-early per-step.
+Everything through the storage model is done. What remains is UI.
 
-1. **§0 spike.** Go/no-go gate. Don't proceed past this until it passes on *both* devices.
-2. **Project scaffold.** New Android host project (`src/SnapZap.Android` or similar — bare
-   `net10.0-android` head if the spike suggests MAUI's Controls/Shell machinery isn't needed for a
-   single-WebView app; a minimal MAUI project if the bare-Android-SDK route hits packaging friction
-   the MAUI templates already solve). References `SnapZap.Core` and `SnapZap.App` (for `Program.cs`'s
-   composition — extract the `WebApplication` construction into a small shared method both
-   entry points can call, since `Program.cs` today is a top-level-statements file, not a reusable
-   method; keep the platform-specific `AppHostFactory`/foreground-run logic separate from that
-   shared builder logic as part of this extraction). Add to `SnapZap.slnx`.
-3. **Manifest + permissions** (§3): `MANAGE_EXTERNAL_STORAGE` request flow (a simple screen or
-   inline banner gating the rest of the UI until granted, same spirit as the desktop
-   `DependencyDialog` pattern already in `App/Components/DependencyDialog.razor` for optional
-   sidecars — this one is a hard requirement, not optional, so block rather than degrade),
-   `INTERNET`, cleartext config.
-4. **`AndroidServices`** (§2): trash service, link service stub, `IAppHost` Android branch.
-5. **`AppHostFactory` wiring** — new platform branch, DI registration for
-   `ITrashService`/`ILinkService` mirroring the existing `if (Windows) ... else (macOS)` block in
-   `Program.cs:59-68`.
-6. **`DirectoryPickerDialog`/`CatalogService` Android paths** (§3 items 5-6).
-7. **ONNX-on-Android spike** (can run in parallel with 2-6, since it's independent): construct
-   `OnnxNsfwClassifier` against the real model file on both test devices, score a known image,
-   confirm the result is sane. If it fails, decide then whether to debug the native-load issue or
-   ship v1 with NSFW scoring off — don't let this block the rest of the port either way.
-8. **Full run-through** on both devices: pick a folder outside the Photos library, scan it,
-   confirm dedup/blur/NSFW (if step 7 passed) results render, delete a photo and restore it from
-   history (including the single-item restore from the trash-recovery work), confirm the DB
-   persists across an app restart.
-9. **Touch pass** — deliberately *last*, and deliberately scoped down from the original proposal's
-   full "redesign the interaction model" phase, because export/Hide/Extract are already out and a
-   lot of desktop-only affordances (right-click, keyboard shortcuts) simply have no equivalent to
-   design here rather than needing a redesign. Concretely: the per-thumbnail restore button in
-   `UndoDialog.razor` is hover-revealed (`.undo-thumb-restore` in `app.css`) and needs a
-   touch-visible always-shown or tap-to-reveal treatment, since there's no hover on a touchscreen;
-   audit `Card.razor`/`Rail.razor`/`Home.razor` for the same hover-only pattern before
-   calling this done, rather than fixing only the one instance that's top of mind.
+### Done
+
+| | | |
+|---|---|---|
+| ✅ | §0 spike | Run, **failed**, architecture replaced (§0) |
+| ✅ | Core multi-targets Android | Opt-in `-p:IncludeAndroid=true` (AC-2.7) |
+| ✅ | Native dependencies | Skia, SQLite, ONNX all verified on-device (§0) |
+| ✅ | Platform services | Portable `FolderTrashService` + link stub, 10 tests |
+| ✅ | Directory roots seam | `DirectoryRoots` with Android branch, 8 tests |
+| ✅ | Android head scaffold | `src/SnapZap.Android`, installable APK |
+| ✅ | Permission gate | `MANAGE_EXTERNAL_STORAGE`, blocks rather than degrades |
+| ✅ | Scan + grid | Non-indexed folder → 6 photos → grid; cache survives restart |
+
+### Next
+
+1. **Dedup pass after scan.** Run `VariantFinder`/`BurstFinder`/`ExactDuplicateFinder` +
+   `GroupReconciler` on-device and surface group counts. Pure Core, no new algorithms — the point
+   is confirming grouping behaves identically to desktop on a real library.
+2. **Swipe review UI** (ROADMAP item 11). Group-at-a-time, swipe right to keep / left to remove —
+   the touch expression of `DupeReview.razor`. ⚠ Read the keep/remove decision through the existing
+   `InScope` / `IsBulkSelectable` predicate; do **not** re-derive it (ROADMAP item 12). A burst is
+   five different photographs and must never be bulk-selectable.
+3. **Delete with undo**, on `FolderTrashService`. Plus AC-3.6: the app-private trash needs a size
+   read-out and an empty action, since it is invisible to the user's file manager.
+4. **Real-device pass** on both handsets — the grant flow (AC-4.2) and decode throughput on a real
+   library, neither of which an emulator answers.
+5. **Performance on a real library.** Everything measured so far is six photos.
+
+### Explicitly not doing
+
+Export, Hide/Extract, DirectML — out of v1 scope per §1, and now also structurally absent from the
+Android UI rather than merely unwired.
 
 ---
 
@@ -317,20 +359,19 @@ early per-step.
 
 ## 7. Effort estimate
 
-Meaningfully lower than the original proposal's 6-9 weeks, because two of that estimate's biggest
-line items are gone: the `MediaStore` storage rewrite (§3 — not needed, full filesystem access is
-in scope) and the export/hardlink UI work (§1 — explicitly out of scope). Rough shape, assuming
-the §0 spike passes:
+The original 2-3 week figure assumed the §0 spike passed and the entire Blazor UI came along for
+free. It didn't, so that number is void.
 
-- Spike + scaffold + platform services (§0, tasks 1-5): **3-5 days**
-- Storage/directory-picker Android paths (task 6): **1-2 days**
-- ONNX spike (task 7, parallelizable): **1-3 days**
-- Full run-through + fixes (task 8): **2-4 days**
-- Touch pass (task 9): **3-5 days**
+What actually happened: the infrastructure half — spike, multi-targeting, native dependency
+validation, platform services, storage model, scaffold, permission gate, scan-to-grid — landed in
+**one working session**, largely because the preparatory refactoring was done *before* the spike
+and none of it depended on the hosting architecture. That was luck turned into design, and it is
+the reason the architecture being wrong cost nothing.
 
-**Total: roughly 2-3 weeks, one person**, versus the original 6-9 week estimate — almost entirely
-because the storage model and export scope both turned out to not need rebuilding, not because
-any individual phase got easier. If the §0 spike fails and this falls back to classic
-`BlazorWebView`, add back roughly the original proposal's UI-layer estimate for the parts that
-bet on Kestrel-in-process (§0's fallback paragraph) — the platform-services and storage work in
-§2-§3 stays valid either way.
+What remains is a UI project: swipe review, delete/undo, trash management, and a real-device pass.
+Estimating it in weeks would be guessing — the honest statement is that **every unknown that could
+have killed v1 is now closed**, and what is left is ordinary UI work whose scope the team controls
+directly by choosing how much of the desktop's feature surface to reproduce.
+
+The narrower that answer, the sooner it ships. "Triage duplicates on my phone" is a much smaller
+target than desktop parity, and it is the one worth aiming at first.
