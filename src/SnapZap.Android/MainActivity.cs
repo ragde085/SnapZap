@@ -236,6 +236,27 @@ public sealed class MainActivity : Activity
 
     void OpenReview() => StartActivity(new Intent(this, typeof(ReviewActivity)));
 
+    const int RequestFolder = 1;
+
+    /// <summary>
+    /// Screen 8. Started for a result so the folder the user drilled to comes back and becomes
+    /// the scan target — the handoff's "Tap a folder to narrow the library to it".
+    /// </summary>
+    void OpenFolders() => StartActivityForResult(new Intent(this, typeof(FoldersActivity)), RequestFolder);
+
+    protected override void OnActivityResult(int requestCode, Result resultCode, Intent? data)
+    {
+        base.OnActivityResult(requestCode, resultCode, data);
+        if (requestCode != RequestFolder || resultCode != Result.Ok) return;
+
+        var picked = data?.GetStringExtra(FoldersActivity.ExtraSelectedFolder);
+        if (string.IsNullOrEmpty(picked) || !Directory.Exists(picked)) return;
+
+        _folder = picked;
+        Toast.MakeText(this, $"Folder set to {picked}", ToastLength.Short)!.Show();
+        Render();
+    }
+
     // ══════════════════════════════════════════════════════════════════════════════════════
     //  1 · First run — the two promises, said once, above the fold
     // ══════════════════════════════════════════════════════════════════════════════════════
@@ -279,8 +300,7 @@ public sealed class MainActivity : Activity
 
         var browse = Design.Button(this, "Browse…", Design.Btn.Secondary, 52f);
         browse.LayoutParameters = Wide();
-        browse.Click += (_, _) => Toast.MakeText(this,
-            "Type a path for now — the Folders sheet is screen 8.", ToastLength.Short)!.Show();
+        browse.Click += (_, _) => OpenFolders();
         body.AddView(browse);
         body.AddView(Gap(24));
 
@@ -447,6 +467,15 @@ public sealed class MainActivity : Activity
         filters.Click += (_, _) => new FiltersSheet(this, _facet.ToString(), FacetCounts(),
             chosen => { _facet = Enum.Parse<DupeFacet>(chosen); Render(); }).Show();
         chips.AddView(filters);
+
+        var folders = Design.Button(this, "Folders", Design.Btn.Secondary, 38f);
+        folders.SetTextSize(Android.Util.ComplexUnitType.Sp, 13f);
+        folders.LayoutParameters = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WrapContent, ViewGroup.LayoutParams.WrapContent)
+        { LeftMargin = Design.Dp(this, 8) };
+        folders.Click += (_, _) => OpenFolders();
+        chips.AddView(folders);
+
         var hint = Design.Note(this, "Hold a photo to select");
         hint.LayoutParameters = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f);
         hint.Gravity = GravityFlags.Right;
