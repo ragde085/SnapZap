@@ -216,6 +216,58 @@ public class ExactDedupTests : IDisposable
     }
 
     /// <summary>
+    /// <b>Regression: detecting duplicates in one folder must not strip burst protection from
+    /// another.</b>
+    /// </summary>
+    /// <remarks>
+    /// One catalogue outlives every folder ever scanned and detection always runs against a single
+    /// root, so an unscoped clear of <c>images.burst_adjacent</c> wipes the protection every other
+    /// folder earned — silently re-opening the superset-Variant hole the flag exists to close
+    /// (docs/ROADMAP.md, defect B). Scan A, then B, and A's burst frames become bulk-selectable
+    /// again with nothing on screen to say so.
+    ///
+    /// <b>Both folders hold a real two-frame burst, and that is load-bearing.</b> An earlier
+    /// version of this test put ordinary PNGs in B and passed with the bug still present:
+    /// <c>BurstFinder</c> returns before it writes anything when a folder has fewer than two
+    /// photos carrying an EXIF capture time, so the clear never ran and the test proved nothing.
+    /// The committed <c>fixtures/burst</c> frames exist because SkiaSharp cannot write EXIF, so a
+    /// burst cannot be synthesised in-process.
+    /// </remarks>
+    [Fact]
+    public async Task Detecting_in_one_folder_keeps_another_folders_burst_protection()
+    {
+        var a = Path.Combine(_photos, "A");
+        var b = Path.Combine(_photos, "B");
+        CopyBurst(a);
+        CopyBurst(b);
+
+        using var db = new Database(_dbPath);
+        await new Scanner(db, new SkiaImageService(), _thumbs).ScanAsync(_photos);
+
+        var repo = new ImageRepository(db);
+        await new DuplicateService(db).DetectAsync(a);
+
+        var protectedInA = repo.BurstAdjacentIds();
+        Assert.NotEmpty(protectedInA);   // precondition: A really did earn protection
+
+        // The regression: detection over a different folder used to clear the whole column.
+        await new DuplicateService(db).DetectAsync(b);
+
+        var afterB = repo.BurstAdjacentIds();
+        Assert.All(protectedInA, id =>
+            Assert.True(afterB.Contains(id), $"image {id} in folder A lost its burst protection"));
+    }
+
+    /// <summary>Copies the committed two-frame EXIF burst into <paramref name="folder"/>.</summary>
+    static void CopyBurst(string folder)
+    {
+        Directory.CreateDirectory(folder);
+        var src = Path.Combine(AppContext.BaseDirectory, "fixtures", "burst");
+        foreach (var f in Directory.GetFiles(src, "*.jpg"))
+            File.Copy(f, Path.Combine(folder, Path.GetFileName(f)), overwrite: true);
+    }
+
+    /// <summary>
     /// PathScope moved from a substr() equality to a half-open range so the predicate could use
     /// the index on images.path. The rewrite has to select exactly the same rows — including for
     /// a sibling folder whose name extends the scoped one ("pics" vs "pics_old"), which is where

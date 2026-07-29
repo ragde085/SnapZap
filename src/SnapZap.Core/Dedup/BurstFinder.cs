@@ -85,7 +85,7 @@ public sealed class BurstFinder(Database db)
         // Instead the groups stay exactly as they were and the *protection* widens, which errs the
         // safe way: the worst case is a photo that must be reviewed individually rather than
         // selected in bulk.
-        MarkBurstAdjacent(pairs.SelectMany(p => new[] { p.A, p.B }).ToHashSet());
+        MarkBurstAdjacent(pairs.SelectMany(p => new[] { p.A, p.B }).ToHashSet(), root);
 
         return new DetectorResult(result.Groups.Count, result.Truncated);
     }
@@ -95,7 +95,19 @@ public sealed class BurstFinder(Database db)
     /// <c>ClearKind</c> is: a rerun under different settings must not leave yesterday's protection
     /// behind, or a photo stays unselectable forever with nothing on screen explaining why.
     /// </summary>
-    void MarkBurstAdjacent(IReadOnlyCollection<long> imageIds)
+    /// <remarks>
+    /// ⚠ <b>The clear is scoped to <paramref name="root"/>, and that is not cosmetic.</b> One
+    /// catalogue outlives every folder ever scanned, and detection always runs against a single
+    /// folder, so an unscoped clear wipes the protection every *other* folder earned each time a
+    /// new one is scanned — silently re-opening the superset-Variant hole this flag exists to
+    /// close (docs/ROADMAP.md, defect B). Scan folder A, then folder B, and A's burst frames
+    /// quietly become bulk-selectable again.
+    ///
+    /// Same convention as <see cref="DupeRepository.ClearKind"/> and
+    /// <c>ImageRepository.MarkDupeChecked</c>, both of which scope their writes for this reason.
+    /// Pinned by <c>DedupTests.Detecting_in_one_folder_keeps_another_folders_burst_protection</c>.
+    /// </remarks>
+    void MarkBurstAdjacent(IReadOnlyCollection<long> imageIds, string? root)
     {
         lock (db.WriteLock)
         {
@@ -104,7 +116,9 @@ public sealed class BurstFinder(Database db)
             using (var clear = db.Writer.CreateCommand())
             {
                 clear.Transaction = tx;
-                clear.CommandText = "UPDATE images SET burst_adjacent = 0 WHERE burst_adjacent = 1";
+                clear.CommandText =
+                    $"UPDATE images SET burst_adjacent = 0 WHERE burst_adjacent = 1 AND {PathScope.Where(root)}";
+                PathScope.Bind(clear, root);
                 clear.ExecuteNonQuery();
             }
 
