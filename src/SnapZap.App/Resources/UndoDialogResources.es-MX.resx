@@ -26,4 +26,11 @@
   <data name="ButtonRestoreThisPhoto" xml:space="preserve"><value>Restaurar {0}</value></data>
   <data name="RightClickHint" xml:space="preserve"><value>También puedes restaurar desde el menú del botón derecho de la papelera de reciclaje.</value></data>
   <data name="CloseButton" xml:space="preserve"><value>Cerrar</value></data>
+  <data name="ButtonRemoveBatch" xml:space="preserve"><value>Quitar</value></data>
+  <data name="ConfirmRemoveTitle" xml:space="preserve"><value>¿Quitar permanentemente?</value></data>
+  <data name="ConfirmRemoveBodyPending" xml:space="preserve"><value>{0} foto(s) se eliminarán definitivamente y no se podrán restaurar.</value></data>
+  <data name="ConfirmRemoveBodyRestored" xml:space="preserve"><value>Ya se restauraron, así que solo se quitan las entradas del historial. Las fotos se quedan donde están.</value></data>
+  <data name="ButtonRemoveConfirm" xml:space="preserve"><value>Eliminar definitivamente</value></data>
+  <data name="ButtonRemoveEntries" xml:space="preserve"><value>Quitar entradas</value></data>
+  <data name="ButtonCancel" xml:space="preserve"><value>Cancelar</value></data>
 </root>

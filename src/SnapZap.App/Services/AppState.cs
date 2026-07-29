@@ -1413,6 +1413,30 @@ public sealed class AppState(
         await LoadAsync();
         return restored;
     }
+
+    /// <summary>
+    /// Permanently removes one history entry and the trashed file behind it.
+    /// </summary>
+    /// <remarks>
+    /// ⚠ Irreversible — callers must confirm first. See <c>DeleteService.ForgetItem</c> for why
+    /// the record and the file go together rather than the record alone: <c>undo_log.new_location</c>
+    /// is the only pointer SnapZap keeps to a trashed file, so dropping the row by itself would
+    /// strand it in the recycle bin, unrestorable and invisible to the app.
+    /// </remarks>
+    public async Task<bool> ForgetItemAndReloadAsync(long undoLogId)
+    {
+        var ok = await Task.Run(() => new DeleteService(catalog.Db, trash).ForgetItem(undoLogId));
+        if (ok) await LoadAsync();
+        return ok;
+    }
+
+    /// <summary><see cref="ForgetItemAndReloadAsync"/> for a whole batch. Also irreversible.</summary>
+    public async Task<int> ForgetBatchAndReloadAsync(string batchId)
+    {
+        var n = await Task.Run(() => new DeleteService(catalog.Db, trash).ForgetBatch(batchId));
+        if (n > 0) await LoadAsync();
+        return n;
+    }
 }
 
 /// <summary>The explicit-content states the grid can be limited to.</summary>

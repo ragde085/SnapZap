@@ -82,6 +82,34 @@
                                             disabled="@(done || busy || _restoringItem is not null)" @onclick="() => Restore(b.BatchId)">
                                         @(done ? L["ButtonRestored"] : busy ? L["ButtonRestoring"] : L["ButtonRestore"])
                                     </button>
+                                    @* Removing is the second of only two irreversible actions in
+                                       SnapZap (the other is emptying the recycle bin), so it is
+                                       confirmed inline rather than acted on from a single click —
+                                       the same pattern SelectionBar uses for delete. *@
+                                    <button class="btn btn-danger" style="font-size:12px;padding:4px 10px;margin-left:6px"
+                                            disabled="@(busy || _restoringItem is not null)"
+                                            @onclick="() => _confirmForget = b.BatchId">
+                                        @L["ButtonRemoveBatch"]
+                                    </button>
+                                    @if (_confirmForget == b.BatchId)
+                                    {
+                                        <div class="confirm" role="alertdialog" aria-modal="true"
+                                             aria-label="@L["ConfirmRemoveTitle"].Value">
+                                            <p>
+                                                @(b.Restored >= b.Total
+                                                    ? L["ConfirmRemoveBodyRestored"].Value
+                                                    : L["ConfirmRemoveBodyPending", (b.Total - b.Restored).ToString("N0")].Value)
+                                            </p>
+                                            <div class="row">
+                                                <button class="btn btn-danger" @onclick="() => ForgetBatch(b.BatchId)">
+                                                    @(b.Restored >= b.Total ? L["ButtonRemoveEntries"] : L["ButtonRemoveConfirm"])
+                                                </button>
+                                                <button class="btn btn-ghost" @onclick="() => _confirmForget = null">
+                                                    @L["ButtonCancel"]
+                                                </button>
+                                            </div>
+                                        </div>
+                                    }
                                 </td>
                             </tr>
                         }
@@ -103,6 +131,7 @@
     Dictionary<string, IReadOnlyList<UndoItem>> _previews = [];
     string? _restoring;
     long? _restoringItem;
+    string? _confirmForget;
     bool _wasShown;
     bool _needsFocus;
     ElementReference _dlgRef;
@@ -153,6 +182,17 @@
         {
             _restoring = null;
         }
+    }
+
+    /// <summary>
+    /// Permanently removes a batch: the trashed files and their history entries together. See
+    /// <c>DeleteService.ForgetItem</c> for why those go together rather than dropping the record
+    /// alone, which would strand the files in the recycle bin unreachable by the app.
+    /// </summary>
+    async Task ForgetBatch(string batchId)
+    {
+        _confirmForget = null;
+        await AppState.ForgetBatchAndReloadAsync(batchId);
     }
 
     async Task RestoreItem(long undoLogId)

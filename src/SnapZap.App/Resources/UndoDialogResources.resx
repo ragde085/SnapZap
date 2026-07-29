@@ -26,4 +26,11 @@
   <data name="ButtonRestoreThisPhoto" xml:space="preserve"><value>Restore {0}</value></data>
   <data name="RightClickHint" xml:space="preserve"><value>You can also restore from the Recycle Bin's own right-click menu.</value></data>
   <data name="CloseButton" xml:space="preserve"><value>Close</value></data>
+  <data name="ButtonRemoveBatch" xml:space="preserve"><value>Remove</value></data>
+  <data name="ConfirmRemoveTitle" xml:space="preserve"><value>Remove permanently?</value></data>
+  <data name="ConfirmRemoveBodyPending" xml:space="preserve"><value>{0} photo(s) will be deleted for good and cannot be restored.</value></data>
+  <data name="ConfirmRemoveBodyRestored" xml:space="preserve"><value>These were already restored, so only the history entries are removed. The photos themselves stay where they are.</value></data>
+  <data name="ButtonRemoveConfirm" xml:space="preserve"><value>Delete permanently</value></data>
+  <data name="ButtonRemoveEntries" xml:space="preserve"><value>Remove entries</value></data>
+  <data name="ButtonCancel" xml:space="preserve"><value>Cancel</value></data>
 </root>

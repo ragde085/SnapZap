@@ -310,8 +310,15 @@ says whether it is a change or already true.
     all that is left to render from. The desktop's `UndoDialog` already had this; Android has
     caught up.
 
-    Still open: per-item controls exist only on Android. The desktop's `UndoDialog` offers restore
-    but not remove, so **that side is now behind** — worth closing for parity.
+    ✅ **Desktop caught up the same day.** `UndoDialog` gained a **Quitar/Remove** button per batch,
+    using the inline `.confirm` pattern `SelectionBar` already uses for delete rather than a second
+    confirmation idiom, wired through new `AppState.ForgetItemAndReloadAsync` /
+    `ForgetBatchAndReloadAsync`. Strings added in `en` and `es-MX`. Verified by driving the running
+    app: the confirmation renders in Spanish and correctly picks the already-restored wording.
+
+    Remaining desktop gap, minor: removal is per **batch** only — Android also offers per **item**.
+    The desktop already has per-item *restore* (the hover-revealed `.undo-thumb-restore`), so the
+    natural home for per-item remove is that same thumbnail affordance.
 
 ### Backlog (from DESIGN §12, deliberately deferred)
 
