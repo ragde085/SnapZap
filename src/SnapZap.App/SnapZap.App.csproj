@@ -4,9 +4,49 @@
     <ProjectReference Include="..\SnapZap.Core\SnapZap.Core.csproj" />
   </ItemGroup>
 
-  <ItemGroup>
+  <!--
+    Photino.NET backs PhotinoAppHost (Services/PhotinoAppHost.cs) — the embedded window on
+    Windows, and a class that still compiles (unused at runtime) on every other desktop OS this
+    project targets today. The Android port plan (docs/ANDROID-PORT-PLAN.md §4 task 2) has a
+    future Android head project-reference this project to reuse SnapZapWebHost.Build, and that
+    reference must not require a Windows/Mac/Linux native-window package — with its own native
+    runtime assets and a managed surface Android can't use — to even compile, let alone ship.
+
+    Three things below are keyed off the identical TargetFramework check, so they can only ever
+    disagree by being edited out of sync, never by construction: the package itself, the one
+    source file whose types need it (PhotinoAppHost.cs — split out of AppHost.cs specifically so
+    it alone can be excluded), and the ANDROID symbol AppHostFactory.Create's #if guards on to
+    skip constructing that type. A package-only condition was tried first and rejected: excluding
+    Photino.NET without also excluding PhotinoAppHost.cs would leave that file referencing a
+    package no longer there, so the project would fail to compile the moment the condition ever
+    actually fired — a condition that looks like it does something and doesn't is worse than none.
+
+    All three conditions evaluate to their "not Android" branch today, because SnapZap.App has
+    exactly one TargetFramework and it isn't net10.0-android — so nothing here changes the
+    current Windows/macOS build. This is intentionally scaffolding, not a live switch: making it
+    live means adding net10.0-android to TargetFrameworks, which this task does not do, because
+    that's gated on an unresolved architecture decision (the plan's §0 spike — whether an Android
+    head project-references SnapZap.App at all, versus the fallback of extracting a shared Razor
+    Class Library, in which case none of AppHost.cs ships to Android regardless) and because this
+    environment has no Android SDK/workload to verify a net10.0-android build with. Turning it on
+    without either would be guessing at a decision that has a documented, deliberate spike ahead
+    of it, not preparing for one.
+  -->
+  <ItemGroup Condition="'$(TargetFramework)' != 'net10.0-android'">
     <PackageReference Include="Photino.NET" Version="4.0.16" />
   </ItemGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0-android'">
+    <Compile Remove="Services\PhotinoAppHost.cs" />
+  </ItemGroup>
+
+  <!-- Paired with the Compile Remove above: the symbol AppHostFactory.Create's #if !ANDROID
+       guard checks for, so it stops trying to construct PhotinoAppHost the moment the type isn't
+       part of the build. Set explicitly rather than relied-on from the Android workload's own
+       implicit defines, so this project doesn't depend on behavior nobody here can verify. -->
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net10.0-android'">
+    <DefineConstants>$(DefineConstants);ANDROID</DefineConstants>
+  </PropertyGroup>
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
