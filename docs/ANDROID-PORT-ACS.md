@@ -10,7 +10,7 @@ devices are present.
 | Gate | Meaning |
 |---|---|
 | 🟢 **NOW** | Executable on the macOS dev machine today, with the tools already installed. Verified by `dotnet build` / `dotnet test` / code inspection. |
-| 🟡 **SDK** | Needs `dotnet workload install android` + the Android SDK. No physical device required (emulator sufficient). |
+| 🟡 **SDK** | Needs the Android SDK installed (the .NET Android workload is already present — see §1.1). No physical device required (emulator sufficient). |
 | 🔴 **DEVICE** | Needs both physical test devices (Galaxy S23 Ultra + mid-range Motorola). Cannot be faked by an emulator — the whole point is OEM WebView/permission-flow variance. |
 
 ---
@@ -26,10 +26,31 @@ Verified in this working tree:
 
 ```
 dotnet --version        → 10.0.302        ✅
-dotnet workload list    → (empty)         ❌ no android workload
+dotnet workload list    → (empty)         ⚠ MISLEADING — see below
 which adb               → not found       ❌
 ANDROID_HOME            → unset           ❌
 ```
+
+**Correction, established later by actually attempting an Android build** rather than trusting
+`dotnet workload list`: the .NET Android build support **is already installed on this machine.**
+`/usr/local/share/dotnet/packs/` contains `Microsoft.Android.Sdk.Darwin/36.1.69`,
+`Microsoft.Android.Ref.36`, and Mono/CoreCLR/NativeAOT runtime packs for `android-arm`,
+`android-arm64`, `android-x64` and `android-x86`. `dotnet workload install android` is **not
+needed**; the empty `workload list` output does not mean what it appears to mean.
+
+A `-p:IncludeAndroid=true` build of `SnapZap.Core` gets all the way through NuGet restore and
+fails only at `Xamarin.Android.Tooling.targets` with **XA5300: The Android SDK directory could not
+be found**. So the single missing prerequisite is the **Android SDK itself** (command-line tools /
+platform-tools / a platform image) — not the .NET workload.
+
+Two things that restore proved along the way, which were open questions before:
+
+- `SkiaSharp.NativeAssets.Android/4.150.1` **resolves** for `net10.0-android36.0`, confirming both
+  the package choice and the TFM.
+- `Microsoft.ML.OnnxRuntime/1.27.1` **also resolves** for that TFM. This does **not** clear
+  #29270 (AC-2.4) — that bug is about which *native* library gets bundled at package time on a
+  macOS host, which restore has nothing to say about — but it removes "does it even restore" as a
+  question.
 
 The plan's step 1 is a hard go/no-go gate, and it is **not executable here**. Everything downstream
 of the gate that assumes it passed (§2 `IAppHost`, §4 tasks 2-5, 8) is therefore blocked. This is
@@ -68,10 +89,19 @@ That directly contradicts the plan's §2, which says to "**prefer keeping it out
 dependency". That preference is still right for the *`IPlatformServices` implementations* (they
 need `Android.Content.Context`, and W2's portable `FolderTrashService` shows the seam can be drawn
 so Core never sees an SDK type). It is **not achievable for SkiaSharp**, because the native asset
-is bound to the TFM rather than to any Android API in our code. Consequence: **building
-`SnapZap.Core` will require the Android workload installed**, on every machine and any CI, once
-this lands. That is a real cost the plan does not price, and it needs an explicit decision rather
-than being discovered during task 2.
+is bound to the TFM rather than to any Android API in our code.
+
+**Resolved (AC-2.7): opt-in.** Listing the Android TFM unconditionally would make restore evaluate
+it on every build, so anyone building only the shipping Windows/macOS product — and any CI runner —
+would need Android tooling. Instead Core keeps a singular `<TargetFramework>` by default and goes
+plural only under `-p:IncludeAndroid=true`:
+
+```bash
+dotnet build src/SnapZap.Core -p:IncludeAndroid=true
+```
+
+The desktop build is therefore unchanged and entirely non-cross-targeting. The price is AC-2.9: an
+un-built TFM rots silently, so **CI must build with the flag** or the guard is decoration.
 
 ### 1.3 `SnapZap.App` cannot be referenced from an Android head as it stands
 
@@ -125,7 +155,7 @@ none noted in the plan:
 
 | ID | Gate | Criterion |
 |---|---|---|
-| **AC-0.1** | 🟡 SDK | `dotnet workload install android` completes and `dotnet workload list` reports the `android` workload installed. `adb devices` resolves. |
+| **AC-0.1** | 🟡 SDK | The Android **SDK** is installed and discoverable (`ANDROID_HOME`, or `-p:AndroidSdkDirectory=`), `adb devices` resolves, and `dotnet build src/SnapZap.Core -p:IncludeAndroid=true` succeeds. ✅ **Partially done already:** the .NET Android workload/packs are present (§1.1) and restore succeeds — only the Android SDK is missing, which is what XA5300 reports. Do **not** start by running `dotnet workload install android`; it is not what is missing. |
 | **AC-0.2** | 🟡 SDK | A throwaway `net10.0-android` project builds with a `WebApplication.CreateBuilder(...)` call that binds `http://127.0.0.1:0` and serves a route returning `200 hello`, launched from inside an `Activity`. The bound port is read back off `app.Urls` and logged. |
 | **AC-0.3** | 🔴 DEVICE | On **both** devices, a plain `Android.Webkit.WebView` `LoadUrl`s that loopback address and renders the response body. A blank screen is a fail, not a "needs config" — the config (INTERNET + cleartext, E4) must be in place for this AC to be attempted. |
 | **AC-0.4** | 🔴 DEVICE | On **both** devices, a real `SnapZap.App` page loads in that WebView, the Blazor circuit connects over the SignalR **WebSocket** transport (not long-polling fallback), and one interactive button click round-trips. Transport is asserted from the log, not inferred from the click working. |
@@ -152,7 +182,8 @@ none noted in the plan:
 | **AC-2.2** | 🟢 NOW | The audit states explicitly whether `SkiaSharp.NativeAssets.Android` at `4.150.1` exists and whether adding it to `SnapZap.Core` affects the existing macOS/Win32 publish size or asset set. |
 | **AC-2.3** | 🔴 DEVICE | **SkiaSharp spike.** On both devices, decode a real JPEG off `/storage/emulated/0`, produce a thumbnail, and compute a Laplacian blur score and a 272-bit perceptual hash. The phash must match the value the same file produces on the dev Mac — a platform-dependent hash would silently break dedup across the two, and `GoldenValueTests` is the reference. |
 | **AC-2.4** | 🔴 DEVICE | **ONNX spike** (plan task 7). Construct `OnnxNsfwClassifier` against the real `nsfw.onnx` on both devices and score a known fixture; the score matches the desktop score within a stated tolerance. ⚠ The plan cites microsoft/onnxruntime**#11618**, which is closed and Xamarin-era. The live risk is **#29270** (open, filed June 2026): a plain-`net10.0` library `ProjectReference`d from a `net10.0-android` head and **built on macOS** gets the wrong Linux/glibc native library bundled and crashes at launch. That is SnapZap's exact topology and exact dev host. The spike must reproduce or clear #29270 specifically, and the one "fixed" report on that thread came from a Windows host — macOS was never cleared. |
-| **AC-2.7** | 🟢 NOW | A written decision on `SnapZap.Core` multi-targeting (§1.2): whether Core becomes `net10.0;net10.0-android36.0`, or SkiaSharp use is pushed behind an abstraction so an Android-flavoured imaging assembly can be swapped in instead. Whichever is chosen, the consequence for **desktop and CI builds needing the Android workload installed** is stated explicitly and accepted, not discovered later. Adding the Android native asset unconditionally to the current single-TFM Core is **not** an option — it breaks `win-x64`/macOS restore rather than merely bloating it. |
+| **AC-2.7** | ✅ **DECIDED** | `SnapZap.Core` multi-targets `net10.0;net10.0-android36.0`, **behind an opt-in flag**: `-p:IncludeAndroid=true`. Default builds keep a singular `<TargetFramework>` and are entirely non-cross-targeting, so the desktop build is unchanged and no contributor or CI runner needs Android tooling to build the shipping product. Verified: default `dotnet build` clean, 245 tests pass, `win-x64` publish unaffected. The Android leg's native assets are conditioned on `TargetPlatformIdentifier`, not a literal TFM string. |
+| **AC-2.9** | 🟡 SDK | **The opt-in's own failure mode, and the price of AC-2.7.** A TFM nobody builds rots silently. CI must build `-p:IncludeAndroid=true`, or the Android leg breaks unnoticed and the opt-in is decoration rather than a guard. Open until CI actually does this. |
 | **AC-2.8** | 🟡 SDK | `SQLitePCL.Batteries_V2.Init()` is confirmed either called or provably unnecessary on Android. Verified: **no explicit init call exists anywhere in `src/`** today — the bundle's module initializer covers desktop, and whether it fires under this Android TFM is exactly the kind of thing that fails at first DB open rather than at startup. Confirm during the E2 SQLite spike (AC-2.5). |
 | **AC-2.5** | 🔴 DEVICE | **SQLite spike.** `catalog.db` opens, the schema is created, a row round-trips, and the file survives a full app restart. |
 | **AC-2.6** | 🟡 SDK | Each of AC-2.3/2.4/2.5 has an independently recorded outcome. Per the plan, an ONNX failure degrades NSFW scoring gracefully and does not block the port; a **SkiaSharp or SQLite failure is a v1 blocker** and must be escalated rather than worked around. |
@@ -220,7 +251,7 @@ none noted in the plan:
 |---|---|---|---|
 | E0 spike | — | 0.1, 0.2, 0.5 | 0.3, 0.4, 0.6 |
 | E1 host | 1.1–1.5 | 1.6, 1.7 | — |
-| E2 native deps | 2.1, 2.2, 2.7 | 2.6, 2.8 | 2.3, 2.4, 2.5 |
+| E2 native deps | 2.1, 2.2, 2.7 ✅ | 2.6, 2.8, 2.9 | 2.3, 2.4, 2.5 |
 | E3 platform services | 3.1–3.5 | 3.6, 3.7 | — |
 | E4 storage/perms | — | 4.1, 4.3 | 4.2, 4.4, 4.5 |
 | E5 paths | 5.1, 5.2 | — | 5.3, 5.4 |

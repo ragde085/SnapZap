@@ -22,21 +22,29 @@
     actually fired — a condition that looks like it does something and doesn't is worse than none.
 
     All three conditions evaluate to their "not Android" branch today, because SnapZap.App has
-    exactly one TargetFramework and it isn't net10.0-android — so nothing here changes the
+    exactly one TargetFramework and it has no Android platform — so nothing here changes the
     current Windows/macOS build. This is intentionally scaffolding, not a live switch: making it
-    live means adding net10.0-android to TargetFrameworks, which this task does not do, because
-    that's gated on an unresolved architecture decision (the plan's §0 spike — whether an Android
-    head project-references SnapZap.App at all, versus the fallback of extracting a shared Razor
-    Class Library, in which case none of AppHost.cs ships to Android regardless) and because this
-    environment has no Android SDK/workload to verify a net10.0-android build with. Turning it on
-    without either would be guessing at a decision that has a documented, deliberate spike ahead
-    of it, not preparing for one.
+    live means adding an Android TFM to TargetFrameworks, which is gated on an unresolved
+    architecture decision (the plan's §0 spike — whether an Android head project-references
+    SnapZap.App at all, versus the fallback of extracting a shared Razor Class Library, in which
+    case none of AppHost.cs ships to Android regardless).
+
+    ⚠ The check is on TargetPlatformIdentifier, NOT on a literal TFM string. These conditions were
+    first written as '$(TargetFramework)' == 'net10.0-android' and that is a trap: the Android TFM
+    this solution will actually use is net10.0-android36.0, because SkiaSharp.NativeAssets.Android
+    4.150.1 declares groups for net9.0-android35.0 and net10.0-android36.0 only (see
+    docs/ANDROID-DEPS-AUDIT.md). 'net10.0-android36.0' != 'net10.0-android', so every one of these
+    conditions would have silently taken its "not Android" branch — the package included, the file
+    compiled, the symbol undefined — reproducing the exact inert-condition bug the split was made
+    to fix, just via a version suffix instead of a missing TFM. TargetPlatformIdentifier is
+    'android' for every net*-android* TFM regardless of API level, so it cannot rot when the
+    platform version moves.
   -->
-  <ItemGroup Condition="'$(TargetFramework)' != 'net10.0-android'">
+  <ItemGroup Condition="'$(TargetPlatformIdentifier)' != 'android'">
     <PackageReference Include="Photino.NET" Version="4.0.16" />
   </ItemGroup>
 
-  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0-android'">
+  <ItemGroup Condition="'$(TargetPlatformIdentifier)' == 'android'">
     <Compile Remove="Services\PhotinoAppHost.cs" />
   </ItemGroup>
 
@@ -44,7 +52,7 @@
        guard checks for, so it stops trying to construct PhotinoAppHost the moment the type isn't
        part of the build. Set explicitly rather than relied-on from the Android workload's own
        implicit defines, so this project doesn't depend on behavior nobody here can verify. -->
-  <PropertyGroup Condition="'$(TargetFramework)' == 'net10.0-android'">
+  <PropertyGroup Condition="'$(TargetPlatformIdentifier)' == 'android'">
     <DefineConstants>$(DefineConstants);ANDROID</DefineConstants>
   </PropertyGroup>
 

@@ -1,7 +1,42 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-  <PropertyGroup>
+  <!--
+    Android is an OPT-IN leg, not a default one. Decision recorded in
+    docs/ANDROID-PORT-ACS.md AC-2.7.
+
+    SkiaSharp.NativeAssets.Android 4.150.1 declares dependency groups for net9.0-android35.0 and
+    net10.0-android36.0 ONLY — no netstandard2.0, no plain net10.0, no catch-all (verified against
+    the actual .nupkg; docs/ANDROID-DEPS-AUDIT.md). Since SkiaSharp backs every decode, thumbnail,
+    EXIF geometry, blur score and perceptual hash in this library, an Android build of Core cannot
+    work without it, and it cannot be referenced from a plain net10.0 TFM. So Core has to
+    multi-target — there is no "just add the package" option.
+
+    The cost of listing an Android TFM unconditionally is that restore evaluates every TFM, so
+    `dotnet build` fails with NETSDK1147 on any machine without the Android workload installed —
+    including anyone who only cares about the Windows or macOS build, and any CI runner. That is a
+    permanent tax on the shipping desktop product for a side target, so the Android leg is behind
+    an explicit opt-in instead:
+
+        dotnet build src/SnapZap.Core -p:IncludeAndroid=true
+
+    Note the singular TargetFramework in the default case: the project stays entirely
+    non-cross-targeting unless opted in, so the default build is byte-for-byte what it was before
+    Android was contemplated at all.
+
+    ⚠ The trade-off this buys, and the reason it needs CI: a TFM nobody builds rots silently.
+    Change something in Core, never build the Android leg, and the breakage surfaces weeks later
+    at the worst moment. Whatever runs CI for this repo MUST build with -p:IncludeAndroid=true, or
+    this opt-in is decoration rather than a guard.
+  -->
+  <PropertyGroup Condition="'$(IncludeAndroid)' != 'true'">
     <TargetFramework>net10.0</TargetFramework>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(IncludeAndroid)' == 'true'">
+    <TargetFrameworks>net10.0;net10.0-android36.0</TargetFrameworks>
+  </PropertyGroup>
+
+  <PropertyGroup>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
@@ -11,9 +46,30 @@
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.10" />
     <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.27.1" />
     <PackageReference Include="SkiaSharp" Version="4.150.1" />
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.4" />
+  </ItemGroup>
+
+  <!--
+    Native assets are per-platform and mutually exclusive, keyed on TargetPlatformIdentifier
+    rather than a literal TFM string so they cannot rot when the Android API level moves
+    (net10.0-android36.0 today; 'android' for any of them).
+
+    The desktop pair is conditioned OFF for the Android leg deliberately, not just for tidiness:
+    docs/ANDROID-DEPS-AUDIT.md flags the mirror image of the failure above — macOS/Win32 native
+    asset packages may have no group compatible with net10.0-android36.0 either, which would break
+    that leg's restore the same way the Android package breaks a plain net10.0 restore. That claim
+    is reasoned, not build-tested (no Android workload was available when this was written), so if
+    the Android leg restores fine with them present, this condition is merely correct rather than
+    load-bearing. It costs nothing either way: neither package contributes anything usable to an
+    Android build.
+  -->
+  <ItemGroup Condition="'$(TargetPlatformIdentifier)' != 'android'">
     <PackageReference Include="SkiaSharp.NativeAssets.macOS" Version="4.150.1" />
     <PackageReference Include="SkiaSharp.NativeAssets.Win32" Version="4.150.1" />
-    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.4" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(TargetPlatformIdentifier)' == 'android'">
+    <PackageReference Include="SkiaSharp.NativeAssets.Android" Version="4.150.1" />
   </ItemGroup>
 
 </Project>
