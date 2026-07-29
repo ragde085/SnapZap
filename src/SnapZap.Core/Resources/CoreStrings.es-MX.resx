@@ -19,6 +19,7 @@
   <data name="HardlinkSizeMismatch" xml:space="preserve"><value>el tamaño del enlace duro no coincide para {0}</value></data>
   <data name="VerificationFailed" xml:space="preserve"><value>verificación fallida: el hash de {0} no coincide con el origen</value></data>
   <data name="TrashFailed" xml:space="preserve"><value>Error al enviar a la papelera de reciclaje {0}: {1}</value></data>
+  <data name="CrossVolumeMoveFailed" xml:space="preserve"><value>No se pudo mover {0} a {1} a través de un límite de volumen: {2}</value></data>
   <data name="HardLinkFailedErrno" xml:space="preserve"><value>el enlace duro {0} -&gt; {1} falló (errno via link())</value></data>
   <data name="RecycleFailed" xml:space="preserve"><value>Error al reciclar {0} (SHFileOperation {1})</value></data>
   <data name="CreateHardLinkFailed" xml:space="preserve"><value>CreateHardLink {0} -&gt; {1} falló (win32 {2})</value></data>

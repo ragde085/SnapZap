@@ -19,6 +19,7 @@
   <data name="HardlinkSizeMismatch" xml:space="preserve"><value>hardlink size mismatch for {0}</value></data>
   <data name="VerificationFailed" xml:space="preserve"><value>verification failed: {0} hash != source</value></data>
   <data name="TrashFailed" xml:space="preserve"><value>Trash failed for {0}: {1}</value></data>
+  <data name="CrossVolumeMoveFailed" xml:space="preserve"><value>Could not move {0} to {1} across a volume boundary: {2}</value></data>
   <data name="HardLinkFailedErrno" xml:space="preserve"><value>hard link {0} -&gt; {1} failed (errno via link())</value></data>
   <data name="RecycleFailed" xml:space="preserve"><value>Recycle failed for {0} (SHFileOperation {1})</value></data>
   <data name="CreateHardLinkFailed" xml:space="preserve"><value>CreateHardLink {0} -&gt; {1} failed (win32 {2})</value></data>
