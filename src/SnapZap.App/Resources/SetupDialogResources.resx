@@ -66,4 +66,6 @@
   <data name="ForgetConfirmButton" xml:space="preserve"><value>Forget everything</value></data>
   <data name="CancelButton" xml:space="preserve"><value>Cancel</value></data>
   <data name="DoneButton" xml:space="preserve"><value>Done</value></data>
+  <data name="NsfwDepName" xml:space="preserve"><value>Explicit-content scoring</value></data>
+  <data name="NsfwDepUnlocks" xml:space="preserve"><value>Scores every photo so you can filter explicit images.</value></data>
 </root>

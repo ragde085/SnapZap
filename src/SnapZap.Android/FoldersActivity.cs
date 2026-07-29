@@ -101,6 +101,7 @@ public sealed class FoldersActivity : Activity
     public const string ExtraSelectedFolder = "snapzap.folders.selectedFolder";
 
     AndroidCatalog _catalog = null!;
+    BackHandler? _back;
     List<ImageRecord> _photos = [];
     Dictionary<long, DupeAssignment> _assign = [];
 
@@ -145,6 +146,7 @@ public sealed class FoldersActivity : Activity
     protected override void OnCreate(Bundle? savedInstanceState)
     {
         base.OnCreate(savedInstanceState);
+        _back = BackHandler.Attach(this, HandleBack);
         _catalog = new AndroidCatalog();
         _photos = _catalog.Images.All().ToList();
         _root = ComputeRoot(_photos);
@@ -206,7 +208,11 @@ public sealed class FoldersActivity : Activity
     /// one level), this is treated as "leaving the screen," so it commits wherever the user has
     /// drilled to rather than silently discarding it — see the class remarks for why.
     /// </summary>
-    public override void OnBackPressed() => Choose(_current == _root ? null : _current);
+    /// <summary>Pre-33 path. On 33+ the dispatcher calls <see cref="HandleBack"/> instead — the
+    /// override is never invoked there, which is why choosing a folder silently did nothing.</summary>
+    public override void OnBackPressed() => HandleBack();
+
+    void HandleBack() => Choose(_current == _root ? null : _current);
 
     /// <summary>Finishes the activity. <paramref name="folder"/> null means "nothing chosen" —
     /// <see cref="Result.Canceled"/>, no extra. Otherwise <see cref="Result.Ok"/> with
@@ -300,6 +306,10 @@ public sealed class FoldersActivity : Activity
     /// <see cref="TextView"/> (bolded as a hint that it is tappable), jumping straight to that
     /// ancestor level. <see cref="Design.Note"/> supplies the exact typography the handoff's
     /// <c>.note</c> class uses, so splitting it into several views does not change how it reads.
+    /// Tappable segments get <see cref="Design.MinTarget"/> of touch height (matching
+    /// <see cref="Design.ListRow"/>'s own precedent for text-flow tap targets, rather than leaving
+    /// them sized to the raw text) and the whole line sits in a <see cref="HorizontalScrollView"/>
+    /// so a deeply nested path scrolls instead of clipping the trailing photo count.
     /// </summary>
     View BuildBreadcrumb()
     {
@@ -316,13 +326,22 @@ public sealed class FoldersActivity : Activity
             if (i < segments.Count - 1)
             {
                 seg.SetTypeface(null, Android.Graphics.TypefaceStyle.Bold);
+                seg.SetMinimumHeight(Design.Dp(this, Design.MinTarget));
+                seg.SetPadding(Design.Dp(this, 4), 0, Design.Dp(this, 4), 0);
+                seg.Gravity = GravityFlags.CenterVertical;
                 seg.Click += (_, _) => { _current = path; _filter = ""; Render(); };
             }
             line.AddView(seg);
         }
 
         line.AddView(Design.Note(this, $" · {_currentSubtreeCount:N0} photos"));
-        return line;
+
+        var scroll = new HorizontalScrollView(this) { HorizontalScrollBarEnabled = false };
+        scroll.LayoutParameters = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent);
+        scroll.AddView(line, new ViewGroup.LayoutParams(
+            ViewGroup.LayoutParams.WrapContent, ViewGroup.LayoutParams.WrapContent));
+        return scroll;
     }
 
     string CurrentFolderName()
@@ -546,6 +565,7 @@ public sealed class FoldersActivity : Activity
 
     protected override void OnDestroy()
     {
+        _back?.Detach();
         _catalog?.Dispose();
         base.OnDestroy();
     }

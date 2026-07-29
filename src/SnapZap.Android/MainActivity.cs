@@ -1,5 +1,6 @@
 using Android.App;
 using Android.Content;
+using Android.Content.PM;
 using Android.Graphics;
 using Android.OS;
 using Android.Provider;
@@ -7,6 +8,7 @@ using Android.Views;
 using Android.Widget;
 using SnapZap.Core;
 using SnapZap.Core.Dedup;
+using SnapZap.Core.Delete;
 using SnapZap.Core.Scanning;
 
 namespace SnapZap.Droid;
@@ -42,6 +44,11 @@ public sealed class MainActivity : Activity
     string _folder = SnapZap.Core.Platform.DirectoryRoots.DefaultStart(
         SnapZap.Core.Platform.DirectoryPlatform.Android);
 
+    // The folder the Library grid is narrowed to, distinct from _folder (the scan target): picking
+    // one from the Folders chip filters what is already in the catalogue, it does not change what a
+    // re-scan would read. Null means "whole library".
+    string? _libraryScope;
+
     ScanResult? _lastScan;
     DuplicateReport? _lastDupes;
 
@@ -53,9 +60,11 @@ public sealed class MainActivity : Activity
 
     // Live scan read-outs, held so progress can update them without rebuilding the screen.
     TextView? _scanCount, _scanFile;
+    View? _scanFill;
 
     // Screen 9 — selection is a mode you enter, not an always-on toolbar. Holding a photo enters
     // it and the header turns to ink, so there is no doubt you are in it.
+    BackHandler? _back;
     bool _selectionMode;
     readonly HashSet<long> _selected = [];
 
@@ -77,6 +86,17 @@ public sealed class MainActivity : Activity
         // guessed constant — cutouts and gesture bars differ per device.
         _root.SetOnApplyWindowInsetsListener(new InsetsPadder());
         _root.RequestApplyInsets();
+
+        // Back has to be registered through the dispatcher: the OnBackPressed override below is
+        // never called on API 36 (predictive back is default-on there). See BackHandler.
+        _back = BackHandler.Attach(this, HandleBack);
+
+        WorkService.EnsureChannel(this);
+        // Asked for, never insisted on: refusing it costs the progress read-out and nothing else,
+        // so there is no gate and no second prompt.
+        if (OperatingSystem.IsAndroidVersionAtLeast(33) &&
+            CheckSelfPermission(Android.Manifest.Permission.PostNotifications) != Permission.Granted)
+            RequestPermissions([Android.Manifest.Permission.PostNotifications], 42);
 
         _content = new LinearLayout(this) { Orientation = Orientation.Vertical };
         _content.LayoutParameters = new LinearLayout.LayoutParams(
@@ -236,24 +256,52 @@ public sealed class MainActivity : Activity
 
     void OpenReview() => StartActivity(new Intent(this, typeof(ReviewActivity)));
 
-    const int RequestFolder = 1;
+    const int RequestFolderForScan = 1;
+    const int RequestFolderForScope = 2;
 
     /// <summary>
-    /// Screen 8. Started for a result so the folder the user drilled to comes back and becomes
-    /// the scan target — the handoff's "Tap a folder to narrow the library to it".
+    /// Screen 8, opened from the pre-scan "Browse…" button. Reachable only before a scan (see
+    /// <see cref="Render"/>), when the catalogue is empty — <c>FoldersActivity</c> always shows its
+    /// "nothing scanned yet" state at that point, so this can only come back cancelled. Left wired
+    /// up rather than removed, so the handoff's affordance stays present and this is a documented,
+    /// deliberate gap rather than something a future change quietly "fixes" into a raw filesystem
+    /// picker without that being a decision.
     /// </summary>
-    void OpenFolders() => StartActivityForResult(new Intent(this, typeof(FoldersActivity)), RequestFolder);
+    void OpenFoldersForScan() =>
+        StartActivityForResult(new Intent(this, typeof(FoldersActivity)), RequestFolderForScan);
 
-    protected override void OnActivityResult(int requestCode, Result resultCode, Intent? data)
+    /// <summary>
+    /// Screen 8, opened from the Library tab's Folders chip: narrows the already-scanned library to
+    /// whatever folder the user drills to, without touching <see cref="_folder"/> (the scan target)
+    /// or requiring a re-scan.
+    /// </summary>
+    void OpenFoldersForScope()
+    {
+        var i = new Intent(this, typeof(FoldersActivity));
+        if (_libraryScope is not null) i.PutExtra(FoldersActivity.ExtraCurrentFolder, _libraryScope);
+        StartActivityForResult(i, RequestFolderForScope);
+    }
+
+    protected override async void OnActivityResult(int requestCode, Result resultCode, Intent? data)
     {
         base.OnActivityResult(requestCode, resultCode, data);
-        if (requestCode != RequestFolder || resultCode != Result.Ok) return;
+        if (resultCode != Result.Ok) return;
+        if (requestCode != RequestFolderForScan && requestCode != RequestFolderForScope) return;
 
         var picked = data?.GetStringExtra(FoldersActivity.ExtraSelectedFolder);
-        if (string.IsNullOrEmpty(picked) || !Directory.Exists(picked)) return;
+        if (string.IsNullOrEmpty(picked) || !await Task.Run(() => Directory.Exists(picked))) return;
 
-        _folder = picked;
-        Toast.MakeText(this, $"Folder set to {picked}", ToastLength.Short)!.Show();
+        if (requestCode == RequestFolderForScan)
+        {
+            _folder = picked;
+            Toast.MakeText(this, $"Folder set to {picked}", ToastLength.Short)!.Show();
+        }
+        else
+        {
+            _libraryScope = picked;
+            Toast.MakeText(this, $"Library narrowed to {System.IO.Path.GetFileName(picked)}",
+                ToastLength.Short)!.Show();
+        }
         Render();
     }
 
@@ -300,7 +348,7 @@ public sealed class MainActivity : Activity
 
         var browse = Design.Button(this, "Browse…", Design.Btn.Secondary, 52f);
         browse.LayoutParameters = Wide();
-        browse.Click += (_, _) => OpenFolders();
+        browse.Click += (_, _) => OpenFoldersForScan();
         body.AddView(browse);
         body.AddView(Gap(24));
 
@@ -350,6 +398,11 @@ public sealed class MainActivity : Activity
         body.AddView(_scanCount);
         body.AddView(Gap(8));
 
+        var (track, fill) = Design.ProgressBar(this, 6f);
+        _scanFill = fill;
+        body.AddView(track);
+        body.AddView(Gap(6));
+
         _scanFile = Design.Note(this, "");
         body.AddView(_scanFile);
         body.AddView(Gap(16));
@@ -371,7 +424,7 @@ public sealed class MainActivity : Activity
     async void StartScan()
     {
         if (_scanning) return;
-        if (!Directory.Exists(_folder))
+        if (!await Task.Run(() => Directory.Exists(_folder)))
         {
             Toast.MakeText(this, $"Not a folder: {_folder}", ToastLength.Long)!.Show();
             return;
@@ -380,25 +433,50 @@ public sealed class MainActivity : Activity
         _scanning = true;
         Render();
 
+        // Held across the scan *and* the dedup that follows it: they are one operation from the
+        // user's point of view, and dropping the service between them would leave the longer half
+        // unprotected exactly when the app is most likely to be backgrounded.
+        WorkService.Start(this, "Scanning photos");
+
         try
         {
             var progress = new Progress<ScanProgress>(p =>
             {
-                if (_scanCount is null) return;
-                _scanCount.Text = (p.Analyzed + p.Cached).ToString("N0");
+                var done = p.Analyzed + p.Cached;
+                if (_scanCount is not null) _scanCount.Text = done.ToString("N0");
                 if (_scanFile is not null)
                     _scanFile.Text = p.Total > 0
-                        ? $"of ~{p.Total:N0} read · {p.Current}"
+                        ? $"of ~{p.Total:N0} read · {System.IO.Path.GetFileName(p.Current ?? "")}"
                         : p.Current ?? "";
+
+                if (_scanFill is { Parent: View parent } && p.Total > 0)
+                {
+                    var lp = _scanFill.LayoutParameters!;
+                    lp.Width = (int)(parent.Width * Math.Clamp(done / (double)p.Total, 0, 1));
+                    _scanFill.LayoutParameters = lp;
+                }
+
+                WorkService.Report(this, "Scanning photos",
+                    p.Total > 0 ? $"{done:N0} of ~{p.Total:N0}" : $"{done:N0} read", done, p.Total);
             });
 
             _lastScan = await Task.Run(() => _catalog!.NewScanner().ScanAsync(_folder, progress));
 
             // "Duplicates run next, on their own." The scanning screen promises it, so it happens
             // here rather than behind a button the user would have to go and find.
+            // Dedup reports per-phase rather than per-photo — the exact pass is one SQL statement
+            // and the perceptual passes are a single parallel sweep with no honest midpoint, which
+            // DedupProgress's own remarks explain. A moving label beats an invented percentage.
+            if (_scanCount is not null) _scanCount.Text = "…";
+            var dedupProgress = new Progress<DedupProgress>(p =>
+            {
+                if (_scanFile is not null) _scanFile.Text = p.Detail ?? "Finding duplicates…";
+                WorkService.Report(this, "Finding duplicates", p.Detail, p.Done, p.Total);
+            });
+
             _lastDupes = await Task.Run(() =>
                 new DuplicateService(_catalog!.Db, _catalog.Imaging, _catalog.ThumbDir)
-                    .DetectAsync(_folder));
+                    .DetectAsync(_folder, dedupProgress));
 
             _photos = await Task.Run(() => _catalog!.Images.All().ToList());
             _hasScanned = _photos.Count > 0;
@@ -414,6 +492,7 @@ public sealed class MainActivity : Activity
         }
         finally
         {
+            WorkService.Stop(this);
             _scanning = false;
             _tab = Tab.Library;
             Render();
@@ -435,7 +514,7 @@ public sealed class MainActivity : Activity
 
         var left = new LinearLayout(this) { Orientation = Orientation.Vertical };
         left.LayoutParameters = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f);
-        left.AddView(Design.Body(this, $"{_photos.Count:N0} photos", 13f, bold: true));
+        left.AddView(Design.Body(this, $"{ScopedPhotos().Count:N0} photos", 13f, bold: true));
         left.AddView(Design.Note(this, SummaryNote()));
         sum.AddView(left);
         sum.AddView(PlanStrip());
@@ -468,13 +547,24 @@ public sealed class MainActivity : Activity
             chosen => { _facet = Enum.Parse<DupeFacet>(chosen); Render(); }).Show();
         chips.AddView(filters);
 
-        var folders = Design.Button(this, "Folders", Design.Btn.Secondary, 38f);
+        var folders = Design.Button(this, FolderScopeLabel(), Design.Btn.Secondary, 38f);
         folders.SetTextSize(Android.Util.ComplexUnitType.Sp, 13f);
         folders.LayoutParameters = new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.WrapContent, ViewGroup.LayoutParams.WrapContent)
         { LeftMargin = Design.Dp(this, 8) };
-        folders.Click += (_, _) => OpenFolders();
+        folders.Click += (_, _) => OpenFoldersForScope();
         chips.AddView(folders);
+
+        // Narrowing is otherwise a one-way trip — this is the only way back to the whole library
+        // short of relaunching the app.
+        if (_libraryScope is not null)
+        {
+            var clearScope = Design.IconButton(this, "✕");
+            clearScope.LayoutParameters = new LinearLayout.LayoutParams(Design.Dp(this, 32), Design.Dp(this, 32))
+            { LeftMargin = Design.Dp(this, 6) };
+            clearScope.Click += (_, _) => { _libraryScope = null; Render(); };
+            chips.AddView(clearScope);
+        }
 
         var hint = Design.Note(this, "Hold a photo to select");
         hint.LayoutParameters = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f);
@@ -525,7 +615,17 @@ public sealed class MainActivity : Activity
     }
 
     /// <summary>
-    /// The photos the grid is showing, after the active facet.
+    /// _photos narrowed to <see cref="_libraryScope"/>, if one is set — the base every part of the
+    /// Library screen that describes "what's in view" reads from, so the header count, the Folders
+    /// chip, the Filters sheet and bulk actions cannot disagree about what "narrowed" means.
+    /// </summary>
+    List<ImageRecord> ScopedPhotos() => _libraryScope is null
+        ? _photos
+        : _photos.Where(p => p.Path.StartsWith(
+            SnapZap.Core.Data.PathScope.Prefix(_libraryScope), StringComparison.Ordinal)).ToList();
+
+    /// <summary>
+    /// The photos the grid is showing, after the active library scope and facet.
     /// </summary>
     /// <remarks>
     /// Facets are answered through <c>DupeAssignment</c> rather than by re-deriving the rule here,
@@ -534,10 +634,10 @@ public sealed class MainActivity : Activity
     /// </remarks>
     List<ImageRecord> Visible() => _facet switch
     {
-        DupeFacet.ExtrasOnly => _photos.Where(p => _assign.TryGetValue(p.Id, out var a) && a.IsBulkSelectableExtra).ToList(),
-        DupeFacet.KeepersOnly => _photos.Where(p => _assign.TryGetValue(p.Id, out var a) && a.IsKeeper).ToList(),
-        DupeFacet.BurstFrames => _photos.Where(p => _assign.TryGetValue(p.Id, out var a) && a.Kind == DupeKind.Burst).ToList(),
-        _ => _photos,
+        DupeFacet.ExtrasOnly => ScopedPhotos().Where(p => _assign.TryGetValue(p.Id, out var a) && a.IsBulkSelectableExtra).ToList(),
+        DupeFacet.KeepersOnly => ScopedPhotos().Where(p => _assign.TryGetValue(p.Id, out var a) && a.IsKeeper).ToList(),
+        DupeFacet.BurstFrames => ScopedPhotos().Where(p => _assign.TryGetValue(p.Id, out var a) && a.Kind == DupeKind.Burst).ToList(),
+        _ => ScopedPhotos(),
     };
 
     string FacetLabel() => _facet switch
@@ -548,13 +648,20 @@ public sealed class MainActivity : Activity
         _ => "Filters",
     };
 
-    Dictionary<string, int> FacetCounts() => new()
+    string FolderScopeLabel() => _libraryScope is null
+        ? "Folders" : $"Folders: {System.IO.Path.GetFileName(_libraryScope)}";
+
+    Dictionary<string, int> FacetCounts()
     {
-        ["Any"] = _photos.Count,
-        ["ExtrasOnly"] = _assign.Values.Count(a => a.IsBulkSelectableExtra),
-        ["KeepersOnly"] = _assign.Values.Count(a => a.IsKeeper),
-        ["BurstFrames"] = _assign.Values.Count(a => a.Kind == DupeKind.Burst),
-    };
+        var scoped = ScopedPhotos();
+        return new()
+        {
+            ["Any"] = scoped.Count,
+            ["ExtrasOnly"] = scoped.Count(p => _assign.TryGetValue(p.Id, out var a) && a.IsBulkSelectableExtra),
+            ["KeepersOnly"] = scoped.Count(p => _assign.TryGetValue(p.Id, out var a) && a.IsKeeper),
+            ["BurstFrames"] = scoped.Count(p => _assign.TryGetValue(p.Id, out var a) && a.Kind == DupeKind.Burst),
+        };
+    }
 
     // ══════════════════════════════════════════════════════════════════════════════════════
     //  9 · Selection mode — entered by holding a photo; leaves the way it came
@@ -602,7 +709,7 @@ public sealed class MainActivity : Activity
     {
         var wrap = new LinearLayout(this) { Orientation = Orientation.Vertical };
 
-        var extras = _photos.Where(p => _assign.TryGetValue(p.Id, out var a) && a.IsBulkSelectableExtra).ToList();
+        var extras = ScopedPhotos().Where(p => _assign.TryGetValue(p.Id, out var a) && a.IsBulkSelectableExtra).ToList();
         if (extras.Count > 0)
         {
             var callout = Design.Callout(this);
@@ -671,7 +778,13 @@ public sealed class MainActivity : Activity
             {
                 try
                 {
-                    var r = await Task.Run(() => _catalog!.NewDeleteService().RecycleAsync(ids));
+                    WorkService.Start(this, "Moving to trash");
+                    var deleteProgress = new Progress<DeleteProgress>(p =>
+                        WorkService.Report(this, "Moving to trash",
+                            System.IO.Path.GetFileName(p.Current ?? ""), p.Done, p.Total));
+
+                    var r = await Task.Run(() =>
+                        _catalog!.NewDeleteService().RecycleAsync(ids, deleteProgress));
                     _selectionMode = false; _selected.Clear();
                     _photos = await Task.Run(() => _catalog!.Images.All().ToList());
                     Toast.MakeText(this, $"Moved {r.Recycled:N0} to trash", ToastLength.Short)!.Show();
@@ -681,6 +794,7 @@ public sealed class MainActivity : Activity
                     Toast.MakeText(this, $"Delete failed: {ex.Message}", ToastLength.Long)!.Show();
                     Android.Util.Log.Error(Tag, ex.ToString());
                 }
+                finally { WorkService.Stop(this); }
                 Render();
             })!
             .Show();
@@ -920,15 +1034,19 @@ public sealed class MainActivity : Activity
         }
     }
 
-    public override void OnBackPressed()
+    /// <summary>Pre-33 path. On 33+ the dispatcher calls <see cref="HandleBack"/> instead.</summary>
+    public override void OnBackPressed() => HandleBack();
+
+    /// <summary>Selection "leaves the way it came" — Back cancels the mode before leaving the screen.</summary>
+    void HandleBack()
     {
-        // Selection "leaves the way it came" — back cancels the mode before it leaves the screen.
         if (_selectionMode) { _selectionMode = false; _selected.Clear(); Render(); return; }
-        base.OnBackPressed();
+        Finish();
     }
 
     protected override void OnDestroy()
     {
+        _back?.Detach();
         _catalog?.Dispose();
         base.OnDestroy();
     }

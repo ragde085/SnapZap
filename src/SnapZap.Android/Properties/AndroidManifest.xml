@@ -25,6 +25,20 @@
                    android:maxSdkVersion="32" />
 
   <!--
+    A long scan is minutes of continuous decoding and hashing. Android freezes or kills a
+    backgrounded process doing that — when the user switches apps, or the screen sleeps — and from
+    their side the app just "randomly stops". A foreground service is the only supported way to say
+    the work was asked for and should be allowed to finish. dataSync is its type: this is bulk local
+    file processing, not media playback or location.
+
+    POST_NOTIFICATIONS is runtime-requested on API 33+. If it is refused the work still runs and is
+    still protected — only the progress read-out is lost — so it is asked for, never insisted on.
+  -->
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+  <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+  <!--
     Note what is NOT here: android.permission.INTERNET, and any networkSecurityConfig permitting
     cleartext to 127.0.0.1. The port plan §3 required both, because its architecture ran Kestrel
     in-process and pointed a WebView at loopback. That architecture is dead (ANDROID-PORT-ACS
@@ -33,5 +47,13 @@
     hand someone — do not add INTERNET back without a specific reason.
   -->
 
-  <application android:label="SnapZap" android:allowBackup="false" />
+  <!--
+    The launcher icon. Generated from assets/icon/snapzap-256.png — the same source art
+    scripts/make-icons.py uses for the desktop favicon and the .exe icon — so the phone icon
+    cannot drift from the one on the desktop. Regenerate from that source, never edit the
+    mipmaps directly.
+  -->
+  <application android:label="SnapZap"
+               android:icon="@mipmap/appicon"
+               android:allowBackup="false" />
 </manifest>

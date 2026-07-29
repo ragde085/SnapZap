@@ -58,14 +58,23 @@ public sealed class FolderNode
     public int Depth { get; init; }
     public bool HasChildren => Children.Count > 0;
 
-    /// <summary>Steps that have not finished for this subtree — drives the status dot.</summary>
-    public IEnumerable<string> PendingSteps()
+    /// <summary>
+    /// Steps that have not finished for this subtree — drives the status dot. Yields a resource
+    /// key and a count, never a sentence.
+    /// </summary>
+    /// <remarks>
+    /// It used to yield formatted English ("36 not NSFW-scored"), which the caller then dropped
+    /// into a correctly-localised template — producing half-Spanish tooltips like
+    /// "36 fotos — 36 not NSFW-scored". A service that returns display strings cannot be
+    /// localised by the layer above it; returning the key and the number lets it be.
+    /// </remarks>
+    public IEnumerable<(string Key, int Count)> PendingSteps()
     {
-        if (!Analyzed.Complete) yield return $"{Analyzed.Pending} not analysed";
-        if (!Deduped.Complete) yield return $"{Deduped.Pending} not checked for duplicates";
-        if (!Nsfw.Complete) yield return $"{Nsfw.Pending} not NSFW-scored";
-        if (!Blur.Complete) yield return $"{Blur.Pending} without a blur score";
-        if (!Dated.Complete) yield return $"{Dated.Pending} without an EXIF date";
+        if (!Analyzed.Complete) yield return ("PendingNotAnalysed", Analyzed.Pending);
+        if (!Deduped.Complete) yield return ("PendingNotDeduped", Deduped.Pending);
+        if (!Nsfw.Complete) yield return ("PendingNotScored", Nsfw.Pending);
+        if (!Blur.Complete) yield return ("PendingNoBlur", Blur.Pending);
+        if (!Dated.Complete) yield return ("PendingNoDate", Dated.Pending);
     }
 }
 

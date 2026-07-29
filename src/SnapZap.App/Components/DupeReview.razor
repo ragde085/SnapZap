@@ -46,8 +46,15 @@
                                  style="width:@(m.Width is { } w ? w * _zoom / 100 : 0)px" />
                         }
                     </div>
+                    @* The folder is here because it is often the only thing that differs. When two
+                       copies are byte-identical the distinguisher becomes "choose by location", and
+                       the compare view was showing filename, dimensions and size — everything
+                       except the one fact it was asking the user to decide on. *@
                     <div class="cmp-meta">
-                        <b>@m.FileName</b>
+                        <div class="cmp-names">
+                            <b title="@m.Path">@m.FileName</b>
+                            <span class="cmp-folder" title="@m.Path">@m.Folder</span>
+                        </div>
                         <span>@m.Dimensions · @m.SizeLabel</span>
                         <button class="btn @(isKeeper ? "btn-primary" : "btn-secondary")"
                                 disabled="@(isKeeper && KeeperCountInGroup <= 1)"
@@ -190,7 +197,20 @@
     DupeGroup? _membersOf;
     IReadOnlyList<ImageView> _members = [];
 
-    int ExtraCount => AppState.DupeOf.Count(kv => !kv.Value.IsKeeper);
+    /// <summary>
+    /// What "Select the extra copies" will actually select — read through the same predicate the
+    /// selection itself uses, never counted independently.
+    /// </summary>
+    /// <remarks>
+    /// This counted <c>!IsKeeper</c> alone, with no kind filter and no burst-adjacency check, so it
+    /// disagreed with <see cref="AppState.DupeExtraCount"/> on the same catalogue at the same
+    /// moment: the panel said 11 extras, this button offered to select 17. The selection was never
+    /// unsafe — <c>SelectBy</c> filters properly and did select 11 — but a button that overstates
+    /// what it is about to sweep up, on the one control that arms a bulk delete, is exactly the
+    /// disagreement <c>DupeAssignment</c>'s own remarks warn about: "a badge, a filter and a count
+    /// that answer the question three separate ways is precisely how they start disagreeing."
+    /// </remarks>
+    int ExtraCount => AppState.DupeOf.Count(kv => kv.Value.IsBulkSelectableExtra);
 
     /// <summary>How many members of the group currently being reviewed are keepers — more than
     /// one is allowed, but toggling the last one off is refused (see ToggleKeeper), so the button

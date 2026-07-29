@@ -7,22 +7,22 @@
     <div class="dep @(d.Found ? "ready" : "missing")">
         <div class="dep-head">
             <span class="dep-dot" aria-hidden="true"></span>
-            <span class="dep-name">@d.Name</span>
+            <span class="dep-name">@L[d.Name]</span>
             <span class="dep-state">@(d.Found ? L["StatusReady"] : L["StatusNotInstalled"])</span>
         </div>
 
         @if (d.Found)
         {
             <div class="dep-body">
-                <div class="dep-note">@d.Unlocks</div>
+                <div class="dep-note">@L[d.Unlocks]</div>
                 <div class="dep-path" title="@d.FoundAt">@L["UsingPathLabel", d.FoundAt]</div>
             </div>
         }
         else
         {
             <div class="dep-body">
-                <div class="dep-note">@d.Unlocks</div>
-                <div class="dep-note quiet">@L["WithoutItLabel", d.WithoutIt]</div>
+                <div class="dep-note">@L[d.Unlocks]</div>
+                <div class="dep-note quiet">@L["WithoutItLabel", L[d.WithoutIt].Value]</div>
 
                 @if (Detailed)
                 {

@@ -197,7 +197,11 @@ public sealed class TrashActivity : Activity
                 restore.Text = "Restoring…";
                 try
                 {
-                    var r = await Task.Run(() => svc.RestoreAsync(b.BatchId));
+                    WorkService.Start(this, "Restoring photos");
+                    WorkService.Start(this, "Restoring photos");
+                var r = await Task.Run(() => svc.RestoreAsync(b.BatchId));
+                WorkService.Stop(this);
+                    WorkService.Stop(this);
                     Toast.MakeText(this,
                         r.Missing > 0
                             ? $"Restored {r.Restored}; {r.Missing} no longer in the trash"
@@ -361,7 +365,9 @@ public sealed class TrashActivity : Activity
             _inkBarHandledBatchId = b.BatchId;   // don't resurrect this bar once acted on
             try
             {
+                WorkService.Start(this, "Restoring photos");
                 var r = await Task.Run(() => svc.RestoreAsync(b.BatchId));
+                WorkService.Stop(this);
                 Toast.MakeText(this,
                     r.Missing > 0
                         ? $"Restored {r.Restored}; {r.Missing} no longer in the trash"
@@ -430,7 +436,11 @@ public sealed class TrashActivity : Activity
             .SetNegativeButton("Cancel", (EventHandler<DialogClickEventArgs>?)null)!
             .SetPositiveButton("Delete permanently", (_, _) =>
             {
+                WorkService.Start(this, "Emptying trash");
+                WorkService.Start(this, "Emptying trash");
                 var removed = new FolderTrashService(_catalog.TrashDir).Empty();
+                WorkService.Stop(this);
+                WorkService.Stop(this);
                 Android.Util.Log.Info("SnapZap", $"emptied trash: {removed} file(s)");
                 Toast.MakeText(this, $"Deleted {removed} file(s).", ToastLength.Long)!.Show();
                 Refresh();
