@@ -4,7 +4,19 @@
     <ProjectReference Include="..\SnapZap.Core\SnapZap.Core.csproj" />
   </ItemGroup>
 
-  <ItemGroup>
+  <!--
+    Photino.NET backs PhotinoAppHost (Services/AppHost.cs) — the embedded window on Windows, and
+    a class that still compiles (unused at runtime) on every other desktop OS this project
+    targets. Conditioned out for a net10.0-android TFM specifically: the Android port plan
+    (docs/ANDROID-PORT-PLAN.md §4 task 2) has a future Android head project-reference this
+    project to reuse SnapZapWebHost.Build, and that reference should not drag a Windows/Mac/Linux
+    native-window package — with its own native runtime assets — into an Android build for a
+    type it will never construct. Conditioning the reference is the smallest change that
+    achieves that: SnapZapWebHost.Build itself never references Photino (AC-1.2), so the Android
+    TFM simply never needs the package at all. Today this project only targets net10.0, so the
+    condition is always true and nothing about the existing Windows/macOS build changes.
+  -->
+  <ItemGroup Condition="'$(TargetFramework)' != 'net10.0-android'">
     <PackageReference Include="Photino.NET" Version="4.0.16" />
   </ItemGroup>
 
