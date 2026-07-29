@@ -16,6 +16,9 @@ see [CLAUDE.md](CLAUDE.md)'s Gotchas for why that's the only place to bump it.
   shortcuts) — the same zoom the duplicate-compare view already had, now in the regular preview too.
 - **Adjustable thumbnail size.** A Small / Medium / Large control next to Sort changes how many
   photos fit per row in the grid.
+- **Thumbnails in the History (undo) dialog.** Each batch now shows a preview strip of the photos
+  it contains, so you can see what you're restoring before clicking Restore. Hovering a thumbnail
+  reveals a restore button for that photo alone, for when you only want one back, not the whole batch.
 
 ### Improved
 - **Recycling shows real progress.** Moving photos to the Recycle Bin now shows a live counter and

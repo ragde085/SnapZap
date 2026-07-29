@@ -130,6 +130,7 @@ public sealed class Database : IDisposable
             AddColumnIfMissing("images", "dupe_checked_kinds", "INTEGER NOT NULL DEFAULT 0");
             AddColumnIfMissing("images", "phash", "BLOB");
             AddColumnIfMissing("images", "nsfw_tile_mean", "REAL");
+            AddColumnIfMissing("undo_log", "content_hash", "TEXT");
 
             RenameSimilarToVariant();
         }
@@ -350,7 +351,8 @@ public sealed class Database : IDisposable
           original_path TEXT    NOT NULL,
           new_location  TEXT,
           ts_utc        INTEGER NOT NULL,
-          restored      INTEGER NOT NULL DEFAULT 0
+          restored      INTEGER NOT NULL DEFAULT 0,
+          content_hash  TEXT
         );
         """;
 

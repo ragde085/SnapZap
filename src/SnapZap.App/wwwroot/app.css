@@ -961,6 +961,31 @@ main { display: flex; flex: 1; min-height: 0; }
 .history-sub { font-size: 11px; color: var(--color-neutral-700); margin-top: 3px; }
 .history-hint { font-size: var(--t-xs); color: var(--color-neutral-700); margin-top: 14px; }
 
+.undo-thumbs { display: flex; align-items: center; gap: 4px; margin-top: var(--space-2); }
+.undo-thumb-wrap { position: relative; width: 36px; height: 36px; flex: none; }
+.undo-thumb {
+  width: 36px; height: 36px; border-radius: 4px; object-fit: cover;
+  border: 1px solid var(--color-divider); display: block;
+}
+.undo-thumb.restored { opacity: 0.45; }
+.undo-thumb-more {
+  font-size: 11px; color: var(--color-neutral-700); flex: none; padding: 0 2px;
+}
+
+/* Restore a single photo, revealed on hover/focus of its thumbnail rather than always shown —
+   the strip is a preview first, the primary action stays the per-batch Restore button. */
+.undo-thumb-restore {
+  all: unset; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  background: color-mix(in srgb, black 55%, transparent); border-radius: 4px; cursor: pointer;
+  opacity: 0; transition: opacity 0.1s ease;
+}
+.undo-thumb-wrap:hover .undo-thumb-restore,
+.undo-thumb-restore:focus-visible,
+.undo-thumb-restore.restoring { opacity: 1; }
+.undo-thumb-restore svg { width: 16px; height: 16px; stroke: white; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.undo-thumb-restore:disabled { cursor: default; }
+.undo-thumb-restore span { color: white; font-size: 16px; line-height: 1; }
+
 /* ---------- duplicate review ---------- */
 
 .review-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); }

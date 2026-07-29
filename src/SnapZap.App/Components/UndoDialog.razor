@@ -37,11 +37,49 @@
                                             <text> @L["SubRestoredCount", b.Restored]</text>
                                         }
                                     </div>
+                                    @if (_previews.TryGetValue(b.BatchId, out var items) && items.Count > 0)
+                                    {
+                                        <div class="undo-thumbs">
+                                            @foreach (var it in items)
+                                            {
+                                                @if (it.ContentHash is not null)
+                                                {
+                                                    var itemName = Path.GetFileName(it.OriginalPath);
+                                                    <div class="undo-thumb-wrap">
+                                                        <img class="undo-thumb @(it.Restored ? "restored" : "")" loading="lazy"
+                                                             src="@($"/api/thumb/{it.ContentHash}")"
+                                                             alt="" title="@itemName" />
+                                                        @if (!it.Restored)
+                                                        {
+                                                            <button type="button" class="undo-thumb-restore @(_restoringItem == it.Id ? "restoring" : "")"
+                                                                    disabled="@(busy || _restoringItem is not null)"
+                                                                    title="@L["ButtonRestoreThisPhoto", itemName]"
+                                                                    aria-label="@L["ButtonRestoreThisPhoto", itemName]"
+                                                                    @onclick="() => RestoreItem(it.Id)">
+                                                                @if (_restoringItem == it.Id)
+                                                                {
+                                                                    <span aria-hidden="true">…</span>
+                                                                }
+                                                                else
+                                                                {
+                                                                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7M3 4v5h5" /></svg>
+                                                                }
+                                                            </button>
+                                                        }
+                                                    </div>
+                                                }
+                                            }
+                                            @if (b.Total > items.Count)
+                                            {
+                                                <span class="undo-thumb-more">@L["ThumbMoreCount", b.Total - items.Count]</span>
+                                            }
+                                        </div>
+                                    }
                                 </td>
                                 <td style="text-align:right;font-variant-numeric:tabular-nums">@b.Total.ToString("N0")</td>
                                 <td style="text-align:right">
                                     <button class="btn btn-secondary" style="font-size:12px;padding:4px 10px"
-                                            disabled="@(done || busy)" @onclick="() => Restore(b.BatchId)">
+                                            disabled="@(done || busy || _restoringItem is not null)" @onclick="() => Restore(b.BatchId)">
                                         @(done ? L["ButtonRestored"] : busy ? L["ButtonRestoring"] : L["ButtonRestore"])
                                     </button>
                                 </td>
@@ -62,7 +100,9 @@
     [Parameter] public EventCallback OnClose { get; set; }
 
     List<UndoBatch> _batches = [];
+    Dictionary<string, IReadOnlyList<UndoItem>> _previews = [];
     string? _restoring;
+    long? _restoringItem;
     bool _wasShown;
     bool _needsFocus;
     ElementReference _dlgRef;
@@ -85,7 +125,11 @@
         }
     }
 
-    void Refresh() => _batches = AppState.Batches().ToList();
+    void Refresh()
+    {
+        _batches = AppState.Batches().ToList();
+        _previews = _batches.ToDictionary(b => b.BatchId, b => AppState.ItemsInBatch(b.BatchId));
+    }
 
     static bool WasMoved(UndoBatch b) => b.BatchId.StartsWith("move-");
 
@@ -108,6 +152,21 @@
         finally
         {
             _restoring = null;
+        }
+    }
+
+    async Task RestoreItem(long undoLogId)
+    {
+        _restoringItem = undoLogId;
+        StateHasChanged();
+        try
+        {
+            await AppState.RestoreItemAndReloadAsync(undoLogId);
+            Refresh();
+        }
+        finally
+        {
+            _restoringItem = null;
         }
     }
 

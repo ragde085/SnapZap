@@ -99,7 +99,7 @@ public sealed class ExportEngine(Database db, ILinkService links, ITrashService 
                     // Log before releasing: if the process dies between the two, an undo entry
                     // for a file still present is harmless, whereas a released file with no
                     // entry would be unreversible (DESIGN §7.4).
-                    LogUndo(moveBatch, "move", img.Path, dest);
+                    LogUndo(moveBatch, "move", img.Path, dest, img.ContentHash);
                     ReleaseSource(img.Path, dest);
                     // The file lives at `dest` now, so the catalog has to as well — otherwise
                     // every row we just moved points at a path we just deleted.
@@ -135,7 +135,7 @@ public sealed class ExportEngine(Database db, ILinkService links, ITrashService 
                 {
                     if (!File.Exists(img.Path)) continue;
                     var loc = await trash.SendToTrashAsync(img.Path, ct);
-                    LogUndo(batch, "recycle", img.Path, loc);
+                    LogUndo(batch, "recycle", img.Path, loc, img.ContentHash);
                     recycled++;
                 }
                 catch { /* a reject that won't recycle is non-fatal; keepers are already safe */ }
@@ -286,20 +286,21 @@ public sealed class ExportEngine(Database db, ILinkService links, ITrashService 
         }
     }
 
-    void LogUndo(string batch, string op, string original, string? newLoc)
+    void LogUndo(string batch, string op, string original, string? newLoc, string? contentHash)
     {
         lock (db.WriteLock)
         {
             using var cmd = db.Writer.CreateCommand();
             cmd.CommandText = """
-                INSERT INTO undo_log(batch_id, op, original_path, new_location, ts_utc)
-                VALUES ($b,$o,$p,$n,$t)
+                INSERT INTO undo_log(batch_id, op, original_path, new_location, ts_utc, content_hash)
+                VALUES ($b,$o,$p,$n,$t,$h)
                 """;
             cmd.Parameters.AddWithValue("$b", batch);
             cmd.Parameters.AddWithValue("$o", op);
             cmd.Parameters.AddWithValue("$p", original);
             cmd.Parameters.AddWithValue("$n", (object?)newLoc ?? DBNull.Value);
             cmd.Parameters.AddWithValue("$t", DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+            cmd.Parameters.AddWithValue("$h", (object?)contentHash ?? DBNull.Value);
             cmd.ExecuteNonQuery();
         }
     }

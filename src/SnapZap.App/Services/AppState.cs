@@ -1378,6 +1378,10 @@ public sealed class AppState(
 
     public IReadOnlyList<UndoBatch> Batches() => new DeleteService(catalog.Db, trash).Batches();
 
+    /// <summary>Preview items for one batch (History dialog's thumbnail strip). See
+    /// <see cref="DeleteService.ItemsInBatch"/> for the row cap.</summary>
+    public IReadOnlyList<UndoItem> ItemsInBatch(string batchId) => new DeleteService(catalog.Db, trash).ItemsInBatch(batchId);
+
     /// <summary>Restore a batch, then reconcile the catalog so restored files reappear.</summary>
     public async Task<RestoreResult> RestoreAndReloadAsync(string batchId)
     {
@@ -1395,6 +1399,22 @@ public sealed class AppState(
         }
         await LoadAsync();
         return result;
+    }
+
+    /// <summary>Restore a single photo out of a batch (History dialog's per-thumbnail Restore),
+    /// then reconcile the catalog the same way a full batch restore does.</summary>
+    public async Task<bool> RestoreItemAndReloadAsync(long undoLogId)
+    {
+        var restored = await new DeleteService(catalog.Db, trash).RestoreItemAsync(undoLogId);
+        Status = restored ? _loc["RestoredCount", 1] : _loc["RestoredCountWithMissing", 0, 1];
+
+        if (ScannedFolder is { } folder && Directory.Exists(folder))
+        {
+            var scanned = await catalog.ScanAsync(folder, null, CancellationToken.None);
+            _ = scanned;
+        }
+        await LoadAsync();
+        return restored;
     }
 }
 
