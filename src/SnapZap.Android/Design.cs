@@ -186,4 +186,246 @@ public static class Design
         l.Background = layers;
         return l;
     }
+
+    // ══════════════════════════════════════════════════════════════════════════════════════
+    //  Shared components
+    //
+    //  Everything the handoff's twelve screens build from. Kept here rather than per-screen so
+    //  a tag on the review queue and a tag on the preview are the same object — the system's
+    //  whole premise is that these are shared parts, and a screen that rolls its own is how a
+    //  design system quietly stops being one.
+    // ══════════════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>
+    /// .tag — a small square label. Accent for state the app chose ("KEEPING THIS ONE"), neutral
+    /// for state that is simply a fact ("BURST").
+    /// </summary>
+    public static TextView Tag(Context c, string text, bool accent = false)
+    {
+        var t = new TextView(c) { Text = text.ToUpperInvariant() };
+        t.SetTextSize(Android.Util.ComplexUnitType.Sp, 10f);
+        t.SetTypeface(null, TypefaceStyle.Bold);
+        t.LetterSpacing = 0.08f;
+        t.SetPadding(Dp(c, 7), Dp(c, 3), Dp(c, 7), Dp(c, 3));
+        if (accent) { t.Background = Fill(Accent); t.SetTextColor(Bg); }
+        else { t.Background = Outline(Color.Transparent, Divider, Dp(c, 1)); t.SetTextColor(Neutral700); }
+        return t;
+    }
+
+    /// <summary>.kv — an eyebrow label on the left, the value bold on the right, hairline beneath.</summary>
+    public static View KeyValue(Context c, string label, string value)
+    {
+        var wrap = new LinearLayout(c) { Orientation = Orientation.Vertical };
+        var row = new LinearLayout(c) { Orientation = Orientation.Horizontal };
+        row.SetPadding(0, Dp(c, 7), 0, Dp(c, 7));
+
+        var l = Eyebrow(c, label);
+        l.LayoutParameters = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f);
+        row.AddView(l);
+
+        var v = Body(c, value, 13f, bold: true);
+        v.Gravity = GravityFlags.Right;
+        row.AddView(v);
+
+        wrap.AddView(row);
+        wrap.AddView(Rule(c, 1f, Divider));
+        return wrap;
+    }
+
+    /// <summary>
+    /// .row — a 44dp-minimum list row: optional leading glyph, a title with an optional note
+    /// under it, an optional trailing value, hairline beneath.
+    /// </summary>
+    public static LinearLayout ListRow(Context c, string title, string? note = null,
+                                       string? trailing = null, string? glyph = null,
+                                       bool highlight = false)
+    {
+        var wrap = new LinearLayout(c) { Orientation = Orientation.Vertical };
+
+        var row = new LinearLayout(c) { Orientation = Orientation.Horizontal };
+        row.SetGravity(GravityFlags.CenterVertical);
+        row.SetMinimumHeight(Dp(c, MinTarget));
+        row.SetPadding(Dp(c, highlight ? 12 : 16), Dp(c, 13), Dp(c, 16), Dp(c, 13));
+        if (highlight)
+        {
+            var bar = new GradientDrawable(); bar.SetColor(Accent);
+            var fill = new GradientDrawable(); fill.SetColor(Accent100);
+            var layers = new LayerDrawable([bar, fill]);
+            layers.SetLayerInset(1, Dp(c, 4), 0, 0, 0);
+            row.Background = layers;
+        }
+
+        if (glyph is not null)
+        {
+            var g = Body(c, glyph, 16f);
+            g.SetPadding(0, 0, Dp(c, 10), 0);
+            row.AddView(g);
+        }
+
+        var col = new LinearLayout(c) { Orientation = Orientation.Vertical };
+        col.LayoutParameters = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f);
+        col.AddView(Body(c, title, 14f, bold: highlight));
+        if (note is not null) col.AddView(Note(c, note, highlight ? Accent700 : null));
+        row.AddView(col);
+
+        if (trailing is not null)
+        {
+            var t = Body(c, trailing, 13f);
+            t.SetTextColor(highlight ? Text : Neutral700);
+            row.AddView(t);
+        }
+
+        wrap.AddView(row);
+        wrap.AddView(Rule(c, 1f, Divider));
+        return wrap;
+    }
+
+    /// <summary>
+    /// A square icon-sized button. The handoff draws Lucide SVGs; there are no vector assets in
+    /// this bundle, so a glyph stands in — a deliberate, visible deviation from pixel-parity
+    /// rather than a silent one. Swap for real drawables when the icon set is exported.
+    /// </summary>
+    public static Button IconButton(Context c, string glyph)
+    {
+        var b = Button(c, glyph, Btn.Secondary, 40f);
+        b.SetTextSize(Android.Util.ComplexUnitType.Sp, 16f);
+        b.SetPadding(0, 0, 0, 0);
+        b.SetMinimumWidth(Dp(c, 40));
+        b.LayoutParameters = new LinearLayout.LayoutParams(Dp(c, 40), Dp(c, 40));
+        return b;
+    }
+
+    /// <summary>A thin determinate bar. 4dp in the review header, 6dp on the scan screen.</summary>
+    public static (View Track, View Fill) ProgressBar(Context c, float heightDp = 4f)
+    {
+        var track = new FrameLayout(c);
+        track.SetBackgroundColor(Neutral300);
+        track.LayoutParameters = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MatchParent, Dp(c, heightDp));
+        var fill = new View(c);
+        fill.SetBackgroundColor(Accent);
+        fill.LayoutParameters = new FrameLayout.LayoutParams(0, ViewGroup.LayoutParams.MatchParent);
+        track.AddView(fill);
+        return (track, fill);
+    }
+
+    /// <summary>.input — surface fill, hairline border, square.</summary>
+    public static EditText Field(Context c, string value, float minHeight = 46f)
+    {
+        var e = new EditText(c) { Text = value };
+        e.SetTextSize(Android.Util.ComplexUnitType.Sp, 14f);
+        e.SetTextColor(Text);
+        e.SetMinimumHeight(Dp(c, minHeight));
+        e.Background = Outline(Surface, Divider, Dp(c, 1));
+        e.SetPadding(Dp(c, 10), Dp(c, 6), Dp(c, 10), Dp(c, 6));
+        e.LayoutParameters = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent);
+        return e;
+    }
+
+    /// <summary>
+    /// The bottom action bar every full-screen task ends in: a 2px rule, surface fill, and the
+    /// primary action at thumb height. Kept identical across review, selection and export so the
+    /// commit button never moves between screens.
+    /// </summary>
+    public static LinearLayout ActionBar(Context c)
+    {
+        var wrap = new LinearLayout(c) { Orientation = Orientation.Vertical };
+        wrap.SetBackgroundColor(Surface);
+        wrap.AddView(Rule(c, 2f, Divider));
+        var inner = new LinearLayout(c) { Orientation = Orientation.Vertical };
+        inner.SetPadding(Dp(c, 16), Dp(c, 12), Dp(c, 16), Dp(c, 12));
+        wrap.AddView(inner);
+        wrap.Tag = inner;                 // callers add to Tag; see ActionBarBody
+        return wrap;
+    }
+
+    /// <summary>The content slot of an <see cref="ActionBar"/>.</summary>
+    public static LinearLayout ActionBarBody(LinearLayout actionBar) => (LinearLayout)actionBar.Tag!;
+
+    /// <summary>
+    /// The ink bar used for undo — dark fill, light text, action on the right. The handoff floats
+    /// it over the content rather than pushing layout, so it is meant to sit in a FrameLayout.
+    /// </summary>
+    public static LinearLayout InkBar(Context c, string message, string actionLabel, Action onAction)
+    {
+        var bar = new LinearLayout(c) { Orientation = Orientation.Horizontal };
+        bar.SetGravity(GravityFlags.CenterVertical);
+        bar.SetBackgroundColor(Ink);
+        bar.SetPadding(Dp(c, 14), Dp(c, 12), Dp(c, 14), Dp(c, 12));
+
+        var t = Body(c, message, 13.5f);
+        t.SetTextColor(Bg);
+        t.LayoutParameters = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f);
+        bar.AddView(t);
+
+        var b = Button(c, actionLabel, Btn.Primary, 40f);
+        b.Click += (_, _) => onAction();
+        bar.AddView(b);
+        return bar;
+    }
+
+    /// <summary>
+    /// A header with a leading back/close control — the shape screens 5, 6, 8, 10, 11 and 12 all
+    /// use. <paramref name="glyph"/> is "‹" for back and "✕" for close/dismiss, matching the
+    /// handoff's chevron-left and X.
+    /// </summary>
+    public static LinearLayout HeaderBar(Context c, string glyph, Action onBack,
+                                         string title, string? subtitle = null, View? trailing = null)
+    {
+        var wrap = new LinearLayout(c) { Orientation = Orientation.Vertical };
+
+        var row = new LinearLayout(c) { Orientation = Orientation.Horizontal };
+        row.SetGravity(GravityFlags.CenterVertical);
+        row.SetPadding(Dp(c, 16), Dp(c, 6), Dp(c, 16), Dp(c, 12));
+
+        var back = IconButton(c, glyph);
+        back.Click += (_, _) => onBack();
+        var blp = new LinearLayout.LayoutParams(Dp(c, 40), Dp(c, 40)) { RightMargin = Dp(c, 10) };
+        back.LayoutParameters = blp;
+        row.AddView(back);
+
+        var col = new LinearLayout(c) { Orientation = Orientation.Vertical };
+        col.LayoutParameters = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f);
+        col.AddView(Title(c, title, 20f));
+        if (subtitle is not null) col.AddView(Note(c, subtitle));
+        row.AddView(col);
+
+        if (trailing is not null) row.AddView(trailing);
+
+        wrap.AddView(row);
+        wrap.AddView(Rule(c, 2f, Divider));
+        return wrap;
+    }
+
+    /// <summary>
+    /// A tile badge — the small square marker in a grid cell's top-right corner. Accent when the
+    /// tile is chosen, outlined when it is merely selectable.
+    /// </summary>
+    public static TextView TileBadge(Context c, string glyph, bool on)
+    {
+        var t = new TextView(c) { Text = glyph };
+        t.SetTextSize(Android.Util.ComplexUnitType.Sp, 10f);
+        t.SetTypeface(null, TypefaceStyle.Bold);
+        t.Gravity = GravityFlags.Center;
+        t.SetMinimumWidth(Dp(c, 18));
+        t.SetMinimumHeight(Dp(c, 18));
+        t.SetPadding(Dp(c, 4), 0, Dp(c, 4), 0);
+        if (on) { t.Background = Fill(Accent); t.SetTextColor(Color.White); }
+        else { t.Background = Outline(Color.Argb(90, 0, 0, 0), Color.White, Dp(c, 2)); t.SetTextColor(Color.White); }
+        return t;
+    }
+
+    /// <summary>Standard vertical gap, in the mock's own px.</summary>
+    public static View Gap(Context c, float dp)
+    {
+        var v = new View(c);
+        v.LayoutParameters = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MatchParent, Dp(c, dp));
+        return v;
+    }
+
+    /// <summary>Full-width layout params, the default for every stacked control in this system.</summary>
+    public static LinearLayout.LayoutParams Wide() =>
+        new(ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent);
 }
