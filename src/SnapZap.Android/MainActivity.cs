@@ -54,6 +54,16 @@ public sealed class MainActivity : Activity
     // Live scan read-outs, held so progress can update them without rebuilding the screen.
     TextView? _scanCount, _scanFile;
 
+    // Screen 9 — selection is a mode you enter, not an always-on toolbar. Holding a photo enters
+    // it and the header turns to ink, so there is no doubt you are in it.
+    bool _selectionMode;
+    readonly HashSet<long> _selected = [];
+
+    // Screen 7 — the active facet. Null means "Any".
+    DupeFacet _facet = DupeFacet.Any;
+    enum DupeFacet { Any, ExtrasOnly, KeepersOnly, BurstFrames }
+    Dictionary<long, DupeAssignment> _assign = [];
+
     protected override void OnCreate(Bundle? savedInstanceState)
     {
         base.OnCreate(savedInstanceState);
@@ -140,13 +150,13 @@ public sealed class MainActivity : Activity
         try
         {
             var groups = new SnapZap.Core.Data.DupeRepository(_catalog!.Db).Groups();
-            var assignment = DupeAssignmentResolver.Resolve(groups, _catalog.Images.BurstAdjacentIds());
-            _reviewable = assignment.Values.Count(a => a.IsBulkSelectableExtra);
+            _assign = DupeAssignmentResolver.Resolve(groups, _catalog.Images.BurstAdjacentIds());
+            _reviewable = _assign.Values.Count(a => a.IsBulkSelectableExtra);
             _burstGroups = groups.Count(g => g.Kind == DupeKind.Burst);
         }
         catch (Exception ex)
         {
-            _reviewable = 0; _burstGroups = 0;
+            _reviewable = 0; _burstGroups = 0; _assign = [];
             Android.Util.Log.Warn(Tag, $"group count failed: {ex.Message}");
         }
     }
@@ -396,7 +406,8 @@ public sealed class MainActivity : Activity
 
     void RenderLibrary()
     {
-        _content.AddView(Header("Library", null));
+        if (_selectionMode) { _content.AddView(SelectionHeader()); }
+        else _content.AddView(Header("Library", null));
 
         var sum = new LinearLayout(this) { Orientation = Orientation.Horizontal };
         sum.SetGravity(GravityFlags.CenterVertical);
@@ -431,10 +442,10 @@ public sealed class MainActivity : Activity
         var chips = new LinearLayout(this) { Orientation = Orientation.Horizontal };
         chips.SetGravity(GravityFlags.CenterVertical);
         chips.SetPadding(Design.Dp(this, 16), Design.Dp(this, 9), Design.Dp(this, 16), Design.Dp(this, 9));
-        var filters = Design.Button(this, "Filters", Design.Btn.Secondary, 38f);
+        var filters = Design.Button(this, FacetLabel(), Design.Btn.Secondary, 38f);
         filters.SetTextSize(Android.Util.ComplexUnitType.Sp, 13f);
-        filters.Click += (_, _) => Toast.MakeText(this,
-            "The Filters sheet is screen 7 — not built yet.", ToastLength.Short)!.Show();
+        filters.Click += (_, _) => new FiltersSheet(this, _facet.ToString(), FacetCounts(),
+            chosen => { _facet = Enum.Parse<DupeFacet>(chosen); Render(); }).Show();
         chips.AddView(filters);
         var hint = Design.Note(this, "Hold a photo to select");
         hint.LayoutParameters = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f);
@@ -452,9 +463,207 @@ public sealed class MainActivity : Activity
         grid.StretchMode = StretchMode.StretchColumnWidth;
         grid.LayoutParameters = new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MatchParent, 0, 1f);
-        grid.Adapter = new ThumbAdapter(this, _photos, cell, _catalog!.ThumbDir);
+        var shown = Visible();
+        grid.Adapter = new ThumbAdapter(this, shown, cell, _catalog!.ThumbDir,
+            _selectionMode ? id => _selected.Contains(id) : null);
+
+        grid.ItemClick += (_, e) =>
+        {
+            var rec = shown[e.Position];
+            if (_selectionMode)
+            {
+                if (!_selected.Add(rec.Id)) _selected.Remove(rec.Id);
+                Render();
+                return;
+            }
+            var i = new Intent(this, typeof(PreviewActivity));
+            i.PutExtra(PreviewActivity.ExtraImageId, rec.Id);
+            StartActivity(i);
+        };
+
+        // "Hold a photo to select" — the mode is entered by the gesture the chip row advertises.
+        grid.ItemLongClick += (_, e) =>
+        {
+            var rec = shown[e.Position];
+            _selectionMode = true;
+            _selected.Add(rec.Id);
+            Render();
+        };
+
         _content.AddView(grid);
+
+        if (_selectionMode) _content.AddView(SelectionActions());
     }
+
+    /// <summary>
+    /// The photos the grid is showing, after the active facet.
+    /// </summary>
+    /// <remarks>
+    /// Facets are answered through <c>DupeAssignment</c> rather than by re-deriving the rule here,
+    /// so the chip's count, the grid's contents and the review queue cannot disagree about what an
+    /// "extra copy" is — the same argument CLAUDE.md makes for NsfwDecision and InScope.
+    /// </remarks>
+    List<ImageRecord> Visible() => _facet switch
+    {
+        DupeFacet.ExtrasOnly => _photos.Where(p => _assign.TryGetValue(p.Id, out var a) && a.IsBulkSelectableExtra).ToList(),
+        DupeFacet.KeepersOnly => _photos.Where(p => _assign.TryGetValue(p.Id, out var a) && a.IsKeeper).ToList(),
+        DupeFacet.BurstFrames => _photos.Where(p => _assign.TryGetValue(p.Id, out var a) && a.Kind == DupeKind.Burst).ToList(),
+        _ => _photos,
+    };
+
+    string FacetLabel() => _facet switch
+    {
+        DupeFacet.ExtrasOnly => "Extra copies only",
+        DupeFacet.KeepersOnly => "Keepers only",
+        DupeFacet.BurstFrames => "Burst frames",
+        _ => "Filters",
+    };
+
+    Dictionary<string, int> FacetCounts() => new()
+    {
+        ["Any"] = _photos.Count,
+        ["ExtrasOnly"] = _assign.Values.Count(a => a.IsBulkSelectableExtra),
+        ["KeepersOnly"] = _assign.Values.Count(a => a.IsKeeper),
+        ["BurstFrames"] = _assign.Values.Count(a => a.Kind == DupeKind.Burst),
+    };
+
+    // ══════════════════════════════════════════════════════════════════════════════════════
+    //  9 · Selection mode — entered by holding a photo; leaves the way it came
+    // ══════════════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>The ink header. Cancel where back lives, the count as the title, Invert opposite.</summary>
+    View SelectionHeader()
+    {
+        var wrap = new LinearLayout(this) { Orientation = Orientation.Vertical };
+        var row = new LinearLayout(this) { Orientation = Orientation.Horizontal };
+        row.SetGravity(GravityFlags.CenterVertical);
+        row.SetBackgroundColor(Design.Ink);
+        row.SetPadding(Design.Dp(this, 10), Design.Dp(this, 6), Design.Dp(this, 10), Design.Dp(this, 10));
+
+        var cancel = Design.Button(this, "Cancel", Design.Btn.Ghost, 40f);
+        cancel.SetTextColor(Design.Bg);
+        cancel.Click += (_, _) => { _selectionMode = false; _selected.Clear(); Render(); };
+        row.AddView(cancel);
+
+        var count = Design.Title(this, $"{_selected.Count:N0} selected", 17f);
+        count.SetTextColor(Design.Bg);
+        count.Gravity = GravityFlags.Center;
+        count.LayoutParameters = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f);
+        row.AddView(count);
+
+        var invert = Design.Button(this, "Invert", Design.Btn.Ghost, 40f);
+        invert.SetTextColor(Design.Bg);
+        invert.Click += (_, _) =>
+        {
+            var shown = Visible().Select(p => p.Id).ToHashSet();
+            var flipped = shown.Where(id => !_selected.Contains(id)).ToHashSet();
+            _selected.Clear();
+            foreach (var id in flipped) _selected.Add(id);
+            Render();
+        };
+        row.AddView(invert);
+
+        wrap.AddView(row);
+        wrap.AddView(Design.Rule(this, 2f, Design.Divider));
+        return wrap;
+    }
+
+    /// <summary>The two thumb-height actions, plus the select-all-extras affordance above them.</summary>
+    View SelectionActions()
+    {
+        var wrap = new LinearLayout(this) { Orientation = Orientation.Vertical };
+
+        var extras = _photos.Where(p => _assign.TryGetValue(p.Id, out var a) && a.IsBulkSelectableExtra).ToList();
+        if (extras.Count > 0)
+        {
+            var callout = Design.Callout(this);
+            var line = new LinearLayout(this) { Orientation = Orientation.Horizontal };
+            line.SetGravity(GravityFlags.CenterVertical);
+            var col = new LinearLayout(this) { Orientation = Orientation.Vertical };
+            col.LayoutParameters = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f);
+            col.AddView(Design.Body(this,
+                $"Every extra copy in this view — {FormatBytes(extras.Sum(e => e.FileSize))}", 13f, bold: true));
+            // Stated, not implied: the one thing a bulk select must never quietly include.
+            col.AddView(Design.Note(this, "Keepers and bursts are not in here", Design.Accent700));
+            line.AddView(col);
+            var all = Design.Button(this, "Select all", Design.Btn.Secondary, 38f);
+            all.SetTextSize(Android.Util.ComplexUnitType.Sp, 12.5f);
+            all.Click += (_, _) => { foreach (var e in extras) _selected.Add(e.Id); Render(); };
+            line.AddView(all);
+            callout.AddView(line);
+            wrap.AddView(callout);
+        }
+
+        var bar = Design.ActionBar(this);
+        var body = Design.ActionBarBody(bar);
+        body.AddView(Design.Note(this, "Tap to add · hold a photo to enter this mode"));
+        body.AddView(Design.Gap(this, 9));
+
+        var row = new LinearLayout(this) { Orientation = Orientation.Horizontal };
+        var del = Design.Button(this, "Delete…", Design.Btn.Secondary, 48f);
+        del.LayoutParameters = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f);
+        del.Click += (_, _) => ConfirmDelete();
+        row.AddView(del);
+
+        var exp = Design.Button(this, "Export…", Design.Btn.Primary, 48f);
+        exp.LayoutParameters = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f)
+        { LeftMargin = Design.Dp(this, 8) };
+        // Screen 11 is out of v1 scope (ANDROID-PORT-PLAN §1). Dimmed to the system's own
+        // disabled opacity — a full-strength primary button that does nothing is worse than an
+        // obviously unavailable one, because it reads as broken rather than as not-yet-built.
+        exp.Enabled = false;
+        exp.Alpha = 0.45f;
+        exp.Click += (_, _) => Toast.MakeText(this,
+            "Export is not part of the Android version yet.", ToastLength.Short)!.Show();
+        row.AddView(exp);
+        body.AddView(row);
+
+        wrap.AddView(bar);
+        return wrap;
+    }
+
+    void ConfirmDelete()
+    {
+        if (_selected.Count == 0)
+        {
+            Toast.MakeText(this, "Nothing selected.", ToastLength.Short)!.Show();
+            return;
+        }
+
+        var ids = _selected.ToList();
+        var bytes = _photos.Where(p => _selected.Contains(p.Id)).Sum(p => p.FileSize);
+
+        new AlertDialog.Builder(this)
+            .SetTitle("Move to trash?")!
+            .SetMessage($"{ids.Count:N0} photo(s), {FormatBytes(bytes)}, will be moved to SnapZap's "
+                      + "trash.\n\nNothing is deleted from your device — they can be restored from History.")!
+            .SetNegativeButton("Cancel", (EventHandler<DialogClickEventArgs>?)null)!
+            .SetPositiveButton("Move to trash", async (_, _) =>
+            {
+                try
+                {
+                    var r = await Task.Run(() => _catalog!.NewDeleteService().RecycleAsync(ids));
+                    _selectionMode = false; _selected.Clear();
+                    _photos = await Task.Run(() => _catalog!.Images.All().ToList());
+                    Toast.MakeText(this, $"Moved {r.Recycled:N0} to trash", ToastLength.Short)!.Show();
+                }
+                catch (Exception ex)
+                {
+                    Toast.MakeText(this, $"Delete failed: {ex.Message}", ToastLength.Long)!.Show();
+                    Android.Util.Log.Error(Tag, ex.ToString());
+                }
+                Render();
+            })!
+            .Show();
+    }
+
+    static string FormatBytes(long b) => b switch
+    {
+        >= 1L << 30 => $"{b / (double)(1L << 30):0.##} GB",
+        >= 1L << 20 => $"{b / (double)(1L << 20):0.##} MB",
+        >= 1L << 10 => $"{b / (double)(1L << 10):0.##} KB",
+        _ => $"{b} B",
+    };
 
     string SummaryNote()
     {
@@ -680,6 +889,13 @@ public sealed class MainActivity : Activity
             v.SetPadding(0, bars.Top, 0, bars.Bottom);
             return insets;
         }
+    }
+
+    public override void OnBackPressed()
+    {
+        // Selection "leaves the way it came" — back cancels the mode before it leaves the screen.
+        if (_selectionMode) { _selectionMode = false; _selected.Clear(); Render(); return; }
+        base.OnBackPressed();
     }
 
     protected override void OnDestroy()

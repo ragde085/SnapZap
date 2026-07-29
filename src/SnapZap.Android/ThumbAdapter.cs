@@ -18,7 +18,14 @@ namespace SnapZap.Droid;
 /// (CLAUDE.md). The single highest-risk item in the whole port plan — AC-6.5's scroll-windowing
 /// regression across two OEM WebView builds — simply does not exist in this design.
 /// </summary>
-public sealed class ThumbAdapter(Context context, IReadOnlyList<ImageRecord> items, int cellPx, string thumbDir) : BaseAdapter<ImageRecord>
+/// <param name="isSelected">
+/// Optional selection test, for the handoff's selection mode (screen 9). Optional with a default
+/// so callers that show a plain grid — the library before selection is entered, the Folders
+/// screen — are unaffected and keep compiling unchanged.
+/// </param>
+public sealed class ThumbAdapter(Context context, IReadOnlyList<ImageRecord> items, int cellPx,
+                                 string thumbDir, Func<long, bool>? isSelected = null)
+    : BaseAdapter<ImageRecord>
 {
     // Small LRU-ish cache. Bounded because a 40k-photo library's worth of decoded bitmaps is not
     // something to hold: at ~256px ARGB_8888 that is ~256 KB each.
@@ -32,16 +39,59 @@ public sealed class ThumbAdapter(Context context, IReadOnlyList<ImageRecord> ite
 
     public override View GetView(int position, View? convertView, ViewGroup? parent)
     {
-        var view = convertView as ImageView ?? new ImageView(context)
+        // A FrameLayout rather than a bare ImageView, so a selection badge can sit over the
+        // corner. Recycled views are reused whole; the badge is added once and toggled.
+        var cell = convertView as FrameLayout ?? BuildCell();
+        var img = (ImageView)cell.GetChildAt(0)!;
+        var badge = cell.GetChildAt(1)!;
+
+        var rec = items[position];
+        img.SetImageBitmap(Load(ThumbFor(rec)));
+
+        if (isSelected is null) badge.Visibility = ViewStates.Gone;
+        else
+        {
+            var on = isSelected(rec.Id);
+            badge.Visibility = ViewStates.Visible;
+            badge.Background = on
+                ? Design.Fill(Design.Accent)
+                : Design.Outline(Color.Argb(90, 0, 0, 0), Color.White, Design.Dp(context, 2));
+            ((TextView)badge).Text = on ? "✓" : "";
+
+            // The handoff outlines the whole tile when it is selected (.sel), not just the badge —
+            // at three-up the badge alone is too small to read as state at a glance.
+            img.SetPadding(on ? Design.Dp(context, 3) : 2, on ? Design.Dp(context, 3) : 2,
+                           on ? Design.Dp(context, 3) : 2, on ? Design.Dp(context, 3) : 2);
+            cell.SetBackgroundColor(on ? Design.Accent : Color.Transparent);
+        }
+
+        return cell;
+    }
+
+    FrameLayout BuildCell()
+    {
+        var f = new FrameLayout(context)
         {
             LayoutParameters = new AbsListView.LayoutParams(cellPx, cellPx),
         };
-        view.SetScaleType(ImageView.ScaleType.CenterCrop);
-        view.SetPadding(2, 2, 2, 2);
 
-        var rec = items[position];
-        view.SetImageBitmap(Load(ThumbFor(rec)));
-        return view;
+        var img = new ImageView(context);
+        img.SetScaleType(ImageView.ScaleType.CenterCrop);
+        img.SetPadding(2, 2, 2, 2);
+        img.LayoutParameters = new FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.MatchParent);
+        f.AddView(img);
+
+        var badge = Design.TileBadge(context, "", false);
+        badge.LayoutParameters = new FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.WrapContent, ViewGroup.LayoutParams.WrapContent)
+        {
+            Gravity = GravityFlags.Top | GravityFlags.Right,
+            TopMargin = Design.Dp(context, 5),
+            RightMargin = Design.Dp(context, 5),
+        };
+        f.AddView(badge);
+        return f;
     }
 
     /// <summary>

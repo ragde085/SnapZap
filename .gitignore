@@ -64,3 +64,6 @@ models/*.onnx
 
 # JetBrains IDE settings
 .idea/
+
+# Agent worktrees (git worktrees, not content)
+.claude/worktrees/
