@@ -43,6 +43,23 @@ public sealed class AndroidCatalog : IDisposable
     public Scanner NewScanner() => new(Db, Imaging, ThumbDir);
 
     /// <summary>
+    /// The folder the catalogue was last scanned from — the same <c>meta</c> key the desktop's
+    /// <c>CatalogService.ScanRoot</c> reads and writes, so the two heads agree on what "the folder
+    /// you are working on" means for a catalogue they can both open.
+    /// </summary>
+    /// <remarks>
+    /// Android held this only in memory, so every relaunch reset the scan target to the platform
+    /// default while the library still held photos from somewhere else entirely. The Plan tab then
+    /// printed the default folder directly above the count of photos that did not come from it, and
+    /// "Re-scan" would have read the wrong folder.
+    /// </remarks>
+    public string? ScanRoot
+    {
+        get => Db.Meta("scan_root");
+        set => Db.SetMeta("scan_root", value);
+    }
+
+    /// <summary>
     /// Trash root. App-private external storage: writable with no permission at all even under
     /// scoped storage, survives restarts, and is cleared on uninstall — which is the expected
     /// lifetime for a trash.

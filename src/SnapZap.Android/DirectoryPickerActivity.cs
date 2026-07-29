@@ -30,8 +30,19 @@ public sealed class DirectoryPickerActivity : Activity
     public const string ExtraPath = "snapzap.picker.path";
 
     string _current = "";
-    string _root = SnapZap.Core.Platform.DirectoryRoots.DefaultStart(
-        SnapZap.Core.Platform.DirectoryPlatform.Android);
+
+    /// <summary>
+    /// The ceiling for browsing, and the folder labelled "Internal storage" — <b>not</b> the
+    /// default start.
+    /// </summary>
+    /// <remarks>
+    /// These were the same value until <c>DefaultStart</c> learned to prefer <c>DCIM/Camera</c>,
+    /// at which point using it here silently made DCIM the top of the tree: Back stopped there,
+    /// every folder outside it became unreachable, and the header labelled DCIM "Internal storage".
+    /// Where a scan starts and how far a browser may walk up are different questions, and this one
+    /// is always primary storage.
+    /// </remarks>
+    readonly string _root = SnapZap.Core.Platform.DirectoryRoots.AndroidPrimaryStorage;
 
     LinearLayout _body = null!;
     TextView _header = null!, _crumb = null!;
@@ -57,7 +68,7 @@ public sealed class DirectoryPickerActivity : Activity
         head.SetPadding(Design.Dp(this, 16), Design.Dp(this, 10), Design.Dp(this, 16), Design.Dp(this, 12));
         var row = new LinearLayout(this) { Orientation = Orientation.Horizontal };
         row.SetGravity(GravityFlags.CenterVertical);
-        var up = Design.IconButton(this, "‹");
+        var up = Design.IconButton(this, "‹", "Up one folder");
         up.LayoutParameters = new LinearLayout.LayoutParams(Design.Dp(this, 40), Design.Dp(this, 40))
         { RightMargin = Design.Dp(this, 10) };
         up.Click += (_, _) => HandleBack();

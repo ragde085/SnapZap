@@ -55,6 +55,8 @@ public sealed class ReviewActivity : Activity
 
     AndroidCatalog _catalog = null!;
     LinearLayout _root = null!;
+    FrameLayout _host = null!;
+    View? _undoBar;
 
     readonly List<GroupEntry> _queue = [];
     int _index;
@@ -86,16 +88,23 @@ public sealed class ReviewActivity : Activity
         base.OnCreate(savedInstanceState);
         _catalog = new AndroidCatalog();
 
+        // A FrameLayout host so the undo bar can float over the screen instead of pushing the
+        // layout — Design.InkBar is built for exactly that and needs somewhere to overlay.
+        _host = new FrameLayout(this);
+        SetContentView(_host);
+
         _root = new LinearLayout(this) { Orientation = Orientation.Vertical };
         _root.SetBackgroundColor(Design.Bg);
         _root.FocusableInTouchMode = true;
-        SetContentView(_root);
+        _root.LayoutParameters = new FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.MatchParent);
+        _host.AddView(_root);
 
         // Top/bottom insets only, no horizontal — the header, progress bar and action bar are
         // meant to run edge to edge (their own children carry the 16dp gutter), matching
         // MainActivity's InsetsPadder rather than this screen's own previous 24dp-all-round one.
-        _root.SetOnApplyWindowInsetsListener(new InsetsPadder());
-        _root.RequestApplyInsets();
+        _host.SetOnApplyWindowInsetsListener(new InsetsPadder());
+        _host.RequestApplyInsets();
 
         LoadQueue();
         _initialCount = _queue.Count;
@@ -316,8 +325,18 @@ public sealed class ReviewActivity : Activity
         // this is the one large, focused image on the screen. The burst grid has no equivalent
         // single "current photo" (it is a 2-column grid of equally-weighted frames), so it gets
         // tap-to-toggle only; see RenderBurstGroup.
-        keeperImage.SetOnTouchListener(new SwipeListener(this));
+        // The gestures live only here, so this is the one view that has to name them — a screen
+        // reader user landing on an unlabelled image has no way to discover that it is swipeable.
+        frame.ContentDescription =
+            $"Keeping {System.IO.Path.GetFileName(keeper.Path)}. "
+            + "Swipe left to keep and advance, right to go back, down to move it to the trash.";
         frame.AddView(keeperImage);
+
+        // Attached to the frame rather than the image so the accent border travels with the card,
+        // and constructed after the image so the stamps it adds sit on top. See SwipeCard for why
+        // the three directions are animated as three different kinds of gesture.
+        _ = new SwipeCard(this, frame, Advance, Back, DeleteCurrentKeeperPhoto, () => _index > 0);
+
         body.AddView(frame);
         body.AddView(Design.Gap(this, 10));
 
@@ -358,6 +377,8 @@ public sealed class ReviewActivity : Activity
                 if (thumb is not null) iv.SetImageBitmap(thumb);
                 var tappedId = ex.ImageId;
                 iv.Click += (_, _) => PromoteToKeeper(tappedId);
+                iv.ContentDescription =
+                    $"Extra copy, {Resolution(ex)}, {FormatBytes(ex.FileSize)}. Tap to keep this one instead.";
                 col.AddView(iv);
 
                 var caption = Design.Note(this, $"{Resolution(ex)} · {FormatBytes(ex.FileSize)}");
@@ -400,9 +421,15 @@ public sealed class ReviewActivity : Activity
         row.AddView(keepAll);
         ab.AddView(row);
 
+        // The handoff's own line ended "Nothing is deleted here", which was true of the design and
+        // stopped being true the moment swipe-down-to-delete was added to this screen. Keeping the
+        // gesture and the sentence together made the app state something false about a destructive
+        // action, which is the one place copy cannot be approximately right. The gesture stays —
+        // it is genuinely useful once the comparison has settled it — and the sentence now says so.
         var hint = Design.Note(this,
-            "Swipe left to keep and advance · right to go back. Nothing is deleted here — this "
-            + "only decides which copy survives an export or delete.");
+            "Swipe left to keep and advance · right to go back · down to move this photo to the "
+            + "trash, restorable from History. The buttons below only decide which copy survives "
+            + "an export or delete.");
         hint.Gravity = GravityFlags.CenterHorizontal;
         hint.SetPadding(0, Design.Dp(this, 9), 0, 0);
         ab.AddView(hint);
@@ -617,6 +644,13 @@ public sealed class ReviewActivity : Activity
 
         var id = m.ImageId;
         frame.Click += (_, _) => ToggleBurstChoice(id);
+
+        // The tick badge and the accent outline are the only marks of "I picked this frame", so the
+        // frame has to say it. Named by its caption — the capture offset — because that is the only
+        // thing distinguishing one burst frame from the next.
+        frame.ContentDescription = _burstChosen.Contains(id)
+            ? $"Frame {BurstCaption(m)}, chosen to keep"
+            : $"Frame {BurstCaption(m)}, not chosen";
         return frame;
     }
 
@@ -698,6 +732,73 @@ public sealed class ReviewActivity : Activity
         Advance();
     }
 
+    /// <summary>
+    /// Floats an undo bar over the queue after a swipe-delete.
+    /// </summary>
+    /// <remarks>
+    /// <para>A toast was the wrong instrument. The swipe is fast, deliberately so, and the whole
+    /// reason card-swipe interfaces are usable is that the mistake you make in a tenth of a second
+    /// can be taken back in the next one — every dating app puts a prominent undo within reach of
+    /// the gesture rather than in a history screen two taps away. Trash &amp; history has always
+    /// been the safety net; it is just too far from the moment of the mistake.</para>
+    ///
+    /// <para>Not a countdown to a hard delete: the photo is already in the trash and stays there
+    /// until the trash is emptied. This bar only shortens the path back. It replaces itself when
+    /// another delete lands, so a run of swipes leaves one bar rather than a stack.</para>
+    /// </remarks>
+    void ShowUndo(string message, string batchId)
+    {
+        DismissUndo();
+
+        var bar = Design.InkBar(this, message, "Undo", async () =>
+        {
+            DismissUndo();
+            try
+            {
+                var r = await Task.Run(() => _catalog.NewDeleteService().RestoreAsync(batchId));
+                Toast.MakeText(this,
+                    r.Restored > 0 ? "Restored" : "Nothing left to restore", ToastLength.Short)!.Show();
+            }
+            catch (Exception ex)
+            {
+                Toast.MakeText(this, $"Restore failed: {ex.Message}", ToastLength.Long)!.Show();
+                Android.Util.Log.Error("SnapZap", ex.ToString());
+            }
+            // Whether or not it worked, the queue was built from a catalogue that has changed.
+            LoadQueue();
+            _index = Math.Min(_index, Math.Max(0, _queue.Count - 1));
+            Render();
+        });
+
+        bar.LayoutParameters = new FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent)
+        {
+            Gravity = GravityFlags.Bottom,
+            LeftMargin = Design.Dp(this, 12),
+            RightMargin = Design.Dp(this, 12),
+            BottomMargin = Design.Dp(this, 20),
+        };
+
+        _host.AddView(bar);
+        _undoBar = bar;
+
+        bar.Alpha = 0f;
+        bar.TranslationY = Design.Dp(this, 20);
+        bar.Animate()!.Alpha(1f).TranslationY(0f).SetDuration(180).Start();
+
+        // Long enough to notice and act on, short enough not to sit over the next decision.
+        bar.PostDelayed(() => { if (_undoBar == bar) DismissUndo(); }, 6000);
+    }
+
+    void DismissUndo()
+    {
+        if (_undoBar is null) return;
+        var bar = _undoBar;
+        _undoBar = null;
+        bar.Animate()!.Alpha(0f).SetDuration(140)
+            .WithEndAction(new Java.Lang.Runnable(() => _host.RemoveView(bar)))!.Start();
+    }
+
     // ══════════════════════════════════════════════════════════════════════════════════════
     //  Navigation and the one destructive action (swipe down)
     // ══════════════════════════════════════════════════════════════════════════════════════
@@ -741,11 +842,11 @@ public sealed class ReviewActivity : Activity
         try
         {
             var result = await Task.Run(() => _catalog.NewDeleteService().RecycleAsync([keeper.ImageId]));
-            Toast.MakeText(this,
-                result.Recycled > 0
-                    ? $"Moved {System.IO.Path.GetFileName(keeper.Path)} to trash"
-                    : "Could not move that photo to the trash",
-                ToastLength.Short)!.Show();
+
+            if (result.Recycled > 0)
+                ShowUndo($"Moved {System.IO.Path.GetFileName(keeper.Path)} to trash", result.BatchId);
+            else
+                Toast.MakeText(this, "Could not move that photo to the trash", ToastLength.Short)!.Show();
 
             var remaining = g.Members.Where(m => m.ImageId != keeper.ImageId).ToList();
             if (remaining.Count < 2)
@@ -774,6 +875,9 @@ public sealed class ReviewActivity : Activity
         {
             Toast.MakeText(this, $"Delete failed: {ex.Message}", ToastLength.Long)!.Show();
             Android.Util.Log.Error("SnapZap", ex.ToString());
+            // The swipe already threw the card off-screen. Without this it stays gone on a failed
+            // delete, leaving a blank screen that looks like the photo went somewhere.
+            Render();
         }
     }
 
@@ -835,51 +939,6 @@ public sealed class ReviewActivity : Activity
         try { if (m.ThumbPath is not null && File.Exists(m.ThumbPath)) return BitmapFactory.DecodeFile(m.ThumbPath); }
         catch (Exception) { }
         return null;
-    }
-
-    sealed class SwipeListener(ReviewActivity owner) : Java.Lang.Object, View.IOnTouchListener
-    {
-        float _downX, _downY;
-        const float Threshold = 120f;
-
-        public bool OnTouch(View? v, MotionEvent? e)
-        {
-            if (e is null) return false;
-            switch (e.Action)
-            {
-                case MotionEventActions.Down:
-                    _downX = e.GetX();
-                    _downY = e.GetY();
-                    return true;
-
-                case MotionEventActions.Up:
-                    var dx = e.GetX() - _downX;
-                    var dy = e.GetY() - _downY;
-
-                    // A short drag is not a decision. Below the threshold nothing happens, so a
-                    // stray touch cannot advance, rewind or delete anything.
-                    if (Math.Abs(dx) < Threshold && Math.Abs(dy) < Threshold) return true;
-
-                    // Whichever axis moved further wins, so a sloppy diagonal resolves to the
-                    // gesture the user was more clearly making. Down deletes; a stray upward
-                    // flick does nothing at all — there is no "un-delete via swipe" gesture.
-                    if (Math.Abs(dy) > Math.Abs(dx))
-                    {
-                        if (dy > 0) owner.DeleteCurrentKeeperPhoto();
-                    }
-                    else
-                    {
-                        // Handoff: "Swipe left to keep and advance · right to go back" — the
-                        // opposite of the old per-photo queue's right-to-keep convention, because
-                        // there everything is already pre-kept and swiping is navigation, not a
-                        // removal decision.
-                        if (dx < 0) owner.Advance();
-                        else owner.Back();
-                    }
-                    return true;
-            }
-            return false;
-        }
     }
 
     sealed class InsetsPadder : Java.Lang.Object, View.IOnApplyWindowInsetsListener

@@ -198,10 +198,7 @@ public sealed class TrashActivity : Activity
                 try
                 {
                     WorkService.Start(this, "Restoring photos");
-                    WorkService.Start(this, "Restoring photos");
-                var r = await Task.Run(() => svc.RestoreAsync(b.BatchId));
-                WorkService.Stop(this);
-                    WorkService.Stop(this);
+                    var r = await Task.Run(() => svc.RestoreAsync(b.BatchId));
                     Toast.MakeText(this,
                         r.Missing > 0
                             ? $"Restored {r.Restored}; {r.Missing} no longer in the trash"
@@ -213,6 +210,9 @@ public sealed class TrashActivity : Activity
                     Toast.MakeText(this, $"Restore failed: {ex.Message}", ToastLength.Long)!.Show();
                     Android.Util.Log.Error("SnapZap", ex.ToString());
                 }
+                // In a finally: a restore that throws used to leave the foreground service running
+                // with a "Restoring photos" notification that never went away.
+                finally { WorkService.Stop(this); }
                 Refresh();
             };
         }

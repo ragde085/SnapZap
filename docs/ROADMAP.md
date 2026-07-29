@@ -245,23 +245,25 @@ A full pass over both heads. Fixed in 1.3.0: the burst-protection scoping bug, t
 extras" miscount, the API-36 Back regression, the compare-view missing folder, the collapsed
 filename, the overflowing removal confirmation, and two localisation leaks.
 
-**Still open, found and not yet fixed:**
+**Found here, all since fixed** (1–3 in `9eec072`, the rest alongside it — each re-checked on the
+emulator on 2026-07-29):
 
-1. **Android: no way to change the scanned folder after the first scan.** Plan shows the path as
-   static text with only Re-scan; the input exists only on first run; Folders browses within the
-   scanned tree. The desktop has "Change folder…". *Major — it is a dead end.*
-2. **Android: scanning an empty folder is a silent no-op.** Returns to first run with no message,
-   so the user cannot tell whether the scan ran, failed, or found nothing. *Major.*
-3. **Android: unsupported formats are never surfaced.** `ScanResult.UnsupportedByFormat` is
-   populated and the design shows it ("1,204 HEIC and 312 RAW counted, not readable"); the app
-   shows nothing. A HEIC library reads as "0 photos" — i.e. broken. *Major, and HEIC is the
-   default on modern phones.*
-4. **Android: library summary and the "waiting" callout ignore the folder scope** — they still
-   report whole-library extras while the header count is scoped. *Minor.*
-5. `"1 burst groups held back"` — grammar. *Cosmetic.*
-6. **Not executed:** QA plan tests 4 and 10 (scoped select-all) — navigation drifted mid-run.
-   Test 7's breadcrumb overflow never triggered at the depth tested, so the `HorizontalScrollView`
-   is confirmed present but not confirmed scrolling.
+1. ✅ **Android: no way to change the scanned folder after the first scan.** Plan showed the path as
+   static text with only Re-scan; the input existed only on first run; Folders browses within the
+   scanned tree. *Was a dead end.* Now "Change folder…" opens `DirectoryPickerActivity`, a real
+   filesystem browser — `FoldersActivity` could never have covered this, because it derives its tree
+   from what is already catalogued and so can only walk inside what has been scanned.
+2. ✅ **Android: scanning an empty folder is a silent no-op.** Now reports through `ScanNotice`, on
+   the screen as well as in a toast — a toast that has already faded cannot answer "did that run?".
+3. ✅ **Android: unsupported formats are never surfaced.** `ScanNotice` now names them
+   ("1,204 HEIC counted but not readable"). A HEIC library used to read as "0 photos", i.e. broken.
+4. ✅ **Android: library summary and the "waiting" callout ignore the folder scope.** Both read from
+   `ScopedExtras()` now, so they cannot disagree with the header count.
+5. ✅ `"1 burst groups held back"` — grammar.
+
+**Still not executed:** QA plan tests 4 and 10 (scoped select-all) — navigation drifted mid-run.
+Test 7's breadcrumb overflow never triggered at the depth tested, so the `HorizontalScrollView` is
+confirmed present but not confirmed scrolling.
 
 ---
 
@@ -288,6 +290,12 @@ says whether it is a change or already true.
     `DupeReview.razor`, which already models the right motion (group-at-a-time, "the core motion of
     the app, which the flat grid can't express") but expresses it with desktop affordances. Natural
     fit for the native Android head; not proposed for desktop, where multi-select is faster.
+
+    ✅ **Animated 2026-07-29.** `SwipeCard` gives the gesture the feedback it had none of: the card
+    tracks the finger, rotates, stamps the pending action, and springs back below the threshold, with
+    a haptic tick as it arms and an undo bar after a delete. The dating-app *physics* are copied; the
+    dating-app *mapping* deliberately is not, because these three directions are not a symmetric
+    binary — see [ANDROID-UX-REVIEW.md](ANDROID-UX-REVIEW.md) §10 before changing any of it.
 
 12. **A photo marked "keep" must never be deleted.** ⚠ Safety-critical, and the swipe UI *changes
     the shape of this risk* rather than inheriting it: decisions become per-photo and fast, so an

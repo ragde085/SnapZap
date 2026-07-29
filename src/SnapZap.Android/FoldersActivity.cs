@@ -284,7 +284,7 @@ public sealed class FoldersActivity : Activity
         row.SetGravity(GravityFlags.CenterVertical);
         row.SetPadding(Design.Dp(this, 16), Design.Dp(this, 6), Design.Dp(this, 16), Design.Dp(this, 12));
 
-        var back = Design.IconButton(this, "‹");
+        var back = Design.IconButton(this, "‹", "Up one folder");
         back.Click += (_, _) => GoUpOrFinish();
         back.LayoutParameters = new LinearLayout.LayoutParams(Design.Dp(this, 40), Design.Dp(this, 40))
         { RightMargin = Design.Dp(this, 10) };

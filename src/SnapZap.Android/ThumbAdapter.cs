@@ -33,6 +33,14 @@ public sealed class ThumbAdapter(Context context, IReadOnlyList<ImageRecord> ite
     readonly Queue<string> _order = new();
     const int MaxCached = 240;
 
+    /// <summary>
+    /// Live selection test, seeded from the constructor's <c>isSelected</c>. Settable because
+    /// entering and leaving selection mode must not rebuild the grid — doing so threw away the
+    /// scroll position on every tap and killed the touch stream the drag-to-range gesture rides on
+    /// (<c>MainActivity.SelectionModeChanged</c>). Null means "no selection UI at all".
+    /// </summary>
+    public Func<long, bool>? SelectionTest { get; set; } = isSelected;
+
     public override int Count => items.Count;
     public override ImageRecord this[int position] => items[position];
     public override long GetItemId(int position) => items[position].Id;
@@ -48,10 +56,25 @@ public sealed class ThumbAdapter(Context context, IReadOnlyList<ImageRecord> ite
         var rec = items[position];
         img.SetImageBitmap(Load(ThumbFor(rec)));
 
-        if (isSelected is null) badge.Visibility = ViewStates.Gone;
+        // A photo whose only accessible identity is "image" is not navigable. The filename is the
+        // one thing the user can act on here, and selection state has to ride along with it —
+        // outline-plus-badge is the entire visual signal and neither has a spoken equivalent.
+        var name = System.IO.Path.GetFileName(rec.Path);
+
+        if (SelectionTest is null)
+        {
+            badge.Visibility = ViewStates.Gone;
+            cell.ContentDescription = name;
+            // Reset, not just skip: now that SelectionTest can be cleared while the adapter lives,
+            // a recycled cell would otherwise keep the accent outline it was last drawn with and
+            // leave photos looking selected after the mode is left.
+            img.SetPadding(2, 2, 2, 2);
+            cell.SetBackgroundColor(Color.Transparent);
+        }
         else
         {
-            var on = isSelected(rec.Id);
+            var on = SelectionTest(rec.Id);
+            cell.ContentDescription = on ? $"{name}, selected" : $"{name}, not selected";
             badge.Visibility = ViewStates.Visible;
             badge.Background = on
                 ? Design.Fill(Design.Accent)

@@ -9,6 +9,51 @@ Since 1.3.0 the Android head carries its own pair, because the platform requires
 `<Version>`) and `ApplicationVersion` (increment every release, never backwards) in
 [`src/SnapZap.Android/SnapZap.Android.csproj`](src/SnapZap.Android/SnapZap.Android.csproj).
 
+## Unreleased
+
+A senior UX review of the Android app ([docs/ANDROID-UX-REVIEW.md](docs/ANDROID-UX-REVIEW.md)) and
+the nine findings it produced, all now closed.
+
+### Added — Android
+
+- **Swipe gestures are animated.** The review card follows your finger, rotates as it goes, and a
+  stamp names the action before you let go — keep, previous, or move to trash. Past the threshold it
+  throws; short of it, it springs back. The three directions are deliberately *not* animated alike:
+  keep behaves like a card being dealt away, going back is tethered and unrotated because it decides
+  nothing, and the trash gesture sits behind a much longer pull than the other two.
+- **An undo bar after a swipe-delete**, with Restore one tap away instead of two screens away.
+- **Stop, on the scanning screen.** The screen has always said stopping keeps what it has analysed;
+  now it can actually be stopped, and the same button ends the duplicate pass that follows.
+- **A sort control** on the library — scan order, newest, oldest, name, largest.
+- **Hold-and-drag selects a range**, as the design always said it would.
+- **A settings screen**: the duplicate thresholds in force, where they came from, and what SnapZap
+  is using in storage.
+- **Screen-reader labels throughout.** Every icon control, photo tile, list row and plan step now
+  announces itself; the app previously had none at all.
+
+### Changed — Android
+
+- **A first scan no longer defaults to the entire phone.** It starts at `DCIM/Camera`, with one-tap
+  chips for the other places photos live and "Everything on this phone" still there as a choice.
+- **The scan folder survives a relaunch**, read back from the catalogue like the desktop has always
+  done — the Plan tab used to print a default folder above a count of photos from somewhere else.
+- **The duplicates callout can be dismissed**, and a filter that matches nothing now says so and
+  offers a way back instead of showing an empty grid.
+- **The plan reads "of 3", not "of 5".** Content review and export are marked as desktop-only rather
+  than as steps that have not started — neither can ever be completed on Android, and the model
+  content review needs cannot be fetched by an app with no network permission.
+- **Selecting photos no longer scrolls the grid back to the top** on every tap.
+- The review screen's footer no longer says "nothing is deleted here" on a screen where swiping down
+  deletes.
+
+### Fixed — Android
+
+- Restoring from history left the progress notification running if the restore failed.
+
+### Changed — Desktop
+
+- The folder picker offers Pictures and Downloads as quick-jumps beside the drive/home roots.
+
 ## 1.3.0 — 2026-07-29
 
 The Android port, and a QA round that found real defects in the desktop app too.

@@ -10,7 +10,7 @@ SnapZap (.NET 10, C#) finds duplicates, NSFW images, and blurry photos in a fold
 - No cloud, no subscriptions, no paid dependencies
 - Safety-critical: nothing is hard-deleted until hash-verified; source folder untouched unless explicitly requested
 
-See [DESIGN.md](docs/DESIGN.md) for full architecture and rationale, [WINDOWS-VERIFY.md](docs/WINDOWS-VERIFY.md) for the Windows validation checklist, [ANDROID-PORT-ACS.md](docs/ANDROID-PORT-ACS.md) for the Android port's status and the evidence behind it, and [UI-FEATURES.md](docs/UI-FEATURES.md) for a quick per-feature reference to recent UI work (busy/progress, dark-mode buttons, the directory picker, folder rescan, preview zoom, thumbnail size) — read it before touching any of those instead of re-deriving the "why" from the diff.
+See [DESIGN.md](docs/DESIGN.md) for full architecture and rationale, [WINDOWS-VERIFY.md](docs/WINDOWS-VERIFY.md) for the Windows validation checklist, [ANDROID-PORT-ACS.md](docs/ANDROID-PORT-ACS.md) for the Android port's status and the evidence behind it, [ANDROID-UX-REVIEW.md](docs/ANDROID-UX-REVIEW.md) for the post-1.3.0 UX findings and what each fix decided (read it before changing the swipe gestures, the scan default, the plan's step count or anything accessibility-related), and [UI-FEATURES.md](docs/UI-FEATURES.md) for a quick per-feature reference to recent UI work (busy/progress, dark-mode buttons, the directory picker, folder rescan, preview zoom, thumbnail size) — read these before touching any of those instead of re-deriving the "why" from the diff.
 
 ---
 
@@ -149,6 +149,8 @@ The sidecars are excluded from publish output (`CopyToPublishDirectory="Never"`)
 | `src/SnapZap.Core/` | Portable core logic: scanning, hashing, dedup, NSFW, blur/EXIF, export, delete, platform interfaces |
 | `src/SnapZap.App/` | ASP.NET Core host + Blazor Server UI (`Components/`, `Services/`, `wwwroot/`) |
 | `src/SnapZap.Android/` | Native Android head (`net10.0-android36.0`). Views built in code against `Design.cs`, the translated mobile design system. **Not in `SnapZap.slnx`** — build explicitly with `-p:IncludeAndroid=true` so a plain `dotnet build` never needs an Android SDK |
+| `src/SnapZap.Android/SwipeCard.cs` | The review queue's animated card gesture. Read its remarks before changing a threshold or a direction — the three directions are animated *differently on purpose*, and the reasoning is not recoverable from the code alone |
+| `src/SnapZap.Android/SettingsActivity.cs` | Read-only settings: the `DedupSettings` in force, why they live in the catalogue, and app-private storage sizes |
 | `tests/SnapZap.Tests/` | xUnit test suite + fixtures |
 | `CHANGELOG.md` | User-facing release notes, one section per version — update it alongside every version bump |
 | `docs/DESIGN.md` | Architecture, decisions, data model, pipeline, safety invariants |
@@ -456,6 +458,20 @@ Full rationale in [docs/DEDUP-V2.md](docs/DEDUP-V2.md). The short version:
     script) — update them for freshness when you bump the version, but they're cosmetic, not a
     second source of truth. Add a matching entry to [`CHANGELOG.md`](CHANGELOG.md) in the same
     change — it has no automation behind it and goes stale the moment a version bump skips it.
+
+11. **`Android.OS.OperationCanceledException` shadows `System.OperationCanceledException`**, exactly
+    as `Android.Graphics.Path` shadows `System.IO.Path`. Any `catch` for cancellation in a file that
+    `using`s `Android.OS` has to spell out `System.`, or it silently catches the wrong type.
+
+12. **`DirectoryRoots.DefaultStart` is where a scan starts, not how far a browser may walk up.**
+    They were the same value until it learned to prefer `DCIM/Camera`; `DirectoryPickerActivity` was
+    using it as its ceiling and instantly lost the ability to navigate above DCIM. That activity
+    pins itself to `AndroidPrimaryStorage` for exactly this reason — don't re-couple them.
+
+13. **Android's Library grid must not be rebuilt on a selection change.** `SelectionChanged` updates
+    the count and repaints tiles; `SelectionModeChanged` swaps the header and action-bar slots. A
+    full `Render()` throws away the grid's scroll position on every tap *and* destroys the view the
+    hold-and-drag range gesture's touch stream belongs to.
 
 ---
 

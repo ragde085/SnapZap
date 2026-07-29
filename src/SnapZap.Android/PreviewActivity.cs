@@ -66,7 +66,7 @@ public sealed class PreviewActivity : Activity
         var top = new LinearLayout(this) { Orientation = Orientation.Horizontal };
         top.SetGravity(GravityFlags.CenterVertical);
         top.SetPadding(Design.Dp(this, 16), Design.Dp(this, 4), Design.Dp(this, 16), Design.Dp(this, 10));
-        var back = Design.IconButton(this, "‹");
+        var back = Design.IconButton(this, "‹", "Back");
         back.Click += (_, _) => Finish();
         top.AddView(back);
         _counter = Design.Note(this, "");
@@ -98,6 +98,9 @@ public sealed class PreviewActivity : Activity
 
         _counter.Text = $"{_index + 1:N0} of {_items.Count:N0}";
         _photo.SetImageBitmap(LoadDownsampled(rec));
+        _photo.ContentDescription =
+            $"{System.IO.Path.GetFileName(rec.Path)}, {_index + 1:N0} of {_items.Count:N0}. "
+            + "Swipe left or right for the next photo.";
 
         _detail.RemoveAllViews();
         _detail.AddView(Design.Rule(this, 2f, Design.Text));

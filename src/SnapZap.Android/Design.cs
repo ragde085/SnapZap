@@ -24,6 +24,14 @@ namespace SnapZap.Droid;
 /// <para>Type is Archivo at 400/600/800. Android has no Archivo, and the handoff's fallback chain
 /// is <c>system-ui, sans-serif</c> — so the system font is the correct substitute rather than a
 /// compromise. Weight is what carries the hierarchy here, not the face.</para>
+///
+/// <para><b>Accessible names live here, not at the call sites.</b> This system draws its controls
+/// as bare glyphs — "‹", "✕", "›", "📁" — which a screen reader either reads literally or skips.
+/// Every component below therefore either takes a description (<see cref="IconButton"/> requires
+/// one) or builds its own from the text it was given (<see cref="ListRow"/>), and the purely
+/// decorative parts — rules, gaps, leading glyphs — remove themselves from the tree. Putting this
+/// in the shared components rather than per screen is the only version that stays true: the first
+/// pass over twelve screens labelled nothing at all.</para>
 /// </remarks>
 public static class Design
 {
@@ -165,6 +173,7 @@ public static class Design
         v.SetBackgroundColor(color ?? Divider);
         v.LayoutParameters = new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MatchParent, Math.Max(1, Dp(c, px)));
+        v.ImportantForAccessibility = ImportantForAccessibility.No;   // decoration, not content
         return v;
     }
 
@@ -227,6 +236,10 @@ public static class Design
         v.Gravity = GravityFlags.Right;
         row.AddView(v);
 
+        // The visible label is upper-cased with 0.15em tracking, which some screen readers spell
+        // out letter by letter. Describe the pair from the caller's own casing instead.
+        wrap.ContentDescription = $"{label}: {value}";
+
         wrap.AddView(row);
         wrap.AddView(Rule(c, 1f, Divider));
         return wrap;
@@ -259,6 +272,9 @@ public static class Design
         {
             var g = Body(c, glyph, 16f);
             g.SetPadding(0, 0, Dp(c, 10), 0);
+            // "📁" and "›" are pictures of a thing, not the thing. The row's own description says
+            // what it is; leaving these in the tree makes TalkBack read the emoji's Unicode name.
+            g.ImportantForAccessibility = ImportantForAccessibility.No;
             row.AddView(g);
         }
 
@@ -275,6 +291,11 @@ public static class Design
             row.AddView(t);
         }
 
+        // One node, read in the order it is laid out. Without this the row is either three separate
+        // stops or — because the wrap is what callers hang Click on — a focusable node with no name.
+        wrap.ContentDescription = string.Join(". ",
+            new[] { title, note, trailing }.Where(s => !string.IsNullOrWhiteSpace(s)));
+
         wrap.AddView(row);
         wrap.AddView(Rule(c, 1f, Divider));
         return wrap;
@@ -285,13 +306,21 @@ public static class Design
     /// this bundle, so a glyph stands in — a deliberate, visible deviation from pixel-parity
     /// rather than a silent one. Swap for real drawables when the icon set is exported.
     /// </summary>
-    public static Button IconButton(Context c, string glyph)
+    /// <param name="description">
+    /// What a screen reader announces. <b>Required, and deliberately not optional</b>: the label is
+    /// the entire accessible name of this control, because the visible text is a glyph — TalkBack
+    /// otherwise reads "‹" or "✕" or nothing at all. Making it a parameter with no default is what
+    /// stops the next icon button being added without one, which is exactly how every button in
+    /// this app came to be unlabelled.
+    /// </param>
+    public static Button IconButton(Context c, string glyph, string description)
     {
         var b = Button(c, glyph, Btn.Secondary, 40f);
         b.SetTextSize(Android.Util.ComplexUnitType.Sp, 16f);
         b.SetPadding(0, 0, 0, 0);
         b.SetMinimumWidth(Dp(c, 40));
         b.LayoutParameters = new LinearLayout.LayoutParams(Dp(c, 40), Dp(c, 40));
+        b.ContentDescription = description;
         return b;
     }
 
@@ -370,8 +399,14 @@ public static class Design
     /// use. <paramref name="glyph"/> is "‹" for back and "✕" for close/dismiss, matching the
     /// handoff's chevron-left and X.
     /// </summary>
+    /// <param name="backDescription">
+    /// Overrides what the leading control announces. The default reads the glyph the way the
+    /// handoff means it — "✕" closes, everything else goes back — which is right for every screen
+    /// using this today; pass a string when a screen means something more specific.
+    /// </param>
     public static LinearLayout HeaderBar(Context c, string glyph, Action onBack,
-                                         string title, string? subtitle = null, View? trailing = null)
+                                         string title, string? subtitle = null, View? trailing = null,
+                                         string? backDescription = null)
     {
         var wrap = new LinearLayout(c) { Orientation = Orientation.Vertical };
 
@@ -379,7 +414,7 @@ public static class Design
         row.SetGravity(GravityFlags.CenterVertical);
         row.SetPadding(Dp(c, 16), Dp(c, 6), Dp(c, 16), Dp(c, 12));
 
-        var back = IconButton(c, glyph);
+        var back = IconButton(c, glyph, backDescription ?? (glyph == "✕" ? "Close" : "Back"));
         back.Click += (_, _) => onBack();
         var blp = new LinearLayout.LayoutParams(Dp(c, 40), Dp(c, 40)) { RightMargin = Dp(c, 10) };
         back.LayoutParameters = blp;
@@ -402,9 +437,16 @@ public static class Design
     /// A tile badge — the small square marker in a grid cell's top-right corner. Accent when the
     /// tile is chosen, outlined when it is merely selectable.
     /// </summary>
-    public static TextView TileBadge(Context c, string glyph, bool on)
+    /// <param name="description">
+    /// Null (the default) marks the badge decorative — correct when the tile it sits on already
+    /// announces its own selection state, which is the common case. Pass a string only when the
+    /// badge is the sole carrier of that state.
+    /// </param>
+    public static TextView TileBadge(Context c, string glyph, bool on, string? description = null)
     {
         var t = new TextView(c) { Text = glyph };
+        if (description is null) t.ImportantForAccessibility = ImportantForAccessibility.No;
+        else t.ContentDescription = description;
         t.SetTextSize(Android.Util.ComplexUnitType.Sp, 10f);
         t.SetTypeface(null, TypefaceStyle.Bold);
         t.Gravity = GravityFlags.Center;
@@ -422,6 +464,7 @@ public static class Design
         var v = new View(c);
         v.LayoutParameters = new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MatchParent, Dp(c, dp));
+        v.ImportantForAccessibility = ImportantForAccessibility.No;
         return v;
     }
 

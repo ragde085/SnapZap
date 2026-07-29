@@ -64,18 +64,90 @@ public static class DirectoryRoots
     /// <summary>Where the picker starts when the caller has no existing path to anchor to
     /// (no <c>StartPath</c>, or one that no longer exists). Unchanged from the pre-seam
     /// behaviour for Windows and Other — both used <c>UserProfile</c> before this existed, and
-    /// still do; only Android is new.</summary>
-    public static string DefaultStart(DirectoryPlatform platform) => platform switch
+    /// still do.</summary>
+    /// <param name="exists">
+    /// How to test whether a candidate folder is really there. Defaults to
+    /// <see cref="Directory.Exists(string)"/>; overridable so a test can pin the Android answer on
+    /// a machine that has no <c>/storage/emulated/0</c>.
+    /// </param>
+    /// <remarks>
+    /// <para><b>Android no longer starts at the whole of internal storage.</b> It used to return
+    /// <see cref="AndroidPrimaryStorage"/> flat, which made "scan everything on this phone" the
+    /// pre-filled, path-of-least-resistance choice on first run — sweeping in <c>Android/data</c>,
+    /// app caches, sticker packs and messaging-app media. The cost is not just a slow first scan:
+    /// every duplicate group and the whole review queue is then drawn from that junk, before the
+    /// user has made a single decision. <c>DCIM/Camera</c> is where a phone actually puts photos,
+    /// so that is where this starts, with primary storage as the fallback when it does not exist.
+    /// Scanning everything is still one tap away via <see cref="PhotoFolders"/> — it is now a
+    /// choice rather than the default.</para>
+    ///
+    /// <para>Desktop is deliberately left on <c>UserProfile</c>. The equivalent complaint does not
+    /// apply — a home folder is not "the entire drive" — and quietly moving where an existing
+    /// installation's picker opens is a behaviour change nobody asked for. Both heads do get the
+    /// same new quick-jumps, through <see cref="Roots"/>.</para>
+    /// </remarks>
+    public static string DefaultStart(DirectoryPlatform platform, Func<string, bool>? exists = null)
     {
-        DirectoryPlatform.Android => AndroidPrimaryStorage,
-        _ => Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-    };
+        if (platform != DirectoryPlatform.Android)
+            return Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+
+        var probe = exists ?? Directory.Exists;
+        return PhotoFolders(platform, probe).FirstOrDefault() ?? AndroidPrimaryStorage;
+    }
 
     /// <summary>
-    /// Quick-jump buttons: every ready drive on Windows, home + filesystem root on macOS/Linux
-    /// (there's no single "root" on Windows and no drive letters to enumerate elsewhere), the
-    /// one primary-storage root on Android (see <see cref="AndroidPrimaryStorage"/>).
+    /// Well-known photo locations for the platform, most-likely first, filtered to the ones that
+    /// actually exist. Offered as quick-jumps beside the storage roots so reaching a photo folder
+    /// does not mean drilling down to it — or, on Android, typing a path on a phone keyboard.
     /// </summary>
+    /// <remarks>
+    /// Ordering is the point, not completeness: <c>DCIM/Camera</c> before <c>DCIM</c> before
+    /// <c>Pictures</c> is descending confidence that what is in there was taken by this phone's
+    /// camera. <see cref="DefaultStart"/> takes the first, so a change to this order changes what a
+    /// first scan reads — which is why the order is stated here rather than left implicit in a
+    /// literal array somewhere.
+    /// </remarks>
+    public static IReadOnlyList<string> PhotoFolders(DirectoryPlatform platform, Func<string, bool>? exists = null)
+    {
+        var probe = exists ?? Directory.Exists;
+        return PhotoCandidates(platform)
+            .Where(p => !string.IsNullOrEmpty(p) && probe(p))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+    }
+
+    static IEnumerable<string> PhotoCandidates(DirectoryPlatform platform)
+    {
+        if (platform == DirectoryPlatform.Android)
+        {
+            // "Download" singular is the real folder name on Android (Environment.DIRECTORY_DOWNLOADS),
+            // not the "Downloads" every desktop OS uses. Getting this wrong fails silently — the
+            // candidate simply never exists and never appears.
+            yield return Path.Combine(AndroidPrimaryStorage, "DCIM", "Camera");
+            yield return Path.Combine(AndroidPrimaryStorage, "DCIM");
+            yield return Path.Combine(AndroidPrimaryStorage, "Pictures");
+            yield return Path.Combine(AndroidPrimaryStorage, "Download");
+            yield break;
+        }
+
+        yield return Environment.GetFolderPath(Environment.SpecialFolder.MyPictures);
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        if (!string.IsNullOrEmpty(home)) yield return Path.Combine(home, "Downloads");
+    }
+
+    /// <summary>
+    /// Quick-jump buttons: the platform's <see cref="PhotoFolders"/> first, then the storage roots
+    /// — every ready drive on Windows, home + filesystem root on macOS/Linux (there's no single
+    /// "root" on Windows and no drive letters to enumerate elsewhere), primary storage on Android
+    /// (see <see cref="AndroidPrimaryStorage"/>).
+    /// </summary>
+    /// <remarks>
+    /// Photo folders lead because they are what someone opening this dialog is nearly always
+    /// after; the roots stay because "somewhere else entirely" has to remain reachable in one tap.
+    /// This is the half of the scan-target fix that is genuinely shared — Android's default start
+    /// moved (see <see cref="DefaultStart"/>) and the desktop's deliberately did not, but both get
+    /// the same shortcuts here.
+    /// </remarks>
     /// <param name="platform">Which answer to give — see <see cref="DirectoryPlatform"/>.</param>
     /// <param name="windowsDrives">
     /// How to enumerate ready drives when <paramref name="platform"/> is
@@ -84,13 +156,23 @@ public static class DirectoryRoots
     /// deterministically without needing actual Windows drive letters to exist on the machine
     /// running the test (macOS has none).
     /// </param>
-    public static IReadOnlyList<string> Roots(DirectoryPlatform platform, Func<IReadOnlyList<string>>? windowsDrives = null) =>
-        platform switch
+    /// <param name="exists">Folder-existence probe for the photo folders; see <see cref="PhotoFolders"/>.</param>
+    public static IReadOnlyList<string> Roots(DirectoryPlatform platform,
+                                              Func<IReadOnlyList<string>>? windowsDrives = null,
+                                              Func<string, bool>? exists = null)
+    {
+        IReadOnlyList<string> storage = platform switch
         {
             DirectoryPlatform.Windows => (windowsDrives ?? RealWindowsDrives)(),
             DirectoryPlatform.Android => [AndroidPrimaryStorage],
             _ => [Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "/"],
         };
+
+        return PhotoFolders(platform, exists)
+            .Concat(storage)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+    }
 
     static IReadOnlyList<string> RealWindowsDrives() =>
         DriveInfo.GetDrives().Where(d => d.IsReady).Select(d => d.RootDirectory.FullName).ToList();

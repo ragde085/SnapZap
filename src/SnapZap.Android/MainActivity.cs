@@ -41,8 +41,26 @@ public sealed class MainActivity : Activity
     Tab _tab = Tab.Library;
 
     bool _scanning, _hasScanned;
+
+    /// <summary>
+    /// The scan target. <c>DefaultStart</c> now resolves this to <c>DCIM/Camera</c> when it exists
+    /// rather than to the whole of internal storage — see that method for why the old default made
+    /// "scan every file on this phone" the pre-filled choice on first run.
+    /// </summary>
     string _folder = SnapZap.Core.Platform.DirectoryRoots.DefaultStart(
         SnapZap.Core.Platform.DirectoryPlatform.Android);
+
+    /// <summary>
+    /// Cancels the scan *and* the dedup that follows it — they are one operation to the user, so
+    /// one Stop has to end both. Non-null only while <see cref="_scanning"/>.
+    /// </summary>
+    CancellationTokenSource? _scanCts;
+    bool _scanStopping;
+    Button? _stopButton;
+
+    /// <summary>Whether <see cref="_folder"/> has been reconciled with the catalogue's stored
+    /// scan root yet. Once per launch — after that the user's choice wins.</summary>
+    bool _folderRestored;
 
     // The folder the Library grid is narrowed to, distinct from _folder (the scan target): picking
     // one from the Folders chip filters what is already in the catalogue, it does not change what a
@@ -76,6 +94,35 @@ public sealed class MainActivity : Activity
     DupeFacet _facet = DupeFacet.Any;
     enum DupeFacet { Any, ExtrasOnly, KeepersOnly, BurstFrames }
     Dictionary<long, DupeAssignment> _assign = [];
+
+    /// <summary>
+    /// Grid order. Names and null-handling match the desktop's <c>SortKey</c> deliberately, so the
+    /// two heads cannot mean different things by "Captured"; the desktop's <c>Blur</c> and
+    /// <c>Nsfw</c> members are left out because a phone chip row has no space for six options and
+    /// NSFW is not scored on Android at all (see the Plan tab's step 3).
+    /// </summary>
+    enum SortKey { Scanned, Captured, Name, Size }
+    SortKey _sort = SortKey.Scanned;
+    bool _sortDescending;
+
+    /// <summary>
+    /// Whether the "extras are waiting" callout has been dismissed for this session. The handoff
+    /// makes it dismissible (<c>showNextStep</c>); without that it is a banner you cannot get rid
+    /// of until the last duplicate is resolved, which punishes anyone who just wants to browse.
+    /// Session-only on purpose — a new launch is a new chance to mention there is work waiting.
+    /// </summary>
+    bool _calloutDismissed;
+
+    // Library view plumbing. The header and action bar live in slots so entering selection mode,
+    // or changing what is selected, can swap them *without* rebuilding the grid — see
+    // SelectionChanged. Rebuilding it lost the scroll position on every single tap, and made the
+    // handoff's hold-and-drag range gesture impossible to implement at all.
+    FrameLayout? _headerSlot, _actionSlot;
+    GridView? _grid;
+    TextView? _selCount;
+    List<ImageRecord> _shown = [];
+    bool _dragSelecting;
+    int _lastDragPos = -1;
 
     protected override void OnCreate(Bundle? savedInstanceState)
     {
@@ -141,6 +188,16 @@ public sealed class MainActivity : Activity
         }
 
         _catalog ??= new AndroidCatalog();
+
+        // Once per launch, and only before this session has scanned anything: the catalogue knows
+        // which folder it was built from, and that beats the platform default.
+        if (!_folderRestored)
+        {
+            _folderRestored = true;
+            var stored = _catalog.ScanRoot;
+            if (!string.IsNullOrEmpty(stored) && Directory.Exists(stored)) _folder = stored!;
+        }
+
         if (!_hasScanned && !_scanning)
         {
             _photos = _catalog.Images.All().ToList();
@@ -248,6 +305,12 @@ public sealed class MainActivity : Activity
             };
             cell.AddView(b);
         }
+
+        // The label is drawn upper-cased with wide tracking, which some screen readers spell out a
+        // letter at a time, and the count sits in a separate view that reads as a bare number.
+        cell.ContentDescription = badge is > 0
+            ? $"{label}, {badge.Value:N0} waiting{(on ? ", selected" : "")}"
+            : $"{label}{(on ? ", selected" : "")}";
 
         cell.Click += (_, _) =>
         {
@@ -381,6 +444,8 @@ public sealed class MainActivity : Activity
         var input = Field(_folder);
         input.TextChanged += (_, _) => _folder = input.Text ?? _folder;
         body.AddView(input);
+        body.AddView(Gap(8));
+        body.AddView(ScanTargetChips(input));
         body.AddView(Gap(12));
 
         var scan = Design.Button(this, "Scan this folder", Design.Btn.Primary, 52f);
@@ -412,6 +477,71 @@ public sealed class MainActivity : Activity
         _content.AddView(Scroll(body));
     }
 
+    /// <summary>
+    /// One-tap scan targets: the folders a phone actually keeps photos in, then "Everything on this
+    /// phone" last.
+    /// </summary>
+    /// <remarks>
+    /// <para>Order is the argument. Internal storage used to be the pre-filled default, so the
+    /// easiest possible first run swept <c>Android/data</c>, app caches and every messaging app's
+    /// media into the catalogue — and from there into the duplicate groups and the review queue,
+    /// before the user had decided anything. Scanning everything is still here, because sometimes
+    /// it is what someone wants; it is just no longer what happens by default.</para>
+    ///
+    /// <para>Candidates come from <c>DirectoryRoots.PhotoFolders</c> — shared with the desktop
+    /// picker's quick-jumps rather than hard-coded here, so the two heads agree on where photos
+    /// live.</para>
+    /// </remarks>
+    View ScanTargetChips(EditText input)
+    {
+        var scroller = new HorizontalScrollView(this);
+        scroller.HorizontalScrollBarEnabled = false;
+        scroller.LayoutParameters = Wide();
+
+        var row = new LinearLayout(this) { Orientation = Orientation.Horizontal };
+
+        var targets = SnapZap.Core.Platform.DirectoryRoots
+            .PhotoFolders(SnapZap.Core.Platform.DirectoryPlatform.Android)
+            .Append(SnapZap.Core.Platform.DirectoryRoots.AndroidPrimaryStorage)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+        for (int i = 0; i < targets.Count; i++)
+        {
+            var path = targets[i];
+            var chip = Design.Button(this, ScanTargetLabel(path), Design.Btn.Secondary, 38f);
+            chip.SetTextSize(Android.Util.ComplexUnitType.Sp, 12.5f);
+            chip.ContentDescription = $"Scan {ScanTargetLabel(path)} — {path}";
+            chip.LayoutParameters = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WrapContent, ViewGroup.LayoutParams.WrapContent)
+            { RightMargin = i == targets.Count - 1 ? 0 : Design.Dp(this, 6) };
+            // Sets the field rather than starting the scan: the path is still worth seeing before
+            // committing to a run that can take minutes.
+            chip.Click += (_, _) => { _folder = path; input.Text = path; };
+            row.AddView(chip);
+        }
+
+        scroller.AddView(row);
+        return scroller;
+    }
+
+    /// <summary>What a phone calls each well-known folder, rather than its last path segment.</summary>
+    static string ScanTargetLabel(string path)
+    {
+        var root = SnapZap.Core.Platform.DirectoryRoots.AndroidPrimaryStorage;
+        var rel = path.StartsWith(root, StringComparison.Ordinal)
+            ? path[root.Length..].Trim('/')
+            : path;
+        return rel switch
+        {
+            "" => "Everything on this phone",
+            "DCIM/Camera" => "Camera roll",
+            "DCIM" => "All DCIM",
+            "Download" => "Downloads",
+            _ => rel,
+        };
+    }
+
     View Promise(string title, string note)
     {
         var l = new LinearLayout(this) { Orientation = Orientation.Vertical };
@@ -430,7 +560,15 @@ public sealed class MainActivity : Activity
 
     void RenderScanning()
     {
-        _content.AddView(Header("Scanning", null));
+        // The design puts Stop in this header, and the copy at the foot of the screen has always
+        // promised it ("Stopping keeps what is analysed"). It was never built — so until now the
+        // app told the user it could be interrupted and offered no way to do it, on a screen that
+        // can legitimately run for minutes over a large library.
+        _stopButton = Design.Button(this, _scanStopping ? "Stopping…" : "Stop", Design.Btn.Secondary, 40f);
+        _stopButton.SetTextSize(Android.Util.ComplexUnitType.Sp, 13f);
+        _stopButton.Enabled = !_scanStopping;
+        _stopButton.Click += (_, _) => StopScan();
+        _content.AddView(Header("Scanning", null, _stopButton));
 
         var pad = Design.Dp(this, 16);
         var body = new LinearLayout(this) { Orientation = Orientation.Vertical };
@@ -438,6 +576,9 @@ public sealed class MainActivity : Activity
 
         _scanCount = Design.Title(this, "0", 38f);
         _scanCount.LetterSpacing = -0.03f;
+        // Announced as it changes rather than only when focused: this is the one screen whose whole
+        // content is a number that moves on its own.
+        _scanCount.AccessibilityLiveRegion = AccessibilityLiveRegion.Polite;
         body.AddView(_scanCount);
         body.AddView(Gap(8));
 
@@ -464,6 +605,20 @@ public sealed class MainActivity : Activity
         _content.AddView(Scroll(body));
     }
 
+    /// <summary>
+    /// Asks the in-flight scan to stop. Idempotent, and deliberately does not touch
+    /// <see cref="_scanning"/> — the operation is still running until the awaits in
+    /// <see cref="StartScan"/> unwind, and pretending otherwise would let a second scan start on
+    /// top of the first. The button label carries the interim state instead.
+    /// </summary>
+    void StopScan()
+    {
+        if (!_scanning || _scanStopping) return;
+        _scanStopping = true;
+        if (_stopButton is not null) { _stopButton.Text = "Stopping…"; _stopButton.Enabled = false; }
+        _scanCts?.Cancel();
+    }
+
     async void StartScan()
     {
         if (_scanning) return;
@@ -473,8 +628,17 @@ public sealed class MainActivity : Activity
             return;
         }
 
+        _scanCts?.Dispose();
+        _scanCts = new CancellationTokenSource();
+        var ct = _scanCts.Token;
+
         _scanning = true;
+        _scanStopping = false;
         Render();
+
+        // Scanning a folder is what chooses the folder you are working on — the same rule, and the
+        // same meta key, as the desktop's CatalogService.ScanAsync.
+        _catalog!.ScanRoot = _folder;
 
         // Held across the scan *and* the dedup that follows it: they are one operation from the
         // user's point of view, and dropping the service between them would leave the longer half
@@ -503,7 +667,7 @@ public sealed class MainActivity : Activity
                     p.Total > 0 ? $"{done:N0} of ~{p.Total:N0}" : $"{done:N0} read", done, p.Total);
             });
 
-            _lastScan = await Task.Run(() => _catalog!.NewScanner().ScanAsync(_folder, progress));
+            _lastScan = await Task.Run(() => _catalog!.NewScanner().ScanAsync(_folder, progress, ct), ct);
 
             // "Duplicates run next, on their own." The scanning screen promises it, so it happens
             // here rather than behind a button the user would have to go and find.
@@ -519,7 +683,7 @@ public sealed class MainActivity : Activity
 
             _lastDupes = await Task.Run(() =>
                 new DuplicateService(_catalog!.Db, _catalog.Imaging, _catalog.ThumbDir)
-                    .DetectAsync(_folder, dedupProgress));
+                    .DetectAsync(_folder, dedupProgress, ct), ct);
 
             _photos = await Task.Run(() => _catalog!.Images.All().ToList());
             _hasScanned = _photos.Count > 0;
@@ -536,6 +700,23 @@ public sealed class MainActivity : Activity
             if (_scanNotice is not null)
                 Toast.MakeText(this, _scanNotice, ToastLength.Long)!.Show();
         }
+        // Spelled out: `using Android.OS` puts Android.OS.OperationCanceledException in scope, and
+        // the bare name is ambiguous — the same trap as Android.Graphics.Path vs System.IO.Path.
+        catch (System.OperationCanceledException)
+        {
+            // Stopping is an outcome, not a failure, and the screen's own copy promises what
+            // happens: everything analysed so far is already committed, so the catalogue is the
+            // answer. _lastScan is cleared because a partial run's totals would be read as the
+            // folder's totals everywhere they are shown.
+            _lastScan = null;
+            _photos = await Task.Run(() => _catalog!.Images.All().ToList());
+            _hasScanned = _photos.Count > 0;
+            _scanNotice = _hasScanned
+                ? $"Scan stopped. {_photos.Count:N0} photos kept — scanning again picks up where it left off."
+                : "Scan stopped before anything was read.";
+            Toast.MakeText(this, _scanNotice, ToastLength.Long)!.Show();
+            Android.Util.Log.Info(Tag, "scan cancelled by the user");
+        }
         catch (Exception ex)
         {
             Toast.MakeText(this, $"Scan failed: {ex.Message}", ToastLength.Long)!.Show();
@@ -545,6 +726,10 @@ public sealed class MainActivity : Activity
         {
             WorkService.Stop(this);
             _scanning = false;
+            _scanStopping = false;
+            _stopButton = null;
+            _scanCts?.Dispose();
+            _scanCts = null;
             _tab = Tab.Library;
             Render();
         }
@@ -556,8 +741,12 @@ public sealed class MainActivity : Activity
 
     void RenderLibrary()
     {
-        if (_selectionMode) { _content.AddView(SelectionHeader()); }
-        else _content.AddView(Header("Library", null));
+        // Header and action bar go in slots so SelectionChanged/SelectionModeChanged can swap them
+        // without touching the grid. See those methods.
+        _headerSlot = new FrameLayout(this);
+        _headerSlot.LayoutParameters = Wide();
+        _content.AddView(_headerSlot);
+        FillHeaderSlot();
 
         var sum = new LinearLayout(this) { Orientation = Orientation.Horizontal };
         sum.SetGravity(GravityFlags.CenterVertical);
@@ -573,14 +762,31 @@ public sealed class MainActivity : Activity
         _content.AddView(Design.Rule(this, 2f, Design.Divider));
 
         var waiting = ScopedExtras().Count;
-        if (waiting > 0)
+        if (waiting > 0 && !_calloutDismissed)
         {
             var callout = Design.Callout(this);
-            callout.AddView(Design.Body(this,
+
+            var top = new LinearLayout(this) { Orientation = Orientation.Horizontal };
+            top.SetGravity(GravityFlags.Top);
+            var headings = new LinearLayout(this) { Orientation = Orientation.Vertical };
+            headings.LayoutParameters = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f);
+            headings.AddView(Design.Body(this,
                 $"{waiting:N0} extra {(waiting == 1 ? "copy is" : "copies are")} waiting", 15f, bold: true));
-            callout.AddView(Design.Note(this,
+            headings.AddView(Design.Note(this,
                 "Keeper already picked for each — you just confirm. Bursts are held back.",
                 Design.Accent700));
+            top.AddView(headings);
+
+            // The handoff makes this dismissible and the first build did not, which left a banner
+            // that could not be got rid of until the last duplicate was resolved. The work does not
+            // disappear with it — the Review tab keeps its badge, and Plan keeps step 2.
+            var close = Design.IconButton(this, "✕", "Dismiss this reminder");
+            close.LayoutParameters = new LinearLayout.LayoutParams(Design.Dp(this, 32), Design.Dp(this, 32))
+            { LeftMargin = Design.Dp(this, 8) };
+            close.Click += (_, _) => { _calloutDismissed = true; Render(); };
+            top.AddView(close);
+            callout.AddView(top);
+
             callout.AddView(Gap(10));
             var start = Design.Button(this, "Start reviewing", Design.Btn.Primary, 52f);
             start.LayoutParameters = Wide();
@@ -599,6 +805,17 @@ public sealed class MainActivity : Activity
             chosen => { _facet = Enum.Parse<DupeFacet>(chosen); Render(); }).Show();
         chips.AddView(filters);
 
+        // The handoff's sort chip. Without it the grid was permanently in scan order, which is the
+        // one order nobody thinks in — "the photos I took last week" is unreachable by scrolling.
+        var sort = Design.Button(this, SortLabel(), Design.Btn.Secondary, 38f);
+        sort.SetTextSize(Android.Util.ComplexUnitType.Sp, 13f);
+        sort.LayoutParameters = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WrapContent, ViewGroup.LayoutParams.WrapContent)
+        { LeftMargin = Design.Dp(this, 8) };
+        sort.ContentDescription = $"Sort order: {SortLabel()}. Tap to change.";
+        sort.Click += (_, _) => ShowSortMenu();
+        chips.AddView(sort);
+
         var folders = Design.Button(this, FolderScopeLabel(), Design.Btn.Secondary, 38f);
         folders.SetTextSize(Android.Util.ComplexUnitType.Sp, 13f);
         folders.LayoutParameters = new LinearLayout.LayoutParams(
@@ -611,60 +828,260 @@ public sealed class MainActivity : Activity
         // short of relaunching the app.
         if (_libraryScope is not null)
         {
-            var clearScope = Design.IconButton(this, "✕");
+            var clearScope = Design.IconButton(this, "✕", "Show the whole library again");
             clearScope.LayoutParameters = new LinearLayout.LayoutParams(Design.Dp(this, 32), Design.Dp(this, 32))
             { LeftMargin = Design.Dp(this, 6) };
             clearScope.Click += (_, _) => { _libraryScope = null; Render(); };
             chips.AddView(clearScope);
         }
 
-        var hint = Design.Note(this, "Hold a photo to select");
-        hint.LayoutParameters = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f);
-        hint.Gravity = GravityFlags.Right;
+        var hint = Design.Note(this, "Hold a photo to select · keep dragging for a range");
+        hint.LayoutParameters = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WrapContent, ViewGroup.LayoutParams.WrapContent)
+        { LeftMargin = Design.Dp(this, 10) };
         chips.AddView(hint);
-        _content.AddView(chips);
+
+        // The chip row scrolls now that there are three of them plus a clear button — the hint used
+        // to be pinned right on the same line, which left the Folders chip nowhere to grow.
+        var chipScroll = new HorizontalScrollView(this) { HorizontalScrollBarEnabled = false };
+        chipScroll.LayoutParameters = Wide();
+        chipScroll.AddView(chips);
+        _content.AddView(chipScroll);
         _content.AddView(Design.Rule(this, 1f, Design.Divider));
 
-        // .g3 — three up, 2px gutters
-        var grid = new GridView(this) { NumColumns = 3 };
-        grid.SetVerticalSpacing(Design.Dp(this, 2));
-        grid.SetHorizontalSpacing(Design.Dp(this, 2));
-        var cell = (Resources!.DisplayMetrics!.WidthPixels - Design.Dp(this, 4)) / 3;
-        grid.SetColumnWidth(cell);
-        grid.StretchMode = StretchMode.StretchColumnWidth;
-        grid.LayoutParameters = new LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MatchParent, 0, 1f);
-        var shown = Visible();
-        grid.Adapter = new ThumbAdapter(this, shown, cell, _catalog!.ThumbDir,
-            _selectionMode ? id => _selected.Contains(id) : null);
+        _shown = Visible();
 
-        grid.ItemClick += (_, e) =>
+        if (_shown.Count == 0)
         {
-            var rec = shown[e.Position];
-            if (_selectionMode)
+            // An empty grid used to say nothing at all, so a facet that matched nothing looked
+            // identical to a broken screen. Name what is filtering, and offer the way out.
+            _content.AddView(EmptyView());
+        }
+        else
+        {
+            // .g3 — three up, 2px gutters
+            var grid = new GridView(this) { NumColumns = 3 };
+            grid.SetVerticalSpacing(Design.Dp(this, 2));
+            grid.SetHorizontalSpacing(Design.Dp(this, 2));
+            var cell = (Resources!.DisplayMetrics!.WidthPixels - Design.Dp(this, 4)) / 3;
+            grid.SetColumnWidth(cell);
+            grid.StretchMode = StretchMode.StretchColumnWidth;
+            grid.LayoutParameters = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MatchParent, 0, 1f);
+            grid.Adapter = new ThumbAdapter(this, _shown, cell, _catalog!.ThumbDir,
+                _selectionMode ? id => _selected.Contains(id) : null);
+            _grid = grid;
+
+            grid.ItemClick += (_, e) =>
             {
-                if (!_selected.Add(rec.Id)) _selected.Remove(rec.Id);
-                Render();
-                return;
-            }
-            var i = new Intent(this, typeof(PreviewActivity));
-            i.PutExtra(PreviewActivity.ExtraImageId, rec.Id);
-            StartActivity(i);
-        };
+                var rec = _shown[e.Position];
+                if (_selectionMode)
+                {
+                    if (!_selected.Add(rec.Id)) _selected.Remove(rec.Id);
+                    SelectionChanged();
+                    return;
+                }
+                var i = new Intent(this, typeof(PreviewActivity));
+                i.PutExtra(PreviewActivity.ExtraImageId, rec.Id);
+                StartActivity(i);
+            };
 
-        // "Hold a photo to select" — the mode is entered by the gesture the chip row advertises.
-        grid.ItemLongClick += (_, e) =>
-        {
-            var rec = shown[e.Position];
-            _selectionMode = true;
-            _selected.Add(rec.Id);
-            Render();
-        };
+            // "Hold a photo to select" — the mode is entered by the gesture the chip row advertises,
+            // and the same gesture continues into a drag (see HandleGridTouch). Entering the mode
+            // must not rebuild the grid, or the touch stream the drag needs dies with the old view.
+            grid.ItemLongClick += (_, e) =>
+            {
+                var rec = _shown[e.Position];
+                var entering = !_selectionMode;
+                _selectionMode = true;
+                _selected.Add(rec.Id);
+                _dragSelecting = true;
+                _lastDragPos = e.Position;
+                if (entering) SelectionModeChanged(); else SelectionChanged();
+            };
 
-        _content.AddView(grid);
+            grid.Touch += (_, e) => e.Handled = HandleGridTouch(e.Event!);
 
-        if (_selectionMode) _content.AddView(SelectionActions());
+            _content.AddView(grid);
+        }
+
+        _actionSlot = new FrameLayout(this);
+        _actionSlot.LayoutParameters = Wide();
+        _content.AddView(_actionSlot);
+        FillActionSlot();
     }
+
+    /// <summary>
+    /// The handoff's "hold and drag across for a range", which had never been built — the footer
+    /// copy was quietly reworded to promise only tap-to-add instead.
+    /// </summary>
+    /// <remarks>
+    /// Only ever consumes events once a long-press has armed <see cref="_dragSelecting"/>, so the
+    /// grid keeps its normal scrolling the rest of the time. Returning true from here suppresses
+    /// <c>GridView.OnTouchEvent</c>, which is what stops the list scrolling under the finger while
+    /// a range is being swept.
+    /// </remarks>
+    bool HandleGridTouch(MotionEvent ev)
+    {
+        if (!_dragSelecting) return false;
+
+        switch (ev.ActionMasked)
+        {
+            case MotionEventActions.Move:
+                var pos = _grid!.PointToPosition((int)ev.GetX(), (int)ev.GetY());
+                if (pos != AdapterView.InvalidPosition && pos != _lastDragPos && pos < _shown.Count)
+                {
+                    _lastDragPos = pos;
+                    // Add-only. A drag that toggled would flip photos back off as the finger
+                    // wandered, and "I dragged over it and it deselected" is not recoverable
+                    // without watching every cell.
+                    if (_selected.Add(_shown[pos].Id)) SelectionChanged();
+                }
+                return true;
+
+            case MotionEventActions.Up:
+            case MotionEventActions.Cancel:
+                _dragSelecting = false;
+                _lastDragPos = -1;
+                return true;
+
+            default:
+                return true;
+        }
+    }
+
+    void FillHeaderSlot()
+    {
+        if (_headerSlot is null) return;
+        _headerSlot.RemoveAllViews();
+        _headerSlot.AddView(_selectionMode ? SelectionHeader() : Header("Library", null));
+    }
+
+    void FillActionSlot()
+    {
+        if (_actionSlot is null) return;
+        _actionSlot.RemoveAllViews();
+        if (_selectionMode) _actionSlot.AddView(SelectionActions());
+    }
+
+    /// <summary>
+    /// What changed is <i>which</i> photos are selected, not whether selection is on. Updates the
+    /// count and repaints the tiles in place.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately not <see cref="Render"/>. Rebuilding the screen on every tap threw away the
+    /// grid's scroll position, so selecting a photo two hundred rows down jumped straight back to
+    /// the top — which made selecting more than a handful of photos genuinely impractical.
+    /// </remarks>
+    void SelectionChanged()
+    {
+        if (_selCount is not null) _selCount.Text = $"{_selected.Count:N0} selected";
+        if (_grid?.Adapter is BaseAdapter a) a.NotifyDataSetChanged();
+    }
+
+    /// <summary>Selection mode was entered or left: the header and the action bar swap.</summary>
+    void SelectionModeChanged()
+    {
+        if (_headerSlot is null || _actionSlot is null || _grid is null) { Render(); return; }
+
+        FillHeaderSlot();
+        FillActionSlot();
+        if (_grid.Adapter is ThumbAdapter t)
+            t.SelectionTest = _selectionMode ? id => _selected.Contains(id) : null;
+        SelectionChanged();
+    }
+
+    /// <summary>The screen a facet with no matches lands on. Says what is filtering, and undoes it.</summary>
+    View EmptyView()
+    {
+        var wrap = new LinearLayout(this) { Orientation = Orientation.Vertical };
+        wrap.SetGravity(GravityFlags.CenterHorizontal);
+        wrap.SetPadding(Design.Dp(this, 28), Design.Dp(this, 44), Design.Dp(this, 28), Design.Dp(this, 28));
+        wrap.LayoutParameters = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MatchParent, 0, 1f);
+
+        var narrowed = _facet != DupeFacet.Any || _libraryScope is not null;
+
+        wrap.AddView(Design.Eyebrow(this, narrowed ? "Nothing matches" : "Nothing here"));
+        wrap.AddView(Gap(10));
+
+        var headline = Design.Title(this, narrowed
+            ? "No photos match this view."
+            : "This library is empty.", 22f);
+        headline.Gravity = GravityFlags.CenterHorizontal;
+        wrap.AddView(headline);
+        wrap.AddView(Gap(8));
+
+        var detail = Design.Note(this, narrowed
+            ? $"Showing {FacetLabel()}{(_libraryScope is null ? "" : $" in {System.IO.Path.GetFileName(_libraryScope)}")}. "
+              + "Everything else is still in the library."
+            : "Scan a folder from the Plan tab to fill it.");
+        detail.Gravity = GravityFlags.CenterHorizontal;
+        wrap.AddView(detail);
+
+        if (narrowed)
+        {
+            wrap.AddView(Gap(16));
+            var clear = Design.Button(this, "Show everything", Design.Btn.Primary, 48f);
+            clear.Click += (_, _) => { _facet = DupeFacet.Any; _libraryScope = null; Render(); };
+            wrap.AddView(clear);
+        }
+        return wrap;
+    }
+
+    // ---- Sort ---------------------------------------------------------------------------------
+
+    string SortLabel() => (_sort, _sortDescending) switch
+    {
+        (SortKey.Scanned, _) => "Scan order",
+        (SortKey.Captured, true) => "Newest first",
+        (SortKey.Captured, false) => "Oldest first",
+        (SortKey.Name, _) => "Name A–Z",
+        (SortKey.Size, _) => "Largest first",
+        _ => "Sort",
+    };
+
+    void ShowSortMenu()
+    {
+        var options = new (string Label, SortKey Key, bool Desc)[]
+        {
+            ("Scan order", SortKey.Scanned, false),
+            ("Newest first", SortKey.Captured, true),
+            ("Oldest first", SortKey.Captured, false),
+            ("Name A–Z", SortKey.Name, false),
+            ("Largest first", SortKey.Size, true),
+        };
+
+        new AlertDialog.Builder(this)
+            .SetTitle("Sort by")!
+            .SetItems(options.Select(o => o.Label).ToArray(), (_, e) =>
+            {
+                var pick = options[e.Which];
+                _sort = pick.Key;
+                _sortDescending = pick.Desc;
+                Render();
+            })!
+            .Show();
+    }
+
+    /// <summary>
+    /// Applies <see cref="_sort"/>. Photos with no capture date sort last regardless of direction,
+    /// matching the desktop's <c>Nulls</c> helper — otherwise "oldest first" opens on a wall of
+    /// screenshots, which is exactly the sort nobody wanted.
+    /// </summary>
+    List<ImageRecord> Sorted(IEnumerable<ImageRecord> items) => _sort switch
+    {
+        SortKey.Name => (_sortDescending
+            ? items.OrderByDescending(p => System.IO.Path.GetFileName(p.Path), StringComparer.OrdinalIgnoreCase)
+            : items.OrderBy(p => System.IO.Path.GetFileName(p.Path), StringComparer.OrdinalIgnoreCase)).ToList(),
+        SortKey.Size => (_sortDescending
+            ? items.OrderByDescending(p => p.FileSize)
+            : items.OrderBy(p => p.FileSize)).ToList(),
+        SortKey.Captured => (_sortDescending
+            ? items.OrderBy(p => p.ExifTaken is null).ThenByDescending(p => p.ExifTaken)
+            : items.OrderBy(p => p.ExifTaken is null).ThenBy(p => p.ExifTaken)).ToList(),
+        _ => (_sortDescending ? items.OrderByDescending(p => p.Id) : items.OrderBy(p => p.Id)).ToList(),
+    };
 
     /// <summary>
     /// _photos narrowed to <see cref="_libraryScope"/>, if one is set — the base every part of the
@@ -684,13 +1101,13 @@ public sealed class MainActivity : Activity
     /// so the chip's count, the grid's contents and the review queue cannot disagree about what an
     /// "extra copy" is — the same argument CLAUDE.md makes for NsfwDecision and InScope.
     /// </remarks>
-    List<ImageRecord> Visible() => _facet switch
+    List<ImageRecord> Visible() => Sorted(_facet switch
     {
-        DupeFacet.ExtrasOnly => ScopedPhotos().Where(p => _assign.TryGetValue(p.Id, out var a) && a.IsBulkSelectableExtra).ToList(),
-        DupeFacet.KeepersOnly => ScopedPhotos().Where(p => _assign.TryGetValue(p.Id, out var a) && a.IsKeeper).ToList(),
-        DupeFacet.BurstFrames => ScopedPhotos().Where(p => _assign.TryGetValue(p.Id, out var a) && a.Kind == DupeKind.Burst).ToList(),
+        DupeFacet.ExtrasOnly => ScopedPhotos().Where(p => _assign.TryGetValue(p.Id, out var a) && a.IsBulkSelectableExtra),
+        DupeFacet.KeepersOnly => ScopedPhotos().Where(p => _assign.TryGetValue(p.Id, out var a) && a.IsKeeper),
+        DupeFacet.BurstFrames => ScopedPhotos().Where(p => _assign.TryGetValue(p.Id, out var a) && a.Kind == DupeKind.Burst),
         _ => ScopedPhotos(),
-    };
+    });
 
     string FacetLabel() => _facet switch
     {
@@ -730,24 +1147,29 @@ public sealed class MainActivity : Activity
 
         var cancel = Design.Button(this, "Cancel", Design.Btn.Ghost, 40f);
         cancel.SetTextColor(Design.Bg);
-        cancel.Click += (_, _) => { _selectionMode = false; _selected.Clear(); Render(); };
+        cancel.ContentDescription = "Leave selection mode";
+        cancel.Click += (_, _) => { _selectionMode = false; _selected.Clear(); SelectionModeChanged(); };
         row.AddView(cancel);
 
-        var count = Design.Title(this, $"{_selected.Count:N0} selected", 17f);
-        count.SetTextColor(Design.Bg);
-        count.Gravity = GravityFlags.Center;
-        count.LayoutParameters = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f);
-        row.AddView(count);
+        // Held so SelectionChanged can update it without rebuilding the header — the count is the
+        // only part of this bar that moves.
+        _selCount = Design.Title(this, $"{_selected.Count:N0} selected", 17f);
+        _selCount.SetTextColor(Design.Bg);
+        _selCount.Gravity = GravityFlags.Center;
+        _selCount.LayoutParameters = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f);
+        _selCount.AccessibilityLiveRegion = AccessibilityLiveRegion.Polite;
+        row.AddView(_selCount);
 
         var invert = Design.Button(this, "Invert", Design.Btn.Ghost, 40f);
         invert.SetTextColor(Design.Bg);
+        invert.ContentDescription = "Invert the selection within this view";
         invert.Click += (_, _) =>
         {
-            var shown = Visible().Select(p => p.Id).ToHashSet();
+            var shown = _shown.Select(p => p.Id).ToHashSet();
             var flipped = shown.Where(id => !_selected.Contains(id)).ToHashSet();
             _selected.Clear();
             foreach (var id in flipped) _selected.Add(id);
-            Render();
+            SelectionChanged();
         };
         row.AddView(invert);
 
@@ -776,7 +1198,9 @@ public sealed class MainActivity : Activity
             line.AddView(col);
             var all = Design.Button(this, "Select all", Design.Btn.Secondary, 38f);
             all.SetTextSize(Android.Util.ComplexUnitType.Sp, 12.5f);
-            all.Click += (_, _) => { foreach (var e in extras) _selected.Add(e.Id); Render(); };
+            all.ContentDescription =
+                $"Select all {extras.Count:N0} extra copies in this view. Keepers and burst frames are excluded.";
+            all.Click += (_, _) => { foreach (var e in extras) _selected.Add(e.Id); SelectionChanged(); };
             line.AddView(all);
             callout.AddView(line);
             wrap.AddView(callout);
@@ -784,7 +1208,7 @@ public sealed class MainActivity : Activity
 
         var bar = Design.ActionBar(this);
         var body = Design.ActionBarBody(bar);
-        body.AddView(Design.Note(this, "Tap to add · hold a photo to enter this mode"));
+        body.AddView(Design.Note(this, "Tap to add · hold and drag across for a range"));
         body.AddView(Design.Gap(this, 9));
 
         var row = new LinearLayout(this) { Orientation = Orientation.Horizontal };
@@ -911,6 +1335,10 @@ public sealed class MainActivity : Activity
         var strip = new LinearLayout(this) { Orientation = Orientation.Horizontal };
         strip.LayoutParameters = new LinearLayout.LayoutParams(
             Design.Dp(this, 96), Design.Dp(this, 5));
+        // A restatement of the Plan tab in five coloured bars — nothing here that the Plan tab does
+        // not say in words, so it stays out of the accessibility tree rather than reading as five
+        // anonymous views.
+        strip.ImportantForAccessibility = ImportantForAccessibility.NoHideDescendants;
 
         var dupesDone = _reviewable > 0 || _lastDupes is not null;
         var state = new[] { _hasScanned, dupesDone, false, _hasScanned, false };
@@ -933,8 +1361,11 @@ public sealed class MainActivity : Activity
 
     void RenderPlan()
     {
+        // Counted against the three steps this version actually has. It used to say "of 5" while
+        // two of those five could never be completed on Android at all — a plan that is permanently
+        // 60% finished by construction reads as a stalled app rather than a shorter feature set.
         var done = (_hasScanned ? 1 : 0) + (_reviewable > 0 || _lastDupes is not null ? 1 : 0) + (_hasScanned ? 1 : 0);
-        _content.AddView(Header("Plan", $"{done} of 5 done"));
+        _content.AddView(Header("Plan", $"{done} of 3 done"));
 
         var body = new LinearLayout(this) { Orientation = Orientation.Vertical };
 
@@ -961,14 +1392,18 @@ public sealed class MainActivity : Activity
             _reviewable > 0 ? $"Review {_reviewable:N0} extras" : null, OpenReview,
             highlight: _reviewable > 0));
 
+        // Content review is not a step you can take here, and dressing it as one that merely has
+        // not started yet left it stuck at "not started" forever with no action to take. The model
+        // is a 328 MB sidecar and SnapZap holds no INTERNET permission — which is a property worth
+        // keeping, not a gap to close by adding one — so there is no honest in-app route to it.
         body.AddView(Step(3, false, "Content review",
-            "Nothing scored yet. Needs the NSFW model beside the app — everything else works without it.",
-            null, null));
+            "Desktop only. The scoring model ships beside the desktop app; the Android build has no "
+            + "network access to fetch it, by design.", null, null, unavailable: true));
 
         body.AddView(Step(4, _hasScanned, "Sharpness", "Scored during the scan", null, null));
 
         body.AddView(Step(5, false, "Export a clean library",
-            "Not available on Android in this version.", null, null));
+            "Desktop only in this version.", null, null, unavailable: true));
 
         var wrap = new LinearLayout(this) { Orientation = Orientation.Vertical };
         wrap.SetPadding(Design.Dp(this, 16), Design.Dp(this, 12), Design.Dp(this, 16), Design.Dp(this, 12));
@@ -976,6 +1411,12 @@ public sealed class MainActivity : Activity
         trash.LayoutParameters = Wide();
         trash.Click += (_, _) => StartActivity(new Intent(this, typeof(TrashActivity)));
         wrap.AddView(trash);
+        wrap.AddView(Gap(8));
+
+        var settings = Design.Button(this, "Settings", Design.Btn.Secondary, 44f);
+        settings.LayoutParameters = Wide();
+        settings.Click += (_, _) => StartActivity(new Intent(this, typeof(SettingsActivity)));
+        wrap.AddView(settings);
         wrap.AddView(Gap(10));
         wrap.AddView(Design.Note(this,
             "Steps run in any order — this is the cheapest order, not a wizard."));
@@ -984,21 +1425,29 @@ public sealed class MainActivity : Activity
         _content.AddView(Scroll(body));
     }
 
+    /// <param name="unavailable">
+    /// This step cannot be taken in this build at all. Marked with a dash rather than a number so
+    /// it reads as "not part of this version" instead of "not done yet" — the distinction the Plan
+    /// tab previously could not make, which is why Content review sat at step 3 looking merely
+    /// pending.
+    /// </param>
     View Step(int n, bool done, string title, string note, string? action, Action? onAction,
-              bool highlight = false, (string Label, Action OnTap)? secondary = null)
+              bool highlight = false, (string Label, Action OnTap)? secondary = null,
+              bool unavailable = false)
     {
         var row = new LinearLayout(this) { Orientation = Orientation.Horizontal };
         row.SetPadding(Design.Dp(this, highlight ? 12 : 16), Design.Dp(this, 11),
                        Design.Dp(this, 16), Design.Dp(this, 11));
         if (highlight) row.SetBackgroundColor(Design.Accent100);
+        if (unavailable) row.Alpha = 0.6f;
 
-        var num = new TextView(this) { Text = done ? "✓" : n.ToString() };
+        var num = new TextView(this) { Text = unavailable ? "—" : done ? "✓" : n.ToString() };
         num.SetTextSize(Android.Util.ComplexUnitType.Sp, 12f);
         num.SetTypeface(null, TypefaceStyle.Bold);
         num.Gravity = GravityFlags.Center;
-        num.SetTextColor(done ? Design.Accent700 : Design.Neutral700);
+        num.SetTextColor(done && !unavailable ? Design.Accent700 : Design.Neutral700);
         num.Background = Design.Outline(Color.Transparent,
-            done ? Design.Accent : Design.Neutral400, Design.Dp(this, 2));
+            done && !unavailable ? Design.Accent : Design.Neutral400, Design.Dp(this, 2));
         num.LayoutParameters = new LinearLayout.LayoutParams(Design.Dp(this, 24), Design.Dp(this, 24))
         { RightMargin = Design.Dp(this, 11) };
         row.AddView(num);
@@ -1030,6 +1479,12 @@ public sealed class MainActivity : Activity
         var holder = new LinearLayout(this) { Orientation = Orientation.Vertical };
         holder.AddView(row);
         holder.AddView(Design.Rule(this, 1f, Design.Divider));
+
+        // Read as one step. The number, tick or dash is state, not content — "step 2, Duplicates,
+        // done" rather than "2" then "Duplicates".
+        var state = unavailable ? "not in this version" : done ? "done" : "not started";
+        row.ContentDescription = $"Step {n}, {title}, {state}. {note}";
+        num.ImportantForAccessibility = ImportantForAccessibility.No;
         return holder;
     }
 
@@ -1081,8 +1536,8 @@ public sealed class MainActivity : Activity
     //  Small builders
     // ══════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>.hd — title left, optional eyebrow right, 2px rule beneath.</summary>
-    View Header(string title, string? right)
+    /// <summary>.hd — title left, optional eyebrow or control right, 2px rule beneath.</summary>
+    View Header(string title, string? right, View? trailing = null)
     {
         var wrap = new LinearLayout(this) { Orientation = Orientation.Vertical };
         var row = new LinearLayout(this) { Orientation = Orientation.Horizontal };
@@ -1092,6 +1547,7 @@ public sealed class MainActivity : Activity
         t.LayoutParameters = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f);
         row.AddView(t);
         if (right is not null) row.AddView(Design.Eyebrow(this, right));
+        if (trailing is not null) row.AddView(trailing);
         wrap.AddView(row);
         wrap.AddView(Design.Rule(this, 2f, Design.Divider));
         return wrap;
@@ -1146,13 +1602,17 @@ public sealed class MainActivity : Activity
     /// <summary>Selection "leaves the way it came" — Back cancels the mode before leaving the screen.</summary>
     void HandleBack()
     {
-        if (_selectionMode) { _selectionMode = false; _selected.Clear(); Render(); return; }
+        if (_selectionMode) { _selectionMode = false; _selected.Clear(); SelectionModeChanged(); return; }
         Finish();
     }
 
     protected override void OnDestroy()
     {
         _back?.Detach();
+        // The catalogue is about to be disposed out from under anything still running, so an
+        // in-flight scan has to be told to stop first rather than be left to fault on a closed
+        // connection.
+        _scanCts?.Cancel();
         _catalog?.Dispose();
         base.OnDestroy();
     }
