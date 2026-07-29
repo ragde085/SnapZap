@@ -33,4 +33,5 @@
   <data name="ButtonRemoveConfirm" xml:space="preserve"><value>Delete permanently</value></data>
   <data name="ButtonRemoveEntries" xml:space="preserve"><value>Remove entries</value></data>
   <data name="ButtonCancel" xml:space="preserve"><value>Cancel</value></data>
+  <data name="ThumbUnavailableTitle" xml:space="preserve"><value>No preview — this photo was deleted before SnapZap started recording thumbnails for history.</value></data>
 </root>

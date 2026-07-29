@@ -42,7 +42,20 @@
                                         <div class="undo-thumbs">
                                             @foreach (var it in items)
                                             {
-                                                @if (it.ContentHash is not null)
+                                                @* A row with no content_hash renders an explained
+                                                   placeholder rather than nothing. Deletes made
+                                                   before content_hash was recorded have no way to
+                                                   find their thumbnail — the images row is gone, so
+                                                   the hash is unrecoverable — and silently emitting
+                                                   an empty strip made a working screen look broken. *@
+                                                @if (it.ContentHash is null)
+                                                {
+                                                    <div class="undo-thumb-wrap">
+                                                        <div class="undo-thumb undo-thumb-missing"
+                                                             title="@L["ThumbUnavailableTitle"]" aria-hidden="true">?</div>
+                                                    </div>
+                                                }
+                                                else
                                                 {
                                                     var itemName = Path.GetFileName(it.OriginalPath);
                                                     <div class="undo-thumb-wrap">

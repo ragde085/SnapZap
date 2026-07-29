@@ -986,6 +986,15 @@ main { display: flex; flex: 1; min-height: 0; }
 .undo-thumb-restore:disabled { cursor: default; }
 .undo-thumb-restore span { color: white; font-size: 16px; line-height: 1; }
 
+/* A history entry whose thumbnail can never be resolved: deleted before content_hash was
+   recorded, and the images row is gone, so the hash is unrecoverable. Shown rather than skipped
+   so the strip does not silently come up empty and read as a broken screen. */
+.undo-thumb-missing {
+  display: flex; align-items: center; justify-content: center;
+  background: var(--color-surface); color: var(--color-neutral-700);
+  font-size: 13px; line-height: 1; user-select: none;
+}
+
 /* ---------- duplicate review ---------- */
 
 .review-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); }

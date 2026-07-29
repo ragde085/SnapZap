@@ -33,4 +33,5 @@
   <data name="ButtonRemoveConfirm" xml:space="preserve"><value>Eliminar definitivamente</value></data>
   <data name="ButtonRemoveEntries" xml:space="preserve"><value>Quitar entradas</value></data>
   <data name="ButtonCancel" xml:space="preserve"><value>Cancelar</value></data>
+  <data name="ThumbUnavailableTitle" xml:space="preserve"><value>Sin vista previa — esta foto se eliminó antes de que SnapZap empezara a guardar miniaturas para el historial.</value></data>
 </root>

@@ -146,7 +146,18 @@ public sealed class TrashActivity : Activity
                 var thumb = new ImageView(this);
                 thumb.SetScaleType(ImageView.ScaleType.CenterCrop);
                 thumb.LayoutParameters = new LinearLayout.LayoutParams(140, 140) { RightMargin = 16 };
-                thumb.SetImageBitmap(LoadThumb(item.ContentHash));
+
+                var bmp = LoadThumb(item.ContentHash);
+                if (bmp is not null) thumb.SetImageBitmap(bmp);
+                else
+                {
+                    // Same treatment as the desktop's .undo-thumb-missing: a visible, explained tile
+                    // rather than an empty gap. Entries deleted before content_hash was recorded can
+                    // never resolve a thumbnail — the images row is gone, so the hash is
+                    // unrecoverable — and rendering nothing made a working screen look broken.
+                    thumb.SetBackgroundColor(Color.ParseColor("#22000000"));
+                    thumb.ContentDescription = "No preview available for this entry";
+                }
                 itemRow.AddView(thumb);
 
                 var name = Text(System.IO.Path.GetFileName(item.OriginalPath)
