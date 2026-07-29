@@ -1,0 +1,77 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-android36.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+
+    <!--
+      RootNamespace is deliberately NOT SnapZap.Android.
+
+      Inside a namespace called SnapZap.Android, the compiler resolves `Android.App` relative to
+      the enclosing namespace first and looks for SnapZap.Android.App before the Android SDK's
+      global Android.App. Every using of an SDK namespace then fails with an error that points at
+      the using rather than at the real cause. SnapZap.Droid has no such collision.
+
+      The *project* keeps the SnapZap.Android name because that is what it is; only the C#
+      namespace differs.
+    -->
+    <RootNamespace>SnapZap.Droid</RootNamespace>
+
+    <!--
+      API 30 is the floor because MANAGE_EXTERNAL_STORAGE ("All files access") and the
+      Settings.ActionManageAppAllFilesAccessPermission intent that requests it are API 30+
+      (docs/ANDROID-PORT-PLAN.md §3). The whole storage model depends on it, so there is no
+      point supporting anything older.
+    -->
+    <SupportedOSPlatformVersion>30</SupportedOSPlatformVersion>
+
+    <ApplicationId>com.snapzap.android</ApplicationId>
+    <ApplicationVersion>1</ApplicationVersion>
+    <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
+  </PropertyGroup>
+
+  <!--
+    Deliberately NOT listed in SnapZap.slnx. Adding it makes the plain `dotnet build` at the repo
+    root require an Android SDK, which is precisely the tax the opt-in decision in
+    docs/ANDROID-PORT-ACS.md AC-2.7 exists to avoid for SnapZap.Core. Build it explicitly:
+
+        dotnet build src/SnapZap.Android
+
+    The cost is AC-2.9's, in the same shape: a project nobody builds by default can rot. That is
+    an acceptable trade while this project is a stage-1 artifact rather than a shipping head; it
+    stops being acceptable the moment real code lives here, at which point it needs CI coverage
+    alongside `-p:IncludeAndroid=true`.
+  -->
+
+  <!--
+    ⚠ There is deliberately NO ProjectReference to SnapZap.App here, and adding one does not work.
+
+    docs/ANDROID-PORT-PLAN.md §0 bets that Android can be a fifth IAppHost: run the same
+    WebApplication in-process, bound to loopback, and point a system WebView at it. That bet is
+    dead, and this project is where it was proven dead. Two errors, in order:
+
+      NETSDK1150  An Android app is a self-contained executable and cannot reference
+                  SnapZap.App, which is a non-self-contained Exe. (SnapZap.App must stay
+                  OutputType=Exe — exactly Exe — or Blazor's static web assets are silently
+                  dropped; see the comment block in SnapZap.App.csproj.) This one has a
+                  documented escape hatch, -p:ValidateExecutableReferencesMatchSelfContained=false,
+                  which gets past it and straight into the real problem:
+
+      NETSDK1082  "There was no runtime pack for Microsoft.AspNetCore.App available for the
+                  specified RuntimeIdentifier 'android-arm64'."
+
+    The second is not a configuration problem. ASP.NET Core publishes no runtime pack for any
+    mobile RID — verified against nuget.org, where microsoft.aspnetcore.app.runtime.win-x64,
+    .osx-arm64 and .linux-arm64 all resolve and .android-arm64 and .ios-arm64 both 404. There is
+    no Kestrel on Android, so there is no in-process web server for a WebView to talk to, and the
+    plan's §0 gate ("if step 2 fails outright, stop and re-scope around BlazorWebView") is met.
+
+    This project is kept as what it actually proved: the Android toolchain produces a building,
+    installable APK from this repo. That is stage 1 of the spike and it passed. Whatever replaces
+    the §0 architecture builds on this, so do not delete it — but do not re-add the reference
+    either, and see docs/ANDROID-PORT-ACS.md §1.6 before changing the approach.
+  -->
+
+</Project>

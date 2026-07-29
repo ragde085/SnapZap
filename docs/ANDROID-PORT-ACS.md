@@ -17,8 +17,9 @@ devices are present.
 
 ## 1. Analysis: what the review turned up
 
-The plan is sound in its central bet and in its scoping decisions (no export, no `MediaStore`,
-full-filesystem access). Three findings change what has to happen and in what order.
+The plan's scoping decisions (no export, no `MediaStore`, full-filesystem access) are sound.
+**Its central architectural bet is not — see §1.5, which supersedes everything the plan says about
+hosting.** The findings below are in the order they were established.
 
 ### 1.1 The environment cannot run the §0 spike
 
@@ -112,12 +113,11 @@ Two things that restore proved along the way, which were open questions before:
   macOS host, which restore has nothing to say about — but it removes "does it even restore" as a
   question.
 
-The plan's step 1 is a hard go/no-go gate, and it is **not executable here**. Everything downstream
-of the gate that assumes it passed (§2 `IAppHost`, §4 tasks 2-5, 8) is therefore blocked. This is
-not a reason to stall: a substantial slice of the port is *preparatory refactoring that is correct
-regardless of which way the spike goes*, and §7's own fallback paragraph says so explicitly — "the
-platform-services and storage work in §2-§3 stays valid either way". That slice is what §5 below
-parallelizes.
+The plan's step 1 is a hard go/no-go gate. It has since been **run, and it failed** — see §1.5.
+What kept its failure from being expensive is that a substantial slice of the port is *preparatory
+refactoring correct regardless of which way the spike went*, which §7's own fallback paragraph
+says explicitly ("the platform-services and storage work in §2-§3 stays valid either way"). That
+slice, listed in §4, was done first and all of it survives.
 
 ### 1.2 SkiaSharp has no Android native asset in this solution — the plan never mentions it
 
@@ -209,6 +209,69 @@ none noted in the plan:
 
 ---
 
+### 1.5 ⛔ The §0 architectural bet is dead — there is no ASP.NET Core on Android
+
+**This is the decisive finding of the whole effort, and it resolves the plan's own go/no-go gate
+in the negative.**
+
+The plan §0 bets that Android can be a fifth `IAppHost`: run the same `WebApplication` in-process,
+bound to loopback, and point a system `WebView` at it. A real `net10.0-android36.0` head
+(`src/SnapZap.Android`, added for this purpose) proves it cannot. Two errors, in order:
+
+1. **`NETSDK1150`** — an Android app is a self-contained executable and cannot reference
+   `SnapZap.App`, a non-self-contained `Exe`. `SnapZap.App` must stay `OutputType=Exe` *exactly*
+   or Blazor's static web assets are silently dropped (CLAUDE.md gotcha 9), so this is not
+   negotiable from that side. It does have a documented escape hatch,
+   `-p:ValidateExecutableReferencesMatchSelfContained=false`, which gets past it and into:
+2. **`NETSDK1082`** — *"There was no runtime pack for `Microsoft.AspNetCore.App` available for the
+   specified RuntimeIdentifier `android-arm64`."*
+
+The second is not configuration. **ASP.NET Core publishes no runtime pack for any mobile RID.**
+Verified directly against nuget.org:
+
+| Runtime pack | |
+|---|---|
+| `microsoft.aspnetcore.app.runtime.win-x64` | 200 |
+| `microsoft.aspnetcore.app.runtime.osx-arm64` | 200 |
+| `microsoft.aspnetcore.app.runtime.linux-arm64` | 200 |
+| `microsoft.aspnetcore.app.runtime.android-arm64` | **404** |
+| `microsoft.aspnetcore.app.runtime.ios-arm64` | **404** |
+
+This is by design — it is precisely why MAUI ships `BlazorWebView` instead of hosting Kestrel. The
+plan's gate says: *"If step 2 or 4 fails outright (not just needs a config tweak): stop, and
+re-scope around `BlazorWebView`."* Step 2 fails outright. **AC-0.2 is FAILED and AC-0.6 is
+answered.** Everything gated on the spike passing — AC-0.3, AC-0.4, AC-3.7's
+`AndroidWebViewAppHost`, and the `IAppHost`-fifth-implementation design in plan §2 — is void.
+
+#### The plan's own fallback is also partly invalid
+
+Plan §0's fallback paragraph says to extract `Components/`/`Services/`/`wwwroot/` into a Razor
+Class Library, let `BlazorWebView` own component rendering, and *"keep a small in-process Kestrel
+**only** for the two file-serving endpoints (BlazorWebView still needs some way to serve
+`<img src="/api/thumb/...">`)"*.
+
+**That last clause is impossible for the same reason.** No ASP.NET Core on Android means no
+Kestrel at all, not even a small one. So the fallback needs a genuinely different mechanism for
+`/api/thumb/{hash}` and `/api/full/{id}` — a `WebView` request interceptor
+(`ShouldInterceptRequest`), a custom scheme handler, or serving through `BlazorWebView`'s own
+static file provider. That change reaches `ImageView.ThumbUrl`, the content-addressed immutable
+cache-header strategy in `Program.cs`, and the catalog-path guard on `/api/full/{id}` — none of
+which the plan costed, because it assumed a Kestrel that cannot exist.
+
+Consequence for §7's estimate: the "2-3 weeks" figure assumed the spike passed. It didn't, and the
+fallback is larger than the plan's fallback paragraph describes.
+
+#### What survives
+
+Everything already merged. The host extraction (W1), the portable trash service (W2), the picker
+seam (W3), both audits, and Core's Android multi-targeting are all still correct and still
+prerequisites — an RCL-based `BlazorWebView` head needs the same platform services, the same
+Android paths and the same Skia/ONNX/SQLite answers. `src/SnapZap.Android` is retained because it
+proved stage 1: **the toolchain builds an installable APK from this repo**
+(`com.snapzap.android.apk`). What is void is only the *hosting* architecture.
+
+---
+
 ## 2. Acceptance criteria
 
 ### E0 — Toolchain and the architectural spike
@@ -216,11 +279,11 @@ none noted in the plan:
 | ID | Gate | Criterion |
 |---|---|---|
 | **AC-0.1** | ✅ **DONE (host)** | Android SDK installed and API 36 present; `adb` v1.0.41 resolves; `dotnet build src/SnapZap.Core -p:IncludeAndroid=true` **succeeds**, producing `net10.0-android36.0/SnapZap.Core.dll` with `libSkiaSharp.so` for all four ABIs. Outstanding: `ANDROID_HOME`/PATH are still unset (every command passes `-p:AndroidSdkDirectory=`), no emulator image or AVD exists, and no device is attached. Do **not** run `dotnet workload install android`; it was never what was missing. |
-| **AC-0.2** | 🟡 SDK | A throwaway `net10.0-android` project builds with a `WebApplication.CreateBuilder(...)` call that binds `http://127.0.0.1:0` and serves a route returning `200 hello`, launched from inside an `Activity`. The bound port is read back off `app.Urls` and logged. |
-| **AC-0.3** | 🔴 DEVICE | On **both** devices, a plain `Android.Webkit.WebView` `LoadUrl`s that loopback address and renders the response body. A blank screen is a fail, not a "needs config" — the config (INTERNET + cleartext, E4) must be in place for this AC to be attempted. |
-| **AC-0.4** | 🔴 DEVICE | On **both** devices, a real `SnapZap.App` page loads in that WebView, the Blazor circuit connects over the SignalR **WebSocket** transport (not long-polling fallback), and one interactive button click round-trips. Transport is asserted from the log, not inferred from the click working. |
+| **AC-0.2** | ⛔ **FAILED** | A `net10.0-android36.0` project cannot host a `WebApplication`: `NETSDK1082`, no `Microsoft.AspNetCore.App` runtime pack exists for any mobile RID (§1.5). Not a config tweak — this is the plan's go/no-go gate resolving negative. |
+| **AC-0.3** | ⛔ **VOID** | Depended on AC-0.2. There is no loopback server to point a WebView at. Re-scope per §1.5. |
+| **AC-0.4** | ⛔ **VOID** | Depended on AC-0.2. Blazor Server circuits over loopback SignalR require the Kestrel that cannot exist here. |
 | **AC-0.5** | 🟡 SDK | The resolved value of `Environment.GetFolderPath(SpecialFolder.LocalApplicationData)` and `SpecialFolder.UserProfile` is logged on-device during the spike and recorded in `docs/ANDROID-VERIFY.md`. Neither is assumed. |
-| **AC-0.6** | 🔴 DEVICE | **Go/no-go recorded in writing.** If AC-0.2 or AC-0.4 fails outright, the fallback re-scope to `BlazorWebView` is written up before any further code lands. Passing silently is not the same as passing — the outcome is a documented decision either way. |
+| **AC-0.6** | ✅ **ANSWERED — NO-GO** | Recorded in writing in §1.5, with the nuget.org runtime-pack evidence and the consequences for the plan's own fallback. The re-scope decision itself is now the open question. |
 
 ### E1 — Host composition, extractable today
 
@@ -258,7 +321,7 @@ none noted in the plan:
 | **AC-3.4** | 🟢 NOW | Contract edges are defined and tested, not left to throw: restoring when the original path is already occupied returns `false` (it does not throw and does not overwrite); restoring a missing/null trashed location returns `false`; trashing across a volume boundary either succeeds or fails with a caught, reported error. |
 | **AC-3.5** | 🟢 NOW | `ILinkService` Android stub: `SameVolume` returns `false` (so `ExportEngine` degrades to copy rather than throwing, per the plan), `CreateHardLink` throws `NotSupportedException`. Covered by a test asserting the degrade-not-throw path. |
 | **AC-3.6** | 🟡 SDK | The app-private trash is a **stated** design decision, surfaced in the UI: the user can see how much space the trash occupies and empty it. Silently accumulating originals in app storage with no read-out is not acceptable. |
-| **AC-3.7** | 🟡 SDK | `AndroidWebViewAppHost : IAppHost` exists in the Android head; `AppHostFactory` gains an Android branch; Windows and macOS host selection is unchanged and its existing tests still pass. |
+| **AC-3.7** | ⛔ **VOID** | `AndroidWebViewAppHost : IAppHost` presumed the §0 architecture. `IAppHost` is a desktop seam for handing a URL to a window; a `BlazorWebView` head has no URL to hand. Windows/macOS host selection is untouched. |
 
 ### E4 — Storage and permissions
 
@@ -283,7 +346,7 @@ none noted in the plan:
 
 | ID | Gate | Criterion |
 |---|---|---|
-| **AC-6.1** | 🟢 NOW | A written audit of every hover-*reveal* affordance (invisible until `:hover`) and every hover-only affordance across `app.css`, `Card.razor`, `Rail.razor`, `Home.razor`, `UndoDialog.razor`, `PhotoGrid.razor`, `SelectionBar.razor`, `PreviewModal.razor`. Each entry records: selector, what it reveals, whether a keyboard/`:focus-visible` path already exists, and the proposed touch treatment. Output: `docs/ANDROID-TOUCH-AUDIT.md`. Distinguish hover-reveal from mere hover-*styling*, which needs no fix. **Note:** `Toolbar.razor` and `FilterBar.razor` are named in CLAUDE.md but do not exist in this tree — that logic lives in `Home.razor`/`Rail.razor`. See §1.5. |
+| **AC-6.1** | 🟢 NOW | A written audit of every hover-*reveal* affordance (invisible until `:hover`) and every hover-only affordance across `app.css`, `Card.razor`, `Rail.razor`, `Home.razor`, `UndoDialog.razor`, `PhotoGrid.razor`, `SelectionBar.razor`, `PreviewModal.razor`. Each entry records: selector, what it reveals, whether a keyboard/`:focus-visible` path already exists, and the proposed touch treatment. Output: `docs/ANDROID-TOUCH-AUDIT.md`. Distinguish hover-reveal from mere hover-*styling*, which needs no fix. **Note:** `Toolbar.razor` and `FilterBar.razor` are named in CLAUDE.md but do not exist in this tree — that logic lives in `Home.razor`/`Rail.razor`. See the note on this row. |
 | **AC-6.2** | 🟢 NOW | The audit covers desktop-only interactions with no touch equivalent — right-click menus, keyboard shortcuts (`HelpDialog`), drag-select, modifier-key selection — and states for each whether v1 needs an alternative or the feature is simply absent on Android. |
 | **AC-6.3** | 🟡 SDK | Every hover-reveal affordance in scope for v1 is reachable by touch. `.undo-thumb-restore` specifically (app.css:977-984) is either always-shown or tap-to-reveal on Android; its existing `:focus-visible` path is preserved so desktop keyboard access does not regress. |
 | **AC-6.4** | 🔴 DEVICE | Tap targets for primary actions meet the 48dp minimum on both devices. |
