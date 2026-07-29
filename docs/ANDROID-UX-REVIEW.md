@@ -112,10 +112,17 @@ Android has no equivalent of the desktop's Setup: no dedup thresholds, no NSFW b
 choice. The catalogue's `meta` settings are shared, so a folder deduplicated on the desktop with
 custom thresholds behaves differently on the phone with no indication why.
 
-**Fixed** — `SettingsActivity`, read-only by design. Editing a threshold invalidates
-`images.dupe_checked_kinds` and forces a re-detect, which is a conversation this screen does not have
-yet. It shows the `DedupSettings` in force and says they live in the catalogue rather than in app
-preferences; Exact and Burst appear as "Always on" rather than being omitted, since their absence
+**Fixed** — `SettingsActivity`. Shipped read-only first, then made editable on the same day after
+the reviewer pushed back: a settings screen you cannot change is half an answer, and the re-detect
+problem is solvable rather than a reason to defer. It is now deliberately the *same surface as the
+desktop's `SetupDialog`* — control for control, same ranges, same step sizes — so neither head can
+express a setting the other cannot. `BurstMaxBits` is exposed on neither, because a loose gate whose
+only job is to stop a camera left running across two scenes from merging them is not a number anyone
+can reason about. Changes save immediately (no Save button, same reasoning as the desktop: there is
+nothing to cancel), and a callout tracks the fact that **these settings change what detection finds,
+not how existing results are judged** — unlike the NSFW bands, nothing moves until detection runs
+again, so the screen says so and offers to run it. Exact and Burst appear as "Always on" rather than
+being omitted, since their absence
 from a settings list reads as "not running". It also answers "how much space is SnapZap using",
 which was unanswerable from inside an app whose data is invisible to the file manager.
 

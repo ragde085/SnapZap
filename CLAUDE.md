@@ -150,7 +150,7 @@ The sidecars are excluded from publish output (`CopyToPublishDirectory="Never"`)
 | `src/SnapZap.App/` | ASP.NET Core host + Blazor Server UI (`Components/`, `Services/`, `wwwroot/`) |
 | `src/SnapZap.Android/` | Native Android head (`net10.0-android36.0`). Views built in code against `Design.cs`, the translated mobile design system. **Not in `SnapZap.slnx`** — build explicitly with `-p:IncludeAndroid=true` so a plain `dotnet build` never needs an Android SDK |
 | `src/SnapZap.Android/SwipeCard.cs` | The review queue's animated card gesture. Read its remarks before changing a threshold or a direction — the three directions are animated *differently on purpose*, and the reasoning is not recoverable from the code alone |
-| `src/SnapZap.Android/SettingsActivity.cs` | Read-only settings: the `DedupSettings` in force, why they live in the catalogue, and app-private storage sizes |
+| `src/SnapZap.Android/SettingsActivity.cs` | Editable dedup settings, deliberately the same surface as the desktop's `SetupDialog` (same controls, same ranges, same steps). Saves on every change; tracks a stale flag because these decide what detection *finds*, so nothing moves until it re-runs |
 | `tests/SnapZap.Tests/` | xUnit test suite + fixtures |
 | `CHANGELOG.md` | User-facing release notes, one section per version — update it alongside every version bump |
 | `docs/DESIGN.md` | Architecture, decisions, data model, pipeline, safety invariants |
@@ -459,9 +459,12 @@ Full rationale in [docs/DEDUP-V2.md](docs/DEDUP-V2.md). The short version:
     second source of truth. Add a matching entry to [`CHANGELOG.md`](CHANGELOG.md) in the same
     change — it has no automation behind it and goes stale the moment a version bump skips it.
 
-11. **`Android.OS.OperationCanceledException` shadows `System.OperationCanceledException`**, exactly
-    as `Android.Graphics.Path` shadows `System.IO.Path`. Any `catch` for cancellation in a file that
-    `using`s `Android.OS` has to spell out `System.`, or it silently catches the wrong type.
+11. **Three Android namespaces shadow types this codebase uses constantly.** `Android.Graphics.Path`
+    over `System.IO.Path`; `Android.OS.OperationCanceledException` over the `System.` one (so any
+    `catch` for cancellation in a file that `using`s `Android.OS` must spell out `System.`); and
+    `Android.Content.Res.Orientation` over `Android.Widget.Orientation`, which every `LinearLayout`
+    here uses — so `Design.cs` does *not* import `Android.Content.Res` and qualifies
+    `ColorStateList` inline instead. One qualified name beats ten ambiguity errors.
 
 12. **`DirectoryRoots.DefaultStart` is where a scan starts, not how far a browser may walk up.**
     They were the same value until it learned to prefer `DCIM/Camera`; `DirectoryPickerActivity` was

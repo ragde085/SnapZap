@@ -9,10 +9,14 @@ Since 1.3.0 the Android head carries its own pair, because the platform requires
 `<Version>`) and `ApplicationVersion` (increment every release, never backwards) in
 [`src/SnapZap.Android/SnapZap.Android.csproj`](src/SnapZap.Android/SnapZap.Android.csproj).
 
-## Unreleased
+## 1.4.0 — 2026-07-29
 
 A senior UX review of the Android app ([docs/ANDROID-UX-REVIEW.md](docs/ANDROID-UX-REVIEW.md)) and
 the nine findings it produced, all now closed.
+
+A minor bump rather than a patch: Stop, sort, a settings screen, range selection and the animated
+swipe gestures are new capability, not repairs. The desktop moves with it — the repo keeps one
+`<Version>` — though its only change is the folder picker's new quick-jumps.
 
 ### Added — Android
 
@@ -26,8 +30,11 @@ the nine findings it produced, all now closed.
   now it can actually be stopped, and the same button ends the duplicate pass that follows.
 - **A sort control** on the library — scan order, newest, oldest, name, largest.
 - **Hold-and-drag selects a range**, as the design always said it would.
-- **A settings screen**: the duplicate thresholds in force, where they came from, and what SnapZap
-  is using in storage.
+- **A settings screen** with the same controls as the desktop's Setup panel — variant detection,
+  rotation matching, how different two photos may look, and the burst window — plus what SnapZap is
+  using in storage. Changing a threshold flags that detection has not run with it yet and offers to
+  re-run it on the spot, because these settings decide what detection *finds* rather than how
+  existing results are judged.
 - **Screen-reader labels throughout.** Every icon control, photo tile, list row and plan step now
   announces itself; the app previously had none at all.
 

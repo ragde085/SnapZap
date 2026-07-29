@@ -458,6 +458,157 @@ public static class Design
         return t;
     }
 
+    /// <summary>
+    /// Repaints a stock Material control in this system's single accent.
+    /// </summary>
+    /// <remarks>
+    /// <c>Switch</c> and <c>SeekBar</c> arrive tinted with the platform theme's <c>colorAccent</c>,
+    /// which on Material Light is teal. This palette has exactly one hue and it is not that — an
+    /// untinted switch is the most obviously foreign thing that can appear on one of these screens.
+    /// Tinted in code rather than through a theme because the whole UI is built in code; there is no
+    /// styles.xml here to hang a <c>colorAccent</c> override on.
+    /// </remarks>
+    static void Tint(View control)
+    {
+        // Android.Content.Res is deliberately not `using`-imported: it carries an `Orientation` enum
+        // that shadows Android.Widget.Orientation, which every LinearLayout in this file uses. One
+        // qualified type name beats ten ambiguity errors. (Third instance of this trap here, after
+        // Android.Graphics.Path and Android.OS.OperationCanceledException.)
+        //
+        // Two-state so "off" reads as neutral rather than as a dimmed accent — an accent-tinted
+        // off-switch looks like a control caught mid-animation.
+        switch (control)
+        {
+            case Switch sw:
+                sw.ThumbTintList = new Android.Content.Res.ColorStateList(
+                    [[Android.Resource.Attribute.StateChecked], []],
+                    [Accent.ToArgb(), Neutral400.ToArgb()]);
+                sw.TrackTintList = new Android.Content.Res.ColorStateList(
+                    [[Android.Resource.Attribute.StateChecked], []],
+                    [Accent.ToArgb(), Neutral300.ToArgb()]);
+                break;
+
+            case SeekBar bar:
+                var accent = Android.Content.Res.ColorStateList.ValueOf(Accent);
+                bar.ProgressTintList = accent;
+                bar.ThumbTintList = accent;
+                bar.ProgressBackgroundTintList = Android.Content.Res.ColorStateList.ValueOf(Neutral300);
+                break;
+        }
+    }
+
+    /// <summary>
+    /// A settings row with a switch: title, optional explanatory note, control on the right.
+    /// </summary>
+    /// <remarks>
+    /// The whole row toggles, not just the switch — a 40dp thumb at the screen edge is the smallest
+    /// target on any settings screen, and the title beside it is dead space otherwise. The switch is
+    /// left out of the accessibility tree because the row carries the state; announcing both gives a
+    /// screen reader two nodes for one control.
+    /// </remarks>
+    public static View ToggleRow(Context c, string title, string? note, bool value, Action<bool> onChanged)
+    {
+        var wrap = new LinearLayout(c) { Orientation = Orientation.Vertical };
+
+        var row = new LinearLayout(c) { Orientation = Orientation.Horizontal };
+        row.SetGravity(GravityFlags.CenterVertical);
+        row.SetMinimumHeight(Dp(c, MinTarget));
+        row.SetPadding(Dp(c, 16), Dp(c, 12), Dp(c, 16), Dp(c, 12));
+
+        var col = new LinearLayout(c) { Orientation = Orientation.Vertical };
+        col.LayoutParameters = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f);
+        col.AddView(Body(c, title, 14f, bold: true));
+        if (note is not null) col.AddView(Note(c, note));
+        row.AddView(col);
+
+        var sw = new Switch(c) { Checked = value };
+        sw.SetPadding(Dp(c, 10), 0, 0, 0);
+        sw.ImportantForAccessibility = ImportantForAccessibility.No;
+        Tint(sw);
+        row.AddView(sw);
+
+        void Announce() => row.ContentDescription = $"{title}. {(sw.Checked ? "On" : "Off")}. {note}";
+        Announce();
+
+        // Guarded so the programmatic Checked assignment below does not re-enter onChanged.
+        var suppress = false;
+        sw.CheckedChange += (_, e) =>
+        {
+            if (suppress) return;
+            Announce();
+            onChanged(e.IsChecked);
+        };
+        row.Click += (_, _) =>
+        {
+            suppress = true;
+            sw.Checked = !sw.Checked;
+            suppress = false;
+            Announce();
+            onChanged(sw.Checked);
+        };
+
+        wrap.AddView(row);
+        wrap.AddView(Rule(c, 1f, Divider));
+        return wrap;
+    }
+
+    /// <summary>
+    /// A settings row with a slider: label and live value on one line, the bar under it, an optional
+    /// hint under that.
+    /// </summary>
+    /// <remarks>
+    /// <para>Reports only on release (<c>StopTrackingTouch</c>), never on every pixel of the
+    /// drag. Each of these writes to the catalogue and marks detection stale; a continuous callback
+    /// would do both dozens of times per gesture. The label still updates live, so the control feels
+    /// immediate — it is only the commit that waits.</para>
+    ///
+    /// <para><paramref name="step"/> exists because these are not free-running numbers: the desktop
+    /// moves the variant threshold two bits at a time, and matching that keeps the two heads from
+    /// offering settings the other cannot express.</para>
+    /// </remarks>
+    public static View SliderRow(Context c, string label, string? hint, int value, int min, int max,
+                                 int step, Func<int, string> format, Action<int> onChanged)
+    {
+        var wrap = new LinearLayout(c) { Orientation = Orientation.Vertical };
+
+        var body = new LinearLayout(c) { Orientation = Orientation.Vertical };
+        body.SetPadding(Dp(c, 16), Dp(c, 12), Dp(c, 16), Dp(c, 12));
+
+        var head = new LinearLayout(c) { Orientation = Orientation.Horizontal };
+        head.SetGravity(GravityFlags.CenterVertical);
+        var l = Body(c, label, 14f, bold: true);
+        l.LayoutParameters = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f);
+        head.AddView(l);
+        var readout = Body(c, format(value), 14f, bold: true);
+        readout.SetTextColor(Accent700);
+        head.AddView(readout);
+        body.AddView(head);
+
+        var bar = new SeekBar(c)
+        {
+            Max = (max - min) / step,
+            Progress = (value - min) / step,
+        };
+        bar.SetPadding(0, Dp(c, 8), 0, Dp(c, 4));
+        bar.ImportantForAccessibility = ImportantForAccessibility.No;
+        Tint(bar);
+        body.AddView(bar);
+
+        if (hint is not null) body.AddView(Note(c, hint));
+
+        int Current() => min + bar.Progress * step;
+        void Announce() =>
+            body.ContentDescription = $"{label}, {format(Current())}. {hint}";
+        Announce();
+
+        bar.ProgressChanged += (_, _) => { readout.Text = format(Current()); Announce(); };
+        bar.StopTrackingTouch += (_, _) => onChanged(Current());
+
+        wrap.AddView(body);
+        wrap.AddView(Rule(c, 1f, Divider));
+        return wrap;
+    }
+
     /// <summary>Standard vertical gap, in the mock's own px.</summary>
     public static View Gap(Context c, float dp)
     {

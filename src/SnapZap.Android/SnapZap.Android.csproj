@@ -38,8 +38,8 @@
       every release. CLAUDE.md's "exactly one source" rule predates the Android head; it is still
       true for the shipping desktop artifacts, which read the version back out of the built .exe.
     -->
-    <ApplicationVersion>2</ApplicationVersion>
-    <ApplicationDisplayVersion>1.3.0</ApplicationDisplayVersion>
+    <ApplicationVersion>3</ApplicationVersion>
+    <ApplicationDisplayVersion>1.4.0</ApplicationDisplayVersion>
   </PropertyGroup>
 
   <!--
