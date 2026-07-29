@@ -54,33 +54,54 @@ Current measured state:
 | Android SDK | ✅ `~/Library/Android/sdk` (`build-tools/36.0.0`, `platform-tools`, `emulator`) |
 | `adb` | ✅ works — `~/Library/Android/sdk/platform-tools/adb`, v1.0.41 |
 | Devices attached | ❌ none yet (`adb devices` empty) |
-| **API 36 platform** | ❌ **the one blocker** — see below |
+| API 36 platform | ✅ `platforms/android-36` installed |
+| Emulator image / AVD | ❌ none — no `system-images/`, `emulator -list-avds` empty |
 | `ANDROID_HOME` / PATH | ❌ unset; every build so far passed `-p:AndroidSdkDirectory=` explicitly |
 
-**The remaining blocker is narrow and specific.** The SDK has `platforms/android-36.1`, but .NET's
-`net10.0-android36.0` target looks for `platforms/android-36/android.jar` **exactly** — the
-directory names are not interchangeable, and the build fails with **XA5207**. Installing it
-requires accepting Google's Android SDK license agreements
-(`-p:AcceptAndroidSDKLicenses=true`), which is the user's agreement to make, not this project's:
+**✅ `SnapZap.Core` now builds for `net10.0-android36.0`.** This is the single most important
+result so far — it clears the §1.2 SkiaSharp risk at the **build and restore** level:
 
-```bash
-dotnet build src/SnapZap.Core -t:InstallAndroidDependencies -f net10.0-android36.0 \
-  -p:IncludeAndroid=true -p:AcceptAndroidSDKLicenses=true \
-  -p:AndroidSdkDirectory=$HOME/Library/Android/sdk
+```
+src/SnapZap.Core/bin/Debug/net10.0-android36.0/SnapZap.Core.dll   ← produced, 230 KB
+SkiaSharp.NativeAssets.Android/4.150.1
+    runtimes/android-arm/native/libSkiaSharp.so
+    runtimes/android-arm64/native/libSkiaSharp.so     ← the ABI both test devices use
+    runtimes/android-x64/native/libSkiaSharp.so
+    runtimes/android-x86/native/libSkiaSharp.so
 ```
 
-Or install **Android 16 / API level 36** from Android Studio's SDK Manager.
+⚠ **This does not clear AC-2.3.** Resolving and compiling is not loading and executing. Whether
+`libSkiaSharp.so` actually initialises on-device, and whether a perceptual hash computed there is
+bit-identical to the dev-Mac value that `GoldenValueTests` pins, is still unanswered and still
+🔴 DEVICE. The same distinction applies to ONNX (AC-2.4): restore succeeding says nothing about
+issue #29270, which is about which native library gets **bundled** on a macOS host.
 
-Recommended once done, so no later command needs the explicit SDK path:
+#### Two CLI notes that cost time
+
+- **`sdkmanager` is deprecated.** The replacement is the `android` binary in `cmdline-tools`:
+  `android sdk install <package>`. Package names use `/` separators, not `;` — so
+  `platforms/android-36`, not `platforms;android-36`. Global flags like `--no-metrics` go
+  **before** the subcommand.
+- **The new CLI has no `--sdk_root` flag**, so it installs into whatever `ANDROID_HOME` points at.
+  With `ANDROID_HOME` unset it can silently populate a different SDK than the one .NET is building
+  against. Set it explicitly (below) before installing anything.
+
+**Resolved.** The trap worth remembering: the SDK had `platforms/android-36.1`, but .NET's
+`net10.0-android36.0` target looks for `platforms/android-36/android.jar` **exactly** — the
+directory names are not interchangeable, and the mismatch fails with **XA5207**. Fixed with:
+
+```bash
+export ANDROID_HOME="$HOME/Library/Android/sdk"
+/opt/homebrew/share/android-commandlinetools/cmdline-tools/latest/bin/android \
+  --no-metrics sdk install platforms/android-36
+```
+
+Still recommended, so no later command needs an explicit `-p:AndroidSdkDirectory=`:
 
 ```bash
 export ANDROID_HOME="$HOME/Library/Android/sdk"
 export PATH="$PATH:$ANDROID_HOME/platform-tools"
 ```
-
-Notably, in the same failing invocation the **`net10.0` leg compiled clean** — confirming the
-opt-in multi-targeting (AC-2.7) leaves the desktop build undisturbed even while the Android leg
-is broken.
 
 Two things that restore proved along the way, which were open questions before:
 
@@ -194,7 +215,7 @@ none noted in the plan:
 
 | ID | Gate | Criterion |
 |---|---|---|
-| **AC-0.1** | 🟡 SDK | The Android **SDK** is installed and discoverable (`ANDROID_HOME`, or `-p:AndroidSdkDirectory=`), `adb devices` resolves, and `dotnet build src/SnapZap.Core -p:IncludeAndroid=true` succeeds. **Mostly done** — see §1.1's toolchain table. Workload packs ✅, SDK ✅, `adb` ✅, restore ✅. Outstanding: **the API 36 platform (XA5207)**, which needs a Google license acceptance, and `ANDROID_HOME`/PATH. Do **not** run `dotnet workload install android`; it is not what is missing. |
+| **AC-0.1** | ✅ **DONE (host)** | Android SDK installed and API 36 present; `adb` v1.0.41 resolves; `dotnet build src/SnapZap.Core -p:IncludeAndroid=true` **succeeds**, producing `net10.0-android36.0/SnapZap.Core.dll` with `libSkiaSharp.so` for all four ABIs. Outstanding: `ANDROID_HOME`/PATH are still unset (every command passes `-p:AndroidSdkDirectory=`), no emulator image or AVD exists, and no device is attached. Do **not** run `dotnet workload install android`; it was never what was missing. |
 | **AC-0.2** | 🟡 SDK | A throwaway `net10.0-android` project builds with a `WebApplication.CreateBuilder(...)` call that binds `http://127.0.0.1:0` and serves a route returning `200 hello`, launched from inside an `Activity`. The bound port is read back off `app.Urls` and logged. |
 | **AC-0.3** | 🔴 DEVICE | On **both** devices, a plain `Android.Webkit.WebView` `LoadUrl`s that loopback address and renders the response body. A blank screen is a fail, not a "needs config" — the config (INTERNET + cleartext, E4) must be in place for this AC to be attempted. |
 | **AC-0.4** | 🔴 DEVICE | On **both** devices, a real `SnapZap.App` page loads in that WebView, the Blazor circuit connects over the SignalR **WebSocket** transport (not long-polling fallback), and one interactive button click round-trips. Transport is asserted from the log, not inferred from the click working. |
@@ -218,7 +239,7 @@ none noted in the plan:
 | ID | Gate | Criterion |
 |---|---|---|
 | **AC-2.1** | 🟢 NOW | A written audit of every native-backed `PackageReference` in `SnapZap.Core` — SkiaSharp, `Microsoft.ML.OnnxRuntime`, `SQLitePCLRaw.bundle_e_sqlite3` — recording for each: whether an Android-supporting package exists at (or compatible with) the pinned version, the exact package id to add, the supported ABIs, and the license. Sources cited. Output: `docs/ANDROID-DEPS-AUDIT.md`. |
-| **AC-2.2** | 🟢 NOW | The audit states explicitly whether `SkiaSharp.NativeAssets.Android` at `4.150.1` exists and whether adding it to `SnapZap.Core` affects the existing macOS/Win32 publish size or asset set. |
+| **AC-2.2** | ✅ **DONE** | The audit states explicitly whether `SkiaSharp.NativeAssets.Android` at `4.150.1` exists and whether adding it to `SnapZap.Core` affects the existing macOS/Win32 publish size or asset set. |
 | **AC-2.3** | 🔴 DEVICE | **SkiaSharp spike.** On both devices, decode a real JPEG off `/storage/emulated/0`, produce a thumbnail, and compute a Laplacian blur score and a 272-bit perceptual hash. The phash must match the value the same file produces on the dev Mac — a platform-dependent hash would silently break dedup across the two, and `GoldenValueTests` is the reference. |
 | **AC-2.4** | 🔴 DEVICE | **ONNX spike** (plan task 7). Construct `OnnxNsfwClassifier` against the real `nsfw.onnx` on both devices and score a known fixture; the score matches the desktop score within a stated tolerance. ⚠ The plan cites microsoft/onnxruntime**#11618**, which is closed and Xamarin-era. The live risk is **#29270** (open, filed June 2026): a plain-`net10.0` library `ProjectReference`d from a `net10.0-android` head and **built on macOS** gets the wrong Linux/glibc native library bundled and crashes at launch. That is SnapZap's exact topology and exact dev host. The spike must reproduce or clear #29270 specifically, and the one "fixed" report on that thread came from a Windows host — macOS was never cleared. |
 | **AC-2.7** | ✅ **DECIDED** | `SnapZap.Core` multi-targets `net10.0;net10.0-android36.0`, **behind an opt-in flag**: `-p:IncludeAndroid=true`. Default builds keep a singular `<TargetFramework>` and are entirely non-cross-targeting, so the desktop build is unchanged and no contributor or CI runner needs Android tooling to build the shipping product. Verified: default `dotnet build` clean, 245 tests pass, `win-x64` publish unaffected. The Android leg's native assets are conditioned on `TargetPlatformIdentifier`, not a literal TFM string. |
