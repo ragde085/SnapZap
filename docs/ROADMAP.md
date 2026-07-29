@@ -153,6 +153,57 @@ from geometry measured in `interop.js`.
    picks selection first, else the folder focused in the tree, else the whole `ScanRoot`.
    The scan-action tooltip reflects the active scope. Covered by `NsfwScorerScopeTests`.
 
+### ⚠ Safety: burst frames are bulk-selectable through superset Variant groups — found 2026-07-29
+
+**This affects the shipping desktop app, not just Android.** Found by building a real five-frame
+burst fixture (EXIF `DateTimeOriginal` one second apart, same camera, subject moving slightly) and
+walking the Android review queue. Two distinct defects, both in Core:
+
+**A. A Variant group that is a strict superset of a Burst group survives reconciliation.**
+
+Measured on the fixture:
+
+```
+group 4  burst    burst_2, burst_3, burst_4, burst_5        (4 frames)
+group 2  variant  burst_1, burst_2, burst_3, burst_4, burst_5 (5 frames)
+```
+
+`GroupReconciler` drops a group only when a stronger group contains **every** one of its members
+("only exact cover is dropped" — its own remarks, and a deliberate rule: merely-overlapping groups
+are different claims and both should survive). The Variant group is a *superset*, so it is not
+covered and survives. Because `Variant` is `IsBulkSelectable()`, every burst frame is then
+selectable in bulk — the exact failure CLAUDE.md describes as making this "a shredder". The
+burst-beats-variant precedence is doing nothing here, because it only fires on exact cover.
+
+`AppState.InScope` filters by the *group's* kind, so the desktop has this hole too.
+
+**B. Complete-linkage can split a real burst, and the split-off frames fall through to Variant.**
+
+`burst_1` is absent from the Burst group at all: complete-linkage requires a clique, and
+`burst_1`↔`burst_5` exceeded `BurstMaxBits` (subject moved furthest across the span). So no
+burst group contains it, and **no image-level "is it in a burst group" gate can protect it** — it
+is only ever described as a Variant. Verified: after fixing A, `burst_1` is still offered.
+
+**Mitigated so far:** `ReviewActivity` (Android) applies a second gate — membership of *any* burst
+group disqualifies a photo regardless of which group offers it. That fixes A on Android and took
+the queue from 10 candidates to 7. It cannot fix B.
+
+**Proposed direction, needs a decision — this is safety-critical Core with existing tests:**
+
+- For A: make bulk-selection exclude any image that is a member of a burst group, at the
+  predicate level (`InScope`/`IsBulkSelectable`'s call sites) rather than per-UI. One rule, one
+  place, both heads — the same argument CLAUDE.md already makes for `NsfwDecision`.
+- For B: consider **single-linkage for `BurstFinder` specifically**. CLAUDE.md's warning against
+  union-find is about perceptual similarity across a whole library, where chaining collapses
+  everything. A burst is already bounded by camera *and* an EXIF time window, so chaining within
+  those bounds cannot run away — and erring toward "these are burst frames" errs toward review
+  rather than deletion, which is the direction this codebase chooses everywhere else.
+
+⚠ The fixture is synthetic and its subject moves a lot across five frames, so the *prevalence* on
+real bursts is unknown — but the mechanism is proven, and both defects are real.
+
+---
+
 ### Delete/history model + swipe review — captured 2026-07-29
 
 Four notes from a design conversation, checked against the code as they were written so each one
