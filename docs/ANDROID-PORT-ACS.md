@@ -57,6 +57,22 @@ rather than at classifier construction.
 **This is a higher-severity risk than the ONNX one in §5, and it is absent from the plan's risk
 table.** It gets its own AC epic (E2) and its own spike, run alongside the ONNX spike.
 
+**And the fix is not "add a package".** Independently verified against the actual `.nupkg` from
+`api.nuget.org`: `SkiaSharp.NativeAssets.Android` 4.150.1 ships `lib/` and dependency groups for
+**only** `net9.0-android35.0` and `net10.0-android36.0`. A plain `net10.0` project cannot consume
+it. So `SnapZap.Core` has to **multi-target** — `net10.0;net10.0-android36.0` — with the native
+asset conditioned per TFM.
+
+That directly contradicts the plan's §2, which says to "**prefer keeping it out of
+`SnapZap.Core`** so that project stays a plain portable-.NET library with no Android workload
+dependency". That preference is still right for the *`IPlatformServices` implementations* (they
+need `Android.Content.Context`, and W2's portable `FolderTrashService` shows the seam can be drawn
+so Core never sees an SDK type). It is **not achievable for SkiaSharp**, because the native asset
+is bound to the TFM rather than to any Android API in our code. Consequence: **building
+`SnapZap.Core` will require the Android workload installed**, on every machine and any CI, once
+this lands. That is a real cost the plan does not price, and it needs an explicit decision rather
+than being discovered during task 2.
+
 ### 1.3 `SnapZap.App` cannot be referenced from an Android head as it stands
 
 Plan task 2 says the Android head "References `SnapZap.Core` and `SnapZap.App`". Three obstacles,
@@ -135,7 +151,9 @@ none noted in the plan:
 | **AC-2.1** | 🟢 NOW | A written audit of every native-backed `PackageReference` in `SnapZap.Core` — SkiaSharp, `Microsoft.ML.OnnxRuntime`, `SQLitePCLRaw.bundle_e_sqlite3` — recording for each: whether an Android-supporting package exists at (or compatible with) the pinned version, the exact package id to add, the supported ABIs, and the license. Sources cited. Output: `docs/ANDROID-DEPS-AUDIT.md`. |
 | **AC-2.2** | 🟢 NOW | The audit states explicitly whether `SkiaSharp.NativeAssets.Android` at `4.150.1` exists and whether adding it to `SnapZap.Core` affects the existing macOS/Win32 publish size or asset set. |
 | **AC-2.3** | 🔴 DEVICE | **SkiaSharp spike.** On both devices, decode a real JPEG off `/storage/emulated/0`, produce a thumbnail, and compute a Laplacian blur score and a 272-bit perceptual hash. The phash must match the value the same file produces on the dev Mac — a platform-dependent hash would silently break dedup across the two, and `GoldenValueTests` is the reference. |
-| **AC-2.4** | 🔴 DEVICE | **ONNX spike** (plan task 7). Construct `OnnxNsfwClassifier` against the real `nsfw.onnx` on both devices and score a known fixture; the score matches the desktop score within a stated tolerance. |
+| **AC-2.4** | 🔴 DEVICE | **ONNX spike** (plan task 7). Construct `OnnxNsfwClassifier` against the real `nsfw.onnx` on both devices and score a known fixture; the score matches the desktop score within a stated tolerance. ⚠ The plan cites microsoft/onnxruntime**#11618**, which is closed and Xamarin-era. The live risk is **#29270** (open, filed June 2026): a plain-`net10.0` library `ProjectReference`d from a `net10.0-android` head and **built on macOS** gets the wrong Linux/glibc native library bundled and crashes at launch. That is SnapZap's exact topology and exact dev host. The spike must reproduce or clear #29270 specifically, and the one "fixed" report on that thread came from a Windows host — macOS was never cleared. |
+| **AC-2.7** | 🟢 NOW | A written decision on `SnapZap.Core` multi-targeting (§1.2): whether Core becomes `net10.0;net10.0-android36.0`, or SkiaSharp use is pushed behind an abstraction so an Android-flavoured imaging assembly can be swapped in instead. Whichever is chosen, the consequence for **desktop and CI builds needing the Android workload installed** is stated explicitly and accepted, not discovered later. Adding the Android native asset unconditionally to the current single-TFM Core is **not** an option — it breaks `win-x64`/macOS restore rather than merely bloating it. |
+| **AC-2.8** | 🟡 SDK | `SQLitePCL.Batteries_V2.Init()` is confirmed either called or provably unnecessary on Android. Verified: **no explicit init call exists anywhere in `src/`** today — the bundle's module initializer covers desktop, and whether it fires under this Android TFM is exactly the kind of thing that fails at first DB open rather than at startup. Confirm during the E2 SQLite spike (AC-2.5). |
 | **AC-2.5** | 🔴 DEVICE | **SQLite spike.** `catalog.db` opens, the schema is created, a row round-trips, and the file survives a full app restart. |
 | **AC-2.6** | 🟡 SDK | Each of AC-2.3/2.4/2.5 has an independently recorded outcome. Per the plan, an ONNX failure degrades NSFW scoring gracefully and does not block the port; a **SkiaSharp or SQLite failure is a v1 blocker** and must be escalated rather than worked around. |
 
@@ -202,16 +220,16 @@ none noted in the plan:
 |---|---|---|---|
 | E0 spike | — | 0.1, 0.2, 0.5 | 0.3, 0.4, 0.6 |
 | E1 host | 1.1–1.5 | 1.6, 1.7 | — |
-| E2 native deps | 2.1, 2.2 | 2.6 | 2.3, 2.4, 2.5 |
+| E2 native deps | 2.1, 2.2, 2.7 | 2.6, 2.8 | 2.3, 2.4, 2.5 |
 | E3 platform services | 3.1–3.5 | 3.6, 3.7 | — |
 | E4 storage/perms | — | 4.1, 4.3 | 4.2, 4.4, 4.5 |
 | E5 paths | 5.1, 5.2 | — | 5.3, 5.4 |
 | E6 touch | 6.1, 6.2 | 6.3 | 6.4, 6.5 |
 | E7 DoD | 7.8, 7.9 | 7.7 | 7.1–7.6 |
 
-**17 of 44 ACs are executable today.** They are also the ones that hold their value if the §0 spike
+**18 of 46 ACs are executable today.** They are also the ones that hold their value if the §0 spike
 fails and the port re-scopes to `BlazorWebView` — the host extraction, the portable trash service,
-the picker seam, and all three audits are prerequisites either way.
+the picker seam, the multi-targeting decision, and all three audits are prerequisites either way.
 
 ---
 
