@@ -2,6 +2,7 @@ using Android.App;
 using Android.Content;
 using Android.OS;
 using Android.Views;
+using Android.Graphics;
 using Android.Widget;
 using SnapZap.Core.Delete;
 
@@ -91,11 +92,14 @@ public sealed class TrashActivity : Activity
             row.AddView(Text($"{b.Total} photo(s) · {when:yyyy-MM-dd HH:mm}"
                            + (b.Restored > 0 ? $" · {b.Restored} restored" : ""), 14f));
 
+            var batchButtons = new LinearLayout(this) { Orientation = Orientation.Horizontal };
+
             // A fully-restored batch has nothing left to put back, so offering the button would be
             // a control that reports success without doing anything.
             if (b.Restored < b.Total)
             {
                 var restore = Button($"Restore {b.Total - b.Restored}", null);
+                restore.LayoutParameters = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f);
                 restore.Click += async (_, _) =>
                 {
                     restore.Enabled = false;
@@ -116,7 +120,63 @@ public sealed class TrashActivity : Activity
                     }
                     Refresh();
                 };
-                row.AddView(restore);
+                batchButtons.AddView(restore);
+            }
+
+            var forgetBatch = Button("Remove all", () => ConfirmForgetBatch(b));
+            forgetBatch.LayoutParameters = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f);
+            batchButtons.AddView(forgetBatch);
+            row.AddView(batchButtons);
+
+            // Per-photo controls. A batch is whatever one delete happened to sweep up, which is not
+            // necessarily a set the user wants to act on as a unit — "restore that one" and "get rid
+            // of that one for good" are both ordinary asks, and only offering batch-level actions
+            // would force an all-or-nothing choice over a grouping the app invented.
+            foreach (var item in svc.ItemsInBatch(b.BatchId, 50))
+            {
+                var itemRow = new LinearLayout(this) { Orientation = Orientation.Horizontal };
+                itemRow.SetGravity(GravityFlags.CenterVertical);
+
+                // The thumbnail is the whole point of history being browsable: a filename tells you
+                // nothing about whether you want a photo back. This is also the one place the
+                // "delete the catalogue row, keep the thumbnail" rule pays off — the images row is
+                // gone, so there is no ImageRecord to ask, and undo_log.content_hash plus the
+                // content-addressed cache is all that is left to render from. Anything that later
+                // prunes "orphaned" thumbnails breaks exactly this screen.
+                var thumb = new ImageView(this);
+                thumb.SetScaleType(ImageView.ScaleType.CenterCrop);
+                thumb.LayoutParameters = new LinearLayout.LayoutParams(140, 140) { RightMargin = 16 };
+                thumb.SetImageBitmap(LoadThumb(item.ContentHash));
+                itemRow.AddView(thumb);
+
+                var name = Text(System.IO.Path.GetFileName(item.OriginalPath)
+                              + (item.Restored ? "  (restored)" : ""), 12f);
+                name.LayoutParameters = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1.4f);
+                itemRow.AddView(name);
+
+                if (!item.Restored)
+                {
+                    var one = Button("Restore", null);
+                    // Smaller text and equal weights so the label fits on one line next to the
+                    // thumbnail — at the default size "Restore" wrapped to "RESTOR / E".
+                    one.SetTextSize(Android.Util.ComplexUnitType.Sp, 11f);
+                    one.LayoutParameters = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f);
+                    one.Click += async (_, _) =>
+                    {
+                        one.Enabled = false;
+                        var ok = await Task.Run(() => svc.RestoreItemAsync(item.Id));
+                        Toast.MakeText(this, ok ? "Restored" : "No longer in the trash", ToastLength.Short)!.Show();
+                        Refresh();
+                    };
+                    itemRow.AddView(one);
+                }
+
+                var forget = Button("Remove", () => ConfirmForgetItem(item));
+                forget.SetTextSize(Android.Util.ComplexUnitType.Sp, 11f);
+                forget.LayoutParameters = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f);
+                itemRow.AddView(forget);
+
+                row.AddView(itemRow);
             }
 
             _batchList.AddView(row);
@@ -124,9 +184,9 @@ public sealed class TrashActivity : Activity
     }
 
     /// <summary>
-    /// The only irreversible action in the app, so the confirmation names the consequence rather
-    /// than asking "are you sure?" — the user needs to know that Restore stops working, which is
-    /// not obvious from "empty trash".
+    /// One of the two irreversible actions in the app (the other is removing a single photo from
+    /// the trash). The confirmation names the consequence rather than asking "are you sure?" — the
+    /// user needs to know that Restore stops working, which is not obvious from "empty trash".
     /// </summary>
     void ConfirmEmpty()
     {
@@ -151,6 +211,80 @@ public sealed class TrashActivity : Activity
                 Refresh();
             })!
             .Show();
+    }
+
+    /// <summary>
+    /// Removing one photo from the trash. Confirmed, because it is irreversible — this and
+    /// emptying the trash are the only two actions in SnapZap that are.
+    /// </summary>
+    void ConfirmForgetItem(UndoItem item)
+    {
+        var name = System.IO.Path.GetFileName(item.OriginalPath);
+
+        // Two genuinely different actions behind one word, so they get two different warnings. For
+        // a restored entry the photo is back in the library and only the record goes; saying
+        // "deleted for good" there would be a lie that scares the user off a harmless action.
+        var message = item.Restored
+            ? $"“{name}” was already restored, so only this history entry is removed. The photo "
+            + "itself stays where it is."
+            : $"“{name}” will be deleted for good and cannot be restored.";
+
+        new AlertDialog.Builder(this)
+            .SetTitle(item.Restored ? "Remove history entry?" : "Delete permanently?")!
+            .SetMessage(message)!
+            .SetNegativeButton("Cancel", (EventHandler<DialogClickEventArgs>?)null)!
+            .SetPositiveButton(item.Restored ? "Remove entry" : "Delete permanently", (_, _) =>
+            {
+                var ok = _catalog.NewDeleteService().ForgetItem(item.Id);
+                Toast.MakeText(this, ok ? "Removed" : "Could not remove that file", ToastLength.Short)!.Show();
+                Refresh();
+            })!
+            .Show();
+    }
+
+    /// <summary>Same, for a whole batch. Also confirmed, and it names the count.</summary>
+    void ConfirmForgetBatch(UndoBatch b)
+    {
+        var pending = b.Total - b.Restored;
+
+        new AlertDialog.Builder(this)
+            .SetTitle("Remove these from the trash?")!
+            .SetMessage(pending > 0
+                ? $"{pending} photo(s) will be deleted for good and cannot be restored."
+                  + (b.Restored > 0 ? $" The {b.Restored} already restored will keep their files." : "")
+                : $"All {b.Total} in this batch were already restored, so only the history entries "
+                  + "are removed. The photos themselves stay where they are.")!
+            .SetNegativeButton("Cancel", (EventHandler<DialogClickEventArgs>?)null)!
+            .SetPositiveButton(pending > 0 ? "Delete permanently" : "Remove entries", (_, _) =>
+            {
+                var n = _catalog.NewDeleteService().ForgetBatch(b.BatchId);
+                Android.Util.Log.Info("SnapZap", $"forgot {n} entries from {b.BatchId}");
+                Toast.MakeText(this, $"Removed {n}", ToastLength.Short)!.Show();
+                Refresh();
+            })!
+            .Show();
+    }
+
+    /// <summary>
+    /// The cached thumbnail for a deleted photo, keyed by content hash —
+    /// <c>&lt;thumbs&gt;/&lt;hash[..2]&gt;/&lt;hash&gt;.jpg</c>, the same content-addressed layout the
+    /// desktop's <c>/api/thumb/{hash}</c> serves and the Android grid reads.
+    /// </summary>
+    /// <remarks>
+    /// Null when the row predates <c>undo_log.content_hash</c> (added by migration) or the
+    /// thumbnail was never produced — a blank tile, not a missing row, because a history entry you
+    /// cannot preview is still one you may want to restore.
+    /// </remarks>
+    Bitmap? LoadThumb(string? contentHash)
+    {
+        if (contentHash is not { Length: >= 2 }) return null;
+        try
+        {
+            var path = System.IO.Path.Combine(_catalog.ThumbDir, contentHash[..2], contentHash + ".jpg");
+            if (File.Exists(path)) return BitmapFactory.DecodeFile(path);
+        }
+        catch (Exception) { }
+        return null;
     }
 
     /// <summary>Matches the desktop's formatting so the same number reads the same on both.</summary>

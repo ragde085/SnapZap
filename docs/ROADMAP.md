@@ -288,20 +288,30 @@ says whether it is a change or already true.
     image. Note the standing tension: thumbnails then grow unbounded, so any eventual cleanup must
     be driven by `undo_log` retention, never by orphan detection.
 
-14. **Let a record be removed from history.** ⚠ **Genuine gap** — `undo_log` is only ever
-    `INSERT`ed and `UPDATE`d (`restored=1`); there is no `DELETE` against it anywhere, so history
-    grows forever and cannot be pruned. Wanted: remove a single record, and probably a whole batch.
+14. ✅ **Done 2026-07-29 — and the design question is settled: removal purges.**
+    `undo_log` had no `DELETE` against it anywhere, so history grew forever and could not be
+    pruned. `DeleteService.ForgetItem`/`ForgetBatch` now remove an entry, and the decision on the
+    collision flagged when this was captured is: **the record and the file go together.**
 
-    One design consequence to settle before building it, because it collides with a safety
-    invariant: **`undo_log.new_location` is the only pointer to the trashed file.** Drop the record
-    and the file is orphaned in the app trash forever, invisible and unreclaimable. So "remove from
-    history" naturally wants to purge the trashed file too — which would be the app's *first hard
-    delete*, against DESIGN's "nothing is hard-deleted" rule. Decide deliberately: either the
-    record removal is forget-only (leaving orphans, needing a separate trash-purge story), or it
-    purges and that becomes an explicit, confirmed, documented exception to the invariant. On
-    Android this compounds with AC-3.6 — ✅ now done: `TrashActivity` provides the size read-out
-    and the empty action, and emptying is where the orphaning becomes visible, since the confirmation
-    has to warn that history entries stop being restorable.
+    The alternative — forget the record only — would strand the file in the trash permanently,
+    since `undo_log.new_location` is the only pointer SnapZap keeps to it: still consuming
+    storage, no longer restorable, no longer visible on any screen. "Remove from trash" that
+    silently leaves the bytes behind is worse than either honest option. So removal is the app's
+    second irreversible action, and like the first (`Empty`) it is **confirmed**.
+
+    An already-restored entry is a different action behind the same word, and gets a different
+    warning: the photo is back in the user's library, so only the record is dropped and nothing is
+    deleted. Both variants verified on-device, along with the purge (trash 1 → 0 file, library
+    unchanged) and the no-op cases. Covered by four tests in `DeleteTests`, portable ones using
+    `FolderTrashService` rather than the macOS-skipped Finder trash.
+
+    **Android history now shows thumbnails**, which is the payoff of item 13's invariant: the
+    `images` row is gone by then, so `undo_log.content_hash` plus the content-addressed cache is
+    all that is left to render from. The desktop's `UndoDialog` already had this; Android has
+    caught up.
+
+    Still open: per-item controls exist only on Android. The desktop's `UndoDialog` offers restore
+    but not remove, so **that side is now behind** — worth closing for parity.
 
 ### Backlog (from DESIGN §12, deliberately deferred)
 
