@@ -4,13 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-SnapZap is a Windows desktop app (.NET 10, C#) that finds duplicates, NSFW images, and blurry photos in a folder, then exports the clean set to a destination (e.g., for Plex to watch). The app is:
-- Developed on macOS, shipped as a self-contained `win-x64` executable
+SnapZap (.NET 10, C#) finds duplicates, NSFW images, and blurry photos in a folder, then exports the clean set to a destination (e.g., for Plex to watch). It ships as a **Windows/macOS desktop app** (Blazor Server behind a local host) and, since 1.3.0, a **native Android app** — both over the same `SnapZap.Core`, with no cloud on either. The app is:
+- Developed on macOS, shipped as a self-contained `win-x64` executable; the Android head builds from the same repo (see `docs/ANDROID-PORT-ACS.md`)
 - ~90% cross-platform; four Windows-only paths behind `IPlatformServices` interfaces (Recycle Bin, hardlinks, DirectML GPU, native window host)
 - No cloud, no subscriptions, no paid dependencies
 - Safety-critical: nothing is hard-deleted until hash-verified; source folder untouched unless explicitly requested
 
-See [DESIGN.md](docs/DESIGN.md) for full architecture and rationale, [WINDOWS-VERIFY.md](docs/WINDOWS-VERIFY.md) for the Windows validation checklist, and [UI-FEATURES.md](docs/UI-FEATURES.md) for a quick per-feature reference to recent UI work (busy/progress, dark-mode buttons, the directory picker, folder rescan, preview zoom, thumbnail size) — read it before touching any of those instead of re-deriving the "why" from the diff.
+See [DESIGN.md](docs/DESIGN.md) for full architecture and rationale, [WINDOWS-VERIFY.md](docs/WINDOWS-VERIFY.md) for the Windows validation checklist, [ANDROID-PORT-ACS.md](docs/ANDROID-PORT-ACS.md) for the Android port's status and the evidence behind it, and [UI-FEATURES.md](docs/UI-FEATURES.md) for a quick per-feature reference to recent UI work (busy/progress, dark-mode buttons, the directory picker, folder rescan, preview zoom, thumbnail size) — read it before touching any of those instead of re-deriving the "why" from the diff.
 
 ---
 
@@ -148,6 +148,7 @@ The sidecars are excluded from publish output (`CopyToPublishDirectory="Never"`)
 |---|---|
 | `src/SnapZap.Core/` | Portable core logic: scanning, hashing, dedup, NSFW, blur/EXIF, export, delete, platform interfaces |
 | `src/SnapZap.App/` | ASP.NET Core host + Blazor Server UI (`Components/`, `Services/`, `wwwroot/`) |
+| `src/SnapZap.Android/` | Native Android head (`net10.0-android36.0`). Views built in code against `Design.cs`, the translated mobile design system. **Not in `SnapZap.slnx`** — build explicitly with `-p:IncludeAndroid=true` so a plain `dotnet build` never needs an Android SDK |
 | `tests/SnapZap.Tests/` | xUnit test suite + fixtures |
 | `CHANGELOG.md` | User-facing release notes, one section per version — update it alongside every version bump |
 | `docs/DESIGN.md` | Architecture, decisions, data model, pipeline, safety invariants |
@@ -440,7 +441,14 @@ Full rationale in [docs/DEDUP-V2.md](docs/DEDUP-V2.md). The short version:
    minimal `PATH` without `/usr/local/share/dotnet`, so `command -v dotnet` alone fails when
    launched by double-click even though it works from a terminal.
 
-10. **The app version has exactly one source: `<Version>` in `src/SnapZap.App/SnapZap.App.csproj`.**
+10. **The desktop app version has exactly one source: `<Version>` in
+    `src/SnapZap.App/SnapZap.App.csproj`.** ⚠ Since 1.3.0 the Android head is a *second* source and
+    cannot be folded into the first: Android requires both a `versionName` (what a person reads)
+    and a monotonic integer `versionCode` (which the platform compares to decide whether an APK is
+    an upgrade, and which must never go backwards). They live in
+    `src/SnapZap.Android/SnapZap.Android.csproj` as `ApplicationDisplayVersion` — keep it equal to
+    `<Version>` — and `ApplicationVersion` — increment on every release. The rule below is still
+    exactly true for the shipping desktop artifacts.
     Bump it there and nothing else — the Windows installer (`installer/SnapZap.iss`) reads it back
     out of the built `.exe` via `GetVersionNumbersString`, and `scripts/build-installer-mac.sh`
     greps it straight out of the csproj, so both installer filenames follow automatically. The

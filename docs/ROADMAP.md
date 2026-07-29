@@ -239,6 +239,32 @@ confirmation dialog: it is fast, not irreversible.
 
 ---
 
+### QA round — 2026-07-29 (1.3.0)
+
+A full pass over both heads. Fixed in 1.3.0: the burst-protection scoping bug, the review "select
+extras" miscount, the API-36 Back regression, the compare-view missing folder, the collapsed
+filename, the overflowing removal confirmation, and two localisation leaks.
+
+**Still open, found and not yet fixed:**
+
+1. **Android: no way to change the scanned folder after the first scan.** Plan shows the path as
+   static text with only Re-scan; the input exists only on first run; Folders browses within the
+   scanned tree. The desktop has "Change folder…". *Major — it is a dead end.*
+2. **Android: scanning an empty folder is a silent no-op.** Returns to first run with no message,
+   so the user cannot tell whether the scan ran, failed, or found nothing. *Major.*
+3. **Android: unsupported formats are never surfaced.** `ScanResult.UnsupportedByFormat` is
+   populated and the design shows it ("1,204 HEIC and 312 RAW counted, not readable"); the app
+   shows nothing. A HEIC library reads as "0 photos" — i.e. broken. *Major, and HEIC is the
+   default on modern phones.*
+4. **Android: library summary and the "waiting" callout ignore the folder scope** — they still
+   report whole-library extras while the header count is scoped. *Minor.*
+5. `"1 burst groups held back"` — grammar. *Cosmetic.*
+6. **Not executed:** QA plan tests 4 and 10 (scoped select-all) — navigation drifted mid-run.
+   Test 7's breadcrumb overflow never triggered at the depth tested, so the `HorizontalScrollView`
+   is confirmed present but not confirmed scrolling.
+
+---
+
 ### Delete/history model + swipe review — captured 2026-07-29
 
 Four notes from a design conversation, checked against the code as they were written so each one

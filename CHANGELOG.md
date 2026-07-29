@@ -1,8 +1,74 @@
 # Changelog
 
-All notable changes to SnapZap are recorded here, newest first. The version number lives in one
+All notable changes to SnapZap are recorded here, newest first. The desktop version lives in one
 place — `<Version>` in [`src/SnapZap.App/SnapZap.App.csproj`](src/SnapZap.App/SnapZap.App.csproj) —
 see [CLAUDE.md](CLAUDE.md)'s Gotchas for why that's the only place to bump it.
+
+Since 1.3.0 the Android head carries its own pair, because the platform requires both a
+`versionName` and a monotonic integer `versionCode`: `ApplicationDisplayVersion` (keep equal to
+`<Version>`) and `ApplicationVersion` (increment every release, never backwards) in
+[`src/SnapZap.Android/SnapZap.Android.csproj`](src/SnapZap.Android/SnapZap.Android.csproj).
+
+## 1.3.0 — 2026-07-29
+
+The Android port, and a QA round that found real defects in the desktop app too.
+
+### Added — Android
+
+SnapZap now runs on Android as a **native app over the same `SnapZap.Core`** — no WebView, no
+embedded server. Scan a folder, find duplicates, review them one-handed, delete reversibly, and
+restore from history, all on the phone.
+
+- **Eleven of the twelve screens** from the mobile design handoff: first run, scanning, library,
+  plan, the duplicate-review queue, burst review, filters, folders, selection mode, photo preview
+  and history. Export (screen 11) is deliberately out of this release.
+- **Duplicate review as a one-thumb queue** with the keeper pre-picked and its reason stated —
+  the thing a phone genuinely does better than the desktop's three-up comparison. Burst groups
+  arrive last and never pre-pick anything.
+- **Progress and background safety.** Scanning a real library is minutes of decoding and hashing;
+  Android freezes or kills a backgrounded process doing that. Scans, duplicate detection, deletes
+  and restores now run under a foreground service with a progress notification, so switching apps
+  or letting the screen sleep no longer stops the work.
+- **Trash and history** with a size read-out and an empty action. Android has no OS-level trash for
+  an app-private folder, so unlike Windows and macOS the app has to provide what Explorer and
+  Finder provide elsewhere.
+- **Launcher icon**, generated from the same source art as the desktop favicon.
+
+The port required no change to the scanning, hashing, duplicate-detection or NSFW logic. Verified
+on-device: perceptual hashes are **bit-identical** to the desktop's, and NSFW scores match to
+4e-11 — so a library deduplicated on one behaves the same on the other.
+
+### Fixed — safety
+
+- **Burst frames could be selected for bulk deletion.** Two independent defects. A Variant group
+  that is a strict superset of a Burst group survives reconciliation, and the per-photo group
+  assignment let whichever group came last win — so a burst frame could report `Variant`, pass the
+  bulk-selectable gate, and be swept into a delete. Both closed: assignment now uses
+  `GroupReconciler`'s own precedence, and `images.burst_adjacent` protects frames that complete
+  linkage legitimately excluded from a burst clique.
+- **Burst protection was cleared across the whole catalogue** on every detection run, so scanning a
+  second folder silently stripped the first folder's protection. Now scoped to the folder being
+  detected, like every other write of its kind.
+- **The duplicate-review "select extras" button overstated what it would select** — 17 where the
+  panel said 11. The selection was always correct; only the label was wrong, on the control that
+  arms a bulk delete.
+
+### Fixed — Android
+
+- Back is routed through `OnBackInvokedDispatcher`. Overriding `OnBackPressed` silently stops
+  working at API 36, which had made choosing a folder do nothing and made Back in selection mode
+  close the app.
+- Adaptive launcher icon, so it fills its circle rather than being shrunk inside one.
+
+### Fixed — desktop
+
+- The full-size compare view shows each copy's folder — the one fact it was asking you to decide on
+  when two copies are byte-identical.
+- The filename in that view no longer collapses to a few characters.
+- The remove-from-history confirmation no longer overflows its dialog, which had pushed Cancel and
+  the warning text out of view on an irreversible action.
+- Two hardcoded English strings no longer leak into the Spanish UI.
+- Delete a photo directly from the duplicate comparison, and remove a batch from history.
 
 ## 1.2.0 — 2026-07-28
 
