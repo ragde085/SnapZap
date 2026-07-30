@@ -1290,24 +1290,20 @@ public sealed class MainActivity : Activity
         body.AddView(Design.Note(this, "Tap to add · hold and drag across for a range"));
         body.AddView(Design.Gap(this, 9));
 
-        var row = new LinearLayout(this) { Orientation = Orientation.Horizontal };
-        var del = Design.Button(this, "Delete…", Design.Btn.Secondary, 48f);
-        del.LayoutParameters = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f);
+        // Delete is the only bulk action this version has, so it gets the whole width and the
+        // primary weight.
+        //
+        // There was a dimmed "Move…" beside it, standing in for the desktop's move-to-a-folder.
+        // Two things were wrong with that. A disabled control is a dead end: it invites a tap,
+        // explains nothing, and the explanation it did carry was unreachable — Android does not
+        // dispatch clicks to a disabled view, so the toast behind it could never fire. And the
+        // rule generally: functionality this build does not have should be absent from the action
+        // bar, not present and greyed. The Plan tab is where a missing capability is named, with
+        // words rather than a button nobody can press.
+        var del = Design.Button(this, "Delete…", Design.Btn.Primary, 48f);
+        del.LayoutParameters = Wide();
         del.Click += (_, _) => ConfirmDelete();
-        row.AddView(del);
-
-        var exp = Design.Button(this, "Move…", Design.Btn.Primary, 48f);
-        exp.LayoutParameters = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f)
-        { LeftMargin = Design.Dp(this, 8) };
-        // Screen 11 is out of v1 scope (ANDROID-PORT-PLAN §1). Dimmed to the system's own
-        // disabled opacity — a full-strength primary button that does nothing is worse than an
-        // obviously unavailable one, because it reads as broken rather than as not-yet-built.
-        exp.Enabled = false;
-        exp.Alpha = 0.45f;
-        exp.Click += (_, _) => Toast.MakeText(this,
-            "Moving photos to a folder is not part of the Android version yet.", ToastLength.Short)!.Show();
-        row.AddView(exp);
-        body.AddView(row);
+        body.AddView(del);
 
         wrap.AddView(bar);
         return wrap;
@@ -1621,18 +1617,17 @@ public sealed class MainActivity : Activity
             return;
         }
 
-        // Leads with the cost, not with the feature. The estimate is the whole decision here: on a
-        // phone this is minutes-to-hours of sustained work, and a dialog that opens with what the
-        // button does buries the only fact the user needs to weigh.
+        // Leads with the cost, and stops there. The estimate is the whole decision on a phone, and
+        // a confirmation is a decision point rather than a teaching moment — an earlier draft
+        // explained the ten-inference tiling here, which pushed the count, the estimate and the
+        // "put it on a charger" advice under fifty words nobody asked for. That explanation lives in
+        // Settings → Content review, where someone wondering *why* it is slow will go looking.
         new AlertDialog.Builder(this)
             .SetTitle("This is slow on a phone")!
             .SetMessage(
                 $"{Photos(scope.Count)} in this view · about {NsfwEta(scope.Count)} on this device.\n\n"
-                + "Every photo is examined ten times over — the whole frame and nine overlapping "
-                + "parts of it — which is what catches a subject filling only part of the picture. "
-                + "That is roughly three seconds each, and it cannot be made much faster here.\n\n"
-                + "It runs on this device; nothing about your photos is sent anywhere. Best on a "
-                + "charger. You can keep using the phone, or switch away and let it continue.")!
+                + "It all runs here — nothing about your photos is sent anywhere. Best on a charger; "
+                + "you can switch away and let it continue.")!
             .SetNegativeButton("Not now", (EventHandler<DialogClickEventArgs>?)null)!
             .SetPositiveButton("Start scoring", async (_, _) =>
             {

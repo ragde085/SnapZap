@@ -362,11 +362,15 @@ public sealed class SettingsActivity : Activity
                 + "than not at all.")));
         }
 
-        // Stated wherever the feature is offered, because the number is the whole decision: on a
-        // Galaxy S23 one photo takes ~2.9 s to score at full depth, so this is a per-folder job.
+        // The "why is this slow" explanation lives here rather than in the run confirmation. This is
+        // the reference surface people arrive at with a question; the confirmation is a decision
+        // point and putting it there buried the estimate under prose.
         _body.AddView(Pad(Design.Note(this,
             "Scoring is slow on a phone — roughly three seconds per photo, so a folder of 500 takes "
-            + "around 25 minutes. Narrow the library to a folder before running it.")));
+            + "around 25 minutes. Narrow the library to a folder before running it.\n\n"
+            + "Each photo is examined ten times: the whole frame, plus nine overlapping parts of it. "
+            + "The parts are what catch a subject filling only a corner of a wide shot, which a "
+            + "single look at the shrunken whole frame misses entirely.")));
     }
 
     void BuildStorage()
