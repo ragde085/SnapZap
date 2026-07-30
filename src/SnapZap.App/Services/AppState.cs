@@ -1377,7 +1377,8 @@ public sealed class AppState(
 
     /// <summary>Preview items for one batch (History dialog's thumbnail strip). See
     /// <see cref="DeleteService.ItemsInBatch"/> for the row cap.</summary>
-    public IReadOnlyList<UndoItem> ItemsInBatch(string batchId) => new DeleteService(catalog.Db, trash).ItemsInBatch(batchId);
+    public IReadOnlyList<UndoItem> ItemsInBatch(string batchId, int limit = 8) =>
+        new DeleteService(catalog.Db, trash).ItemsInBatch(batchId, limit);
 
     /// <summary>Restore a batch, then reconcile the catalog so restored files reappear.</summary>
     public async Task<RestoreResult> RestoreAndReloadAsync(string batchId)

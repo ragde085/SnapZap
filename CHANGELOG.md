@@ -135,6 +135,13 @@ on-device: perceptual hashes are **bit-identical** to the desktop's, and NSFW sc
   available to a bulk delete. Reversible without re-scanning — switch it back on and find duplicates
   again. The Help FAQ's "will my bursts be deleted?" answer no longer says an unconditional no.
 
+### Fixed — desktop
+
+- **Every photo in a delete batch can now be restored on its own.** Per-photo Restore already
+  existed in History, but only the first eight photos of a batch were ever drawn — and the button
+  lives on a thumbnail, so anything past the eighth could only be restored by bringing the whole
+  batch back. The "+N" counter is now a control that reveals more of the batch a page at a time.
+
 ### Changed — desktop
 
 - The folder picker offers Pictures and Downloads as quick-jumps beside the drive/home roots.

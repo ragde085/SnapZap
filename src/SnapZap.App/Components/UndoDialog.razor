@@ -84,7 +84,20 @@
                                             }
                                             @if (b.Total > items.Count)
                                             {
-                                                <span class="undo-thumb-more">@L["ThumbMoreCount", b.Total - items.Count]</span>
+                                                @* Was a plain <span>. That made every photo past the
+                                                   eighth unreachable: per-photo Restore only exists
+                                                   on a rendered thumbnail, so a batch of fifty could
+                                                   only ever be restored whole. *@
+                                                <button type="button" class="undo-thumb-more"
+                                                        title="@L["ShowMoreTitle"]"
+                                                        @onclick="() => ShowMore(b.BatchId)">
+                                                    @L["ThumbMoreCount", b.Total - items.Count]
+                                                </button>
+                                            }
+                                            else if (items.Count > PreviewPageSize)
+                                            {
+                                                <button type="button" class="undo-thumb-more"
+                                                        @onclick="() => ShowFewer(b.BatchId)">@L["ShowFewer"]</button>
                                             }
                                         </div>
                                     }
@@ -167,10 +180,37 @@
         }
     }
 
+    /// <summary>How many thumbnails a batch shows before it has to be asked for more.</summary>
+    /// <remarks>
+    /// A page rather than a ceiling. Revealing a whole batch at once is not safe to do blind — a
+    /// delete can sweep thousands of photos, and that many &lt;img&gt; elements in a dialog is a
+    /// different kind of problem — but a fixed cap left the tail permanently out of reach. Growing
+    /// on request keeps the DOM proportional to what the user actually asked to see.
+    /// </remarks>
+    const int PreviewPageSize = 8;
+
+    /// <summary>Per batch, how many items are currently rendered. Absent means <see cref="PreviewPageSize"/>.</summary>
+    readonly Dictionary<string, int> _shown = [];
+
     void Refresh()
     {
         _batches = AppState.Batches().ToList();
-        _previews = _batches.ToDictionary(b => b.BatchId, b => AppState.ItemsInBatch(b.BatchId));
+        _previews = _batches.ToDictionary(
+            b => b.BatchId,
+            b => AppState.ItemsInBatch(b.BatchId, _shown.GetValueOrDefault(b.BatchId, PreviewPageSize)));
+    }
+
+    /// <summary>Reveals another page of the batch, so its later photos can be restored individually.</summary>
+    void ShowMore(string batchId)
+    {
+        _shown[batchId] = _shown.GetValueOrDefault(batchId, PreviewPageSize) + PreviewPageSize * 12;
+        Refresh();
+    }
+
+    void ShowFewer(string batchId)
+    {
+        _shown.Remove(batchId);
+        Refresh();
     }
 
     static bool WasMoved(UndoBatch b) => b.BatchId.StartsWith("move-");

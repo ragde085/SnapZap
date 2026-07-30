@@ -966,7 +966,13 @@ main { display: flex; flex: 1; min-height: 0; }
 .history-sub { font-size: 11px; color: var(--color-neutral-700); margin-top: 3px; }
 .history-hint { font-size: var(--t-xs); color: var(--color-neutral-700); margin-top: 14px; }
 
-.undo-thumbs { display: flex; align-items: center; gap: 4px; margin-top: var(--space-2); }
+.undo-thumbs {
+  display: flex; align-items: center; gap: 4px; margin-top: var(--space-2);
+  /* Wraps and scrolls because the strip is no longer capped at eight: a revealed batch can be
+     hundreds of thumbnails, and a single non-wrapping row would push the table's other columns
+     off screen. */
+  flex-wrap: wrap; max-height: 172px; overflow-y: auto; overflow-anchor: none;
+}
 .undo-thumb-wrap { position: relative; width: 36px; height: 36px; flex: none; }
 .undo-thumb {
   width: 36px; height: 36px; border-radius: 4px; object-fit: cover;
@@ -974,8 +980,14 @@ main { display: flex; flex: 1; min-height: 0; }
 }
 .undo-thumb.restored { opacity: 0.45; }
 .undo-thumb-more {
-  font-size: 11px; color: var(--color-neutral-700); flex: none; padding: 0 2px;
+  /* Now a <button>, not a <span> — it reveals the rest of the batch. Styled to still read as the
+     quiet counter it was, but with the affordances a control owes: pointer, hover, focus ring. */
+  all: unset; box-sizing: border-box;
+  font-size: 11px; color: var(--color-neutral-700); flex: none;
+  padding: 2px 6px; cursor: pointer; border: 1px solid var(--color-divider); border-radius: 4px;
 }
+.undo-thumb-more:hover { color: var(--color-text); border-color: var(--color-text); }
+.undo-thumb-more:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
 
 /* Restore a single photo, revealed on hover/focus of its thumbnail rather than always shown —
    the strip is a preview first, the primary action stays the per-batch Restore button. */

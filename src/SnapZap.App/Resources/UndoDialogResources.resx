@@ -34,4 +34,10 @@
   <data name="ButtonRemoveEntries" xml:space="preserve"><value>Remove entries</value></data>
   <data name="ButtonCancel" xml:space="preserve"><value>Cancel</value></data>
   <data name="ThumbUnavailableTitle" xml:space="preserve"><value>No preview — this photo was deleted before SnapZap started recording thumbnails for history.</value></data>
+  <data name="ShowMoreTitle" xml:space="preserve">
+    <value>Show more of this batch, so you can restore individual photos</value>
+  </data>
+  <data name="ShowFewer" xml:space="preserve">
+    <value>Show fewer</value>
+  </data>
 </root>
