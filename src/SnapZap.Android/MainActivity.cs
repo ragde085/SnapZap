@@ -1486,8 +1486,15 @@ public sealed class MainActivity : Activity
 
         body.AddView(Step(4, _hasScanned, "Sharpness", "Scored during the scan", null, null));
 
+        // No longer desktop-only. Every dependency ExportEngine needs has a portable implementation
+        // — PortableLinkStub was written for exactly this platform — so the exclusion was a v1 scope
+        // decision that outlived its reasons. See MoveActivity.
+        var movable = ScopedPhotos();
         body.AddView(Step(5, false, "Move to a clean folder",
-            "Desktop only in this version.", null, null, unavailable: true));
+            $"{Photos(movable.Count)} in view · {FormatBytes(movable.Sum(p => p.FileSize))}",
+            movable.Count > 0 ? "Choose a destination…" : null,
+            () => StartActivity(new Intent(this, typeof(MoveActivity))
+                                    .PutExtra(MoveActivity.ExtraSourceRoot, _folder))));
 
         var wrap = new LinearLayout(this) { Orientation = Orientation.Vertical };
         wrap.SetPadding(Design.Dp(this, 16), Design.Dp(this, 12), Design.Dp(this, 16), Design.Dp(this, 12));

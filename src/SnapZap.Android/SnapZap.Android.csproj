@@ -40,13 +40,13 @@
 
       ApplicationVersion is a build counter, not a mirror of the version name, and the two move
       independently: it must increase for any APK that lands on a device that already has an older
-      one, and it must never decrease. So it is normal — and currently the case — for it to be
-      ahead of what a version-name bump alone would suggest. 1.3.0 has shipped as code 2 and again
-      as code 3 after the UX-review work; reverting it to 2 would leave two different APKs claiming
-      the same code and make the newer one uninstallable over the older.
+      one, and it must never decrease. So it is normal for it to run ahead of what version-name
+      bumps alone would suggest — 1.3.0 shipped as code 2 and again as code 3 after the UX-review
+      work, and 1.3.1 is code 4. Reverting a code to reuse one would leave two different APKs
+      claiming it and make the newer uninstallable over the older.
     -->
-    <ApplicationVersion>3</ApplicationVersion>
-    <ApplicationDisplayVersion>1.3.0</ApplicationDisplayVersion>
+    <ApplicationVersion>4</ApplicationVersion>
+    <ApplicationDisplayVersion>1.3.1</ApplicationDisplayVersion>
   </PropertyGroup>
 
   <!--

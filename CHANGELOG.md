@@ -13,6 +13,42 @@ Since 1.3.0 the Android head carries its own pair, because the platform requires
 of the sections below — any APK that has to install over an earlier one needs a higher code, and it
 can never go backwards. 1.3.0 exists as code 2 and, after the UX-review work, as code 3.
 
+## 1.3.1 — 2026-07-30
+
+Content review works on Android, and so does moving photos to a folder — the two things the
+plan listed and the phone could not do.
+
+### Added — Android
+
+- **Content review.** The scoring model is downloaded once, from an address pinned to an exact
+  revision and rejected unless it matches a known checksum. Scoring runs on the device: this is the
+  only network call SnapZap makes, it goes one way, and nothing derived from your photos is ever
+  sent. Expect roughly three seconds per photo, so it is offered per folder — scoped to what is in
+  view, and refused above 2,000 photos rather than left to run past the point Android stops
+  background work. The Filters sheet's two content facets are live once anything in view is scored.
+- **Move to a folder**, the last step the plan listed as desktop-only. Destination picker,
+  by-date/mirror/flat structure, a free-space check that has to pass before the action arms, and the
+  same "remove the originals?" confirmation the desktop asks — with removal happening only after
+  every file is verified. Picking a destination inside the folder being cleaned is refused, since
+  the copies would return as duplicates of their own originals.
+- **Skip hidden folders**, on by default, so `.thumbnails` and friends stop being scanned as photos.
+- **Run self-test** in Settings, which reports how long scoring actually takes on your device.
+
+### Changed
+
+- Burst grouping can be switched off, on both heads. It stays on by default and both screens say
+  what turning it off means — burst frames become bulk-selectable, they do not become ungrouped.
+- **"Export" is now "Move to a folder"** everywhere, and the Copy/Move/Hardlink picker is gone: one
+  action, with the originals question asked as a confirmation at commit time.
+- Every photo in a delete batch can be restored on its own; only the first eight were reachable.
+- The scoring confirmation leads with the time it will take, which on a phone is the whole decision.
+
+### Fixed
+
+- The self-test's SQLite check failed on every run after the first — it deleted and reused one
+  filename while a pooled connection still held it open.
+- Nothing in the app is a disabled control standing in for a missing feature any more.
+
 ## 1.3.0 — 2026-07-29
 
 The Android port, and a QA round that found real defects in the desktop app too — followed by a
