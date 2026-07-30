@@ -111,13 +111,26 @@ public sealed class SettingsActivity : Activity
             "Stored in this catalogue, not in app preferences — so these are the same settings the "
             + "desktop uses when it opens it, and they reset when it is deleted.");
 
-        // No switch on either of these, on either head. Exact because a duplicate finder that cannot
-        // find identical files is not one; Burst because the rule that withholds different
-        // photographs from a bulk delete is not something a checkbox should be able to turn off.
+        // Exact has no switch on either head: a duplicate finder that cannot find identical files
+        // is not one.
         _body.AddView(Design.ListRow(this, "Identical files", "Always on. Byte-for-byte copies.", "On"));
-        _body.AddView(Design.ListRow(this, "Bursts — the same scene, seconds apart",
-            "Always detected. These are different photographs, so they are grouped for review and "
-            + "never picked up by “Select duplicate extras”.", "On"));
+
+        _body.AddView(Design.ToggleRow(this, "Bursts — the same scene, seconds apart",
+            _dedup.BurstEnabled
+                ? "Grouped for review and held back from “Select all”, because they are different "
+                  + "photographs rather than copies."
+                : "Off — burst frames are treated as copies and can be swept into a bulk delete.",
+            _dedup.BurstEnabled,
+            on => Set(_dedup with { BurstEnabled = on })));
+
+        // Stated at the point of use, not in a help page. Turning this off does not leave bursts
+        // alone — it moves them into a group that "Select all" will take. See
+        // DedupSettings.BurstEnabled; the old version of this setting defaulted to off and the
+        // protection was inert in the shipped configuration because of precisely this.
+        if (!_dedup.BurstEnabled)
+            _body.AddView(Warning(
+                "All but one frame of every burst will be offered to a bulk delete. Turn this back "
+                + "on and find duplicates again to restore the protection — nothing needs re-scanning."));
 
         _body.AddView(Design.ToggleRow(this, "The same shot at another size",
             "Resized, re-saved or converted copies of one photo. Safe to bulk-select.",
@@ -146,12 +159,15 @@ public sealed class SettingsActivity : Activity
                     + "that deletes things, so a false match costs more than a miss."));
         }
 
-        _body.AddView(Design.SliderRow(this, "Frames within",
-            "Needs an EXIF capture time — photos without one are skipped, so a burst with no "
-            + "timestamps is not protected from bulk selection.",
-            _dedup.BurstWindowSeconds, 1, 30, 1,
-            v => $"{v} s",
-            v => Set(_dedup with { BurstWindowSeconds = v })));
+        // Gated on the switch above, like the variant thresholds are on theirs: a window that
+        // nothing consults is a control that lies about having an effect.
+        if (_dedup.BurstEnabled)
+            _body.AddView(Design.SliderRow(this, "Frames within",
+                "Needs an EXIF capture time — photos without one are skipped, so a burst with no "
+                + "timestamps is not protected from bulk selection.",
+                _dedup.BurstWindowSeconds, 1, 30, 1,
+                v => $"{v} s",
+                v => Set(_dedup with { BurstWindowSeconds = v })));
 
         var reset = Design.Button(this, "Reset to defaults", Design.Btn.Ghost, 44f);
         reset.LayoutParameters = Design.Wide();

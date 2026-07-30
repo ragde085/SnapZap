@@ -258,6 +258,154 @@ public class ExactDedupTests : IDisposable
             Assert.True(afterB.Contains(id), $"image {id} in folder A lost its burst protection"));
     }
 
+    // ══════════════════════════════════════════════════════════════════════════════════════
+    //  DedupSettings.BurstEnabled — the switch, and the consequence of using it
+    // ══════════════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>
+    /// <b>Turning burst detection off makes burst frames bulk-selectable. That is the whole point
+    /// of the setting, and this test exists so nobody can change it by accident.</b>
+    /// </summary>
+    /// <remarks>
+    /// Read together with <c>NsfwBandTests.An_ordinary_photo_of_a_person_is_not_flagged</c>: both
+    /// pin a deliberate safety position rather than an implementation detail. This one asserts the
+    /// dangerous direction on purpose, because the danger is the feature — a user who wants burst
+    /// frames treated as copies is asking for exactly this. If this test starts failing, the
+    /// question is not "how do I make it pass", it is "did someone mean to change what this setting
+    /// does".
+    ///
+    /// Note what it also proves: the frames do not become <i>ungrouped</i> when burst is off. They
+    /// come back as something bulk-selectable, because pixel distance cannot separate a burst frame
+    /// from a re-encode. That is why the old default-off version of this setting was inert — opting
+    /// out did not protect anything, it just moved the frames into a group that could be swept.
+    /// </remarks>
+    [Fact]
+    public async Task Disabling_burst_detection_makes_burst_frames_bulk_selectable()
+    {
+        CopyBurst(_photos);
+
+        using var db = new Database(_dbPath);
+        await new Scanner(db, new SkiaImageService(), _thumbs).ScanAsync(_photos);
+        var repo = new ImageRepository(db);
+
+        // On (the default): the frames are grouped as a burst and held back.
+        new DedupSettings().Save(db);
+        await new DuplicateService(db).DetectAsync(_photos);
+
+        var onGroups = new DupeRepository(db).Groups();
+        Assert.Contains(onGroups, g => g.Kind == DupeKind.Burst);
+        var onAssign = DupeAssignmentResolver.Resolve(onGroups, repo.BurstAdjacentIds());
+        Assert.DoesNotContain(onAssign.Values, a => a.IsBulkSelectableExtra);
+
+        // Off: no burst group survives, the protection column is cleared for this root, and the
+        // frames are now offered to a bulk delete.
+        new DedupSettings { BurstEnabled = false }.Save(db);
+        await new DuplicateService(db).DetectAsync(_photos);
+
+        var offGroups = new DupeRepository(db).Groups();
+        Assert.DoesNotContain(offGroups, g => g.Kind == DupeKind.Burst);
+        Assert.Empty(repo.BurstAdjacentIds());
+
+        var offAssign = DupeAssignmentResolver.Resolve(offGroups, repo.BurstAdjacentIds());
+        Assert.Contains(offAssign.Values, a => a.IsBulkSelectableExtra);
+    }
+
+    /// <summary>
+    /// Switching burst detection back on restores the protection, without a re-scan.
+    /// </summary>
+    /// <remarks>
+    /// The reversibility is the argument for allowing the switch at all, so it is pinned. Capture
+    /// time is read during the scan regardless of this setting, which is why re-detecting is enough
+    /// — if this ever needed a re-scan, the setting would be a one-way door and should not exist.
+    /// </remarks>
+    [Fact]
+    public async Task Re_enabling_burst_detection_restores_protection_without_a_rescan()
+    {
+        CopyBurst(_photos);
+
+        using var db = new Database(_dbPath);
+        await new Scanner(db, new SkiaImageService(), _thumbs).ScanAsync(_photos);
+        var repo = new ImageRepository(db);
+
+        new DedupSettings { BurstEnabled = false }.Save(db);
+        await new DuplicateService(db).DetectAsync(_photos);
+        Assert.Empty(repo.BurstAdjacentIds());
+
+        new DedupSettings { BurstEnabled = true }.Save(db);
+        await new DuplicateService(db).DetectAsync(_photos);   // no second ScanAsync
+
+        Assert.NotEmpty(repo.BurstAdjacentIds());
+        Assert.Contains(new DupeRepository(db).Groups(), g => g.Kind == DupeKind.Burst);
+    }
+
+    /// <summary>
+    /// Detecting with burst off in one folder must not clear another folder's protection.
+    /// </summary>
+    /// <remarks>
+    /// The disabled branch clears <c>burst_adjacent</c>, which is a new unscoped-write hazard of
+    /// exactly the kind <see cref="Detecting_in_one_folder_keeps_another_folders_burst_protection"/>
+    /// covers for the enabled path. It routes through <c>BurstFinder.ClearProtection</c> so the
+    /// scoping lives in one place; this proves the routing is real rather than intended.
+    /// </remarks>
+    [Fact]
+    public async Task Disabling_burst_in_one_folder_keeps_another_folders_protection()
+    {
+        var a = Path.Combine(_photos, "A");
+        var b = Path.Combine(_photos, "B");
+        CopyBurst(a);
+        CopyBurst(b);
+
+        using var db = new Database(_dbPath);
+        await new Scanner(db, new SkiaImageService(), _thumbs).ScanAsync(_photos);
+        var repo = new ImageRepository(db);
+
+        new DedupSettings().Save(db);
+        await new DuplicateService(db).DetectAsync(a);
+        var protectedInA = repo.BurstAdjacentIds();
+        Assert.NotEmpty(protectedInA);
+
+        // Now turn it off and detect only in B. A is untouched by that decision.
+        new DedupSettings { BurstEnabled = false }.Save(db);
+        await new DuplicateService(db).DetectAsync(b);
+
+        var afterB = repo.BurstAdjacentIds();
+        Assert.All(protectedInA, id =>
+            Assert.True(afterB.Contains(id), $"image {id} in folder A lost its burst protection"));
+    }
+
+    /// <summary>
+    /// A folder checked with burst off must read as still owing burst work once it is switched on.
+    /// </summary>
+    /// <remarks>
+    /// <c>CoveredKinds</c> feeds <c>images.dupe_checked_kinds</c>, which is how the folder tree
+    /// decides what is still pending. Recording Burst unconditionally would make re-enabling the
+    /// protection look like a no-op on every folder already scanned.
+    /// </remarks>
+    [Fact]
+    public void Covered_kinds_omits_burst_when_it_is_disabled()
+    {
+        Assert.True(new DedupSettings().CoveredKinds.HasFlag(DupeKinds.Burst));
+        Assert.False(new DedupSettings { BurstEnabled = false }.CoveredKinds.HasFlag(DupeKinds.Burst));
+
+        // Exact is not negotiable on either setting.
+        Assert.True(new DedupSettings { BurstEnabled = false, VariantEnabled = false }
+            .CoveredKinds.HasFlag(DupeKinds.Exact));
+    }
+
+    /// <summary>The switch round-trips through the catalogue's meta table like every other setting.</summary>
+    [Fact]
+    public void Burst_enabled_round_trips_through_meta()
+    {
+        using var db = new Database(_dbPath);
+        Assert.True(DedupSettings.Load(db).BurstEnabled);            // default is on
+
+        new DedupSettings { BurstEnabled = false }.Save(db);
+        Assert.False(DedupSettings.Load(db).BurstEnabled);
+
+        new DedupSettings { BurstEnabled = true }.Save(db);
+        Assert.True(DedupSettings.Load(db).BurstEnabled);
+    }
+
     /// <summary>Copies the committed two-frame EXIF burst into <paramref name="folder"/>.</summary>
     static void CopyBurst(string folder)
     {

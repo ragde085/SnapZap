@@ -99,9 +99,20 @@ on-device: perceptual hashes are **bit-identical** to the desktop's, and NSFW sc
 - Adaptive launcher icon, so it fills its circle rather than being shrunk inside one.
 - Restoring from history left the progress notification running if the restore failed.
 
+### Changed — both heads
+
+- **Burst grouping can now be switched off**, in Setup on the desktop and Settings on Android. It
+  stays **on by default**, and both screens say what turning it off means, because it is not the
+  harmless-sounding toggle it looks like: burst frames do not become ungrouped, they get picked up as
+  "the same shot" instead, which *is* bulk-selectable. So all but one frame of every burst becomes
+  available to a bulk delete. Reversible without re-scanning — switch it back on and find duplicates
+  again. The Help FAQ's "will my bursts be deleted?" answer no longer says an unconditional no.
+
 ### Changed — desktop
 
 - The folder picker offers Pictures and Downloads as quick-jumps beside the drive/home roots.
+- `PC_APPDATA` points the app at a different catalogue directory, so the running app can be driven
+  against a throwaway library instead of the real one.
 
 ### Fixed — desktop
 

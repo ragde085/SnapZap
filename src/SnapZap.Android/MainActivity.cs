@@ -74,6 +74,10 @@ public sealed class MainActivity : Activity
     // results persist, so a relaunch must still show the badge and the "waiting" callout —
     // otherwise the app forgets there is work outstanding the moment it is closed.
     int _reviewable, _burstGroups;
+
+    /// <summary>Whether burst protection is switched on, read back from the catalogue in
+    /// <see cref="CountGroups"/>. Several lines of copy here assert that it is.</summary>
+    bool _burstEnabled = true;
     List<ImageRecord> _photos = [];
 
     // Live scan read-outs, held so progress can update them without rebuilding the screen.
@@ -234,10 +238,15 @@ public sealed class MainActivity : Activity
             _assign = DupeAssignmentResolver.Resolve(groups, _catalog.Images.BurstAdjacentIds());
             _reviewable = _assign.Values.Count(a => a.IsBulkSelectableExtra);
             _burstGroups = groups.Count(g => g.Kind == DupeKind.Burst);
+            // Read, not assumed: every line of copy on this screen that claims bursts are held back
+            // becomes false when the setting is off, and "0 burst groups held back" would read as
+            // "the protection ran and found none" rather than "the protection is not running".
+            _burstEnabled = DedupSettings.Load(_catalog.Db).BurstEnabled;
         }
         catch (Exception ex)
         {
             _reviewable = 0; _burstGroups = 0; _assign = [];
+            _burstEnabled = true;   // the safe reading if the catalogue could not be asked
             Android.Util.Log.Warn(Tag, $"group count failed: {ex.Message}");
         }
     }
@@ -773,7 +782,10 @@ public sealed class MainActivity : Activity
             headings.AddView(Design.Body(this,
                 $"{waiting:N0} extra {(waiting == 1 ? "copy is" : "copies are")} waiting", 15f, bold: true));
             headings.AddView(Design.Note(this,
-                "Keeper already picked for each — you just confirm. Bursts are held back.",
+                _burstEnabled
+                    ? "Keeper already picked for each — you just confirm. Bursts are held back."
+                    : "Keeper already picked for each — you just confirm. Burst frames are included, "
+                      + "because burst grouping is switched off.",
                 Design.Accent700));
             top.AddView(headings);
 
@@ -1194,7 +1206,14 @@ public sealed class MainActivity : Activity
             col.AddView(Design.Body(this,
                 $"Every extra copy in this view — {FormatBytes(extras.Sum(e => e.FileSize))}", 13f, bold: true));
             // Stated, not implied: the one thing a bulk select must never quietly include.
-            col.AddView(Design.Note(this, "Keepers and bursts are not in here", Design.Accent700));
+            // The single most load-bearing line on this screen: it sits directly above a control
+            // that selects everything for deletion. It must describe the setting in force, never the
+            // setting we would prefer.
+            col.AddView(Design.Note(this,
+                _burstEnabled
+                    ? "Keepers and bursts are not in here"
+                    : "Keepers are not in here — but burst frames are, because burst grouping is off",
+                Design.Accent700));
             line.AddView(col);
             var all = Design.Button(this, "Select all", Design.Btn.Secondary, 38f);
             all.SetTextSize(Android.Util.ComplexUnitType.Sp, 12.5f);
@@ -1388,7 +1407,9 @@ public sealed class MainActivity : Activity
         body.AddView(Step(2, _reviewable > 0 || _lastDupes is not null, "Duplicates",
             _reviewable == 0 && _lastDupes is null
                 ? "Runs on its own when the scan finishes"
-                : $"{_reviewable:N0} extras · {_burstGroups:N0} burst {(_burstGroups == 1 ? "group" : "groups")} held back",
+                : _burstEnabled
+                    ? $"{_reviewable:N0} extras · {_burstGroups:N0} burst {(_burstGroups == 1 ? "group" : "groups")} held back"
+                    : $"{_reviewable:N0} extras · burst grouping is off, so burst frames are included",
             _reviewable > 0 ? $"Review {_reviewable:N0} extras" : null, OpenReview,
             highlight: _reviewable > 0));
 

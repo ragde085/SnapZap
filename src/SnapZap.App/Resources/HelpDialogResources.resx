@@ -70,7 +70,7 @@
   <data name="YesLabel" xml:space="preserve"><value>Yes</value></data>
   <data name="NoLabel" xml:space="preserve"><value>No</value></data>
   <data name="DupeBurstNoteTitle" xml:space="preserve"><value>Why bursts are treated differently</value></data>
-  <data name="DupeBurstNoteBody" xml:space="preserve"><value>A burst of five frames is five &lt;i&gt;different photographs&lt;/i&gt;, not five copies of one. SnapZap groups them so you can look at them, but deliberately leaves them out of &lt;b&gt;Extras&lt;/b&gt; — sweeping them into a delete would throw real photos away. For a burst, you pick the keeper yourself.</value></data>
+  <data name="DupeBurstNoteBody" xml:space="preserve"><value>A burst of five frames is five &lt;i&gt;different photographs&lt;/i&gt;, not five copies of one. SnapZap groups them so you can look at them, and leaves them out of &lt;b&gt;Extras&lt;/b&gt; — sweeping them into a delete would throw real photos away. For a burst, you pick the keeper yourself. This is on by default; &lt;b&gt;Setup&lt;/b&gt; can switch it off, and switching it off means burst frames &lt;i&gt;are&lt;/i&gt; treated as copies.</value></data>
   <data name="DupeOnPhotosHeading" xml:space="preserve"><value>On the photos</value></data>
   <data name="DupeBadgesNote" xml:space="preserve"><value>Cards pick up a badge: &lt;b&gt;✓&lt;/b&gt; for the copy being kept from its group, &lt;b&gt;▣&lt;/b&gt; for an extra copy. Hover either for the group number and kind.</value></data>
   <data name="DupeReviewingHeading" xml:space="preserve"><value>Reviewing them</value></data>
@@ -80,7 +80,7 @@
   <data name="DupeTuningIntro" xml:space="preserve"><value>In &lt;b&gt;Setup → Duplicates&lt;/b&gt;:</value></data>
   <data name="DupeTuningIdentical" xml:space="preserve"><value>&lt;b&gt;Identical files&lt;/b&gt; — always on. A duplicate finder that cannot find identical files is not one.</value></data>
   <data name="DupeTuningSameShot" xml:space="preserve"><value>&lt;b&gt;The same shot at another size&lt;/b&gt; — on by default, with a strictness slider (default 20 of 272) and an option to match rotated copies.</value></data>
-  <data name="DupeTuningBursts" xml:space="preserve"><value>&lt;b&gt;Bursts&lt;/b&gt; — always on. Only the window is tunable, default 3 seconds.</value></data>
+  <data name="DupeTuningBursts" xml:space="preserve"><value>&lt;b&gt;Bursts&lt;/b&gt; — on by default, with a tunable window (default 3 seconds). Turning it off does not leave bursts alone: the frames are picked up as “same shot” instead, which &lt;i&gt;is&lt;/i&gt; bulk-selectable.</value></data>
   <data name="DupeTuningHint" xml:space="preserve"><value>Changes save immediately. Press &lt;b&gt;Find again&lt;/b&gt; under the Duplicates step (Plan tab) to apply them.</value></data>
 
   <!-- Explicit content -->
@@ -230,7 +230,7 @@
   <data name="FaqA8" xml:space="preserve"><value>Mirror recreates your existing folder layout, so it needs a source folder scanned in this session to make paths relative to. Scan the source again, or choose &lt;b&gt;By date&lt;/b&gt; or &lt;b&gt;Flat&lt;/b&gt;.</value></data>
 
   <data name="FaqQ9" xml:space="preserve"><value>A burst of shots got grouped as duplicates. Will they be deleted?</value></data>
-  <data name="FaqA9" xml:space="preserve"><value>No. Bursts are grouped so you can review them, but they are deliberately excluded from &lt;b&gt;Extras&lt;/b&gt;, so a bulk selection will not pick them up. Use &lt;b&gt;Review duplicates&lt;/b&gt; to choose which frames you want. If one burst is being split across several groups, widen the burst window in &lt;b&gt;Setup&lt;/b&gt;.</value></data>
+  <data name="FaqA9" xml:space="preserve"><value>Not while burst grouping is on, which is the default: bursts are grouped so you can review them and are excluded from &lt;b&gt;Extras&lt;/b&gt;, so a bulk selection will not pick them up. Use &lt;b&gt;Review duplicates&lt;/b&gt; to choose which frames you want. If one burst is being split across several groups, widen the burst window in &lt;b&gt;Setup&lt;/b&gt;. If you switched burst grouping off in &lt;b&gt;Setup&lt;/b&gt;, that protection is gone and all but one frame of each burst will be offered to a bulk delete.</value></data>
 
   <data name="FaqQ10" xml:space="preserve"><value>Why didn't it find my cropped copies?</value></data>
   <data name="FaqA10" xml:space="preserve"><value>It can't. A crop changes the image enough that the visual fingerprint no longer matches — that is a known limit of how the matching works, not something a setting will fix.</value></data>

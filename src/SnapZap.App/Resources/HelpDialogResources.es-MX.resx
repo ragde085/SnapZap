@@ -70,7 +70,7 @@
   <data name="YesLabel" xml:space="preserve"><value>Sí</value></data>
   <data name="NoLabel" xml:space="preserve"><value>No</value></data>
   <data name="DupeBurstNoteTitle" xml:space="preserve"><value>Por qué las ráfagas se tratan distinto</value></data>
-  <data name="DupeBurstNoteBody" xml:space="preserve"><value>Una ráfaga de cinco tomas son cinco &lt;i&gt;fotografías distintas&lt;/i&gt;, no cinco copias de una sola. SnapZap las agrupa para que puedas revisarlas, pero deliberadamente las deja fuera de &lt;b&gt;Extras&lt;/b&gt; — incluirlas en una eliminación masiva tiraría fotos reales. En una ráfaga, tú eliges cuál conservar.</value></data>
+  <data name="DupeBurstNoteBody" xml:space="preserve"><value>Una ráfaga de cinco tomas son cinco &lt;i&gt;fotografías distintas&lt;/i&gt;, no cinco copias de una sola. SnapZap las agrupa para que puedas revisarlas y las deja fuera de &lt;b&gt;Extras&lt;/b&gt; — incluirlas en una eliminación masiva tiraría fotos reales. En una ráfaga, tú eliges cuál conservar. Esto viene activado; &lt;b&gt;Configuración&lt;/b&gt; permite desactivarlo, y desactivarlo significa que los cuadros de ráfaga &lt;i&gt;sí&lt;/i&gt; se tratan como copias.</value></data>
   <data name="DupeOnPhotosHeading" xml:space="preserve"><value>En las fotos</value></data>
   <data name="DupeBadgesNote" xml:space="preserve"><value>Las tarjetas muestran una insignia: &lt;b&gt;✓&lt;/b&gt; para la copia que se conserva de su grupo, &lt;b&gt;▣&lt;/b&gt; para una copia extra. Pasa el cursor sobre cualquiera para ver el número de grupo y el tipo.</value></data>
   <data name="DupeReviewingHeading" xml:space="preserve"><value>Revisarlos</value></data>
@@ -80,7 +80,7 @@
   <data name="DupeTuningIntro" xml:space="preserve"><value>En &lt;b&gt;Configuración → Duplicados&lt;/b&gt;:</value></data>
   <data name="DupeTuningIdentical" xml:space="preserve"><value>&lt;b&gt;Archivos idénticos&lt;/b&gt; — siempre activado. Un buscador de duplicados que no encuentra archivos idénticos no es uno.</value></data>
   <data name="DupeTuningSameShot" xml:space="preserve"><value>&lt;b&gt;La misma toma en otro tamaño&lt;/b&gt; — activado por defecto, con un control deslizante de estrictez (20 de 272 por defecto) y una opción para igualar copias rotadas.</value></data>
-  <data name="DupeTuningBursts" xml:space="preserve"><value>&lt;b&gt;Ráfagas&lt;/b&gt; — siempre activado. Solo la ventana de tiempo se puede ajustar, 3 segundos por defecto.</value></data>
+  <data name="DupeTuningBursts" xml:space="preserve"><value>&lt;b&gt;Ráfagas&lt;/b&gt; — activado por defecto, con una ventana ajustable (3 segundos por defecto). Desactivarlo no deja las ráfagas en paz: los cuadros se detectan como “la misma toma”, que &lt;i&gt;sí&lt;/i&gt; entra en la selección masiva.</value></data>
   <data name="DupeTuningHint" xml:space="preserve"><value>Los cambios se guardan de inmediato. Presiona &lt;b&gt;Buscar de nuevo&lt;/b&gt; en el paso Duplicados (pestaña Plan) para aplicarlos.</value></data>
 
   <!-- Explicit content -->
@@ -230,7 +230,7 @@
   <data name="FaqA8" xml:space="preserve"><value>Igualar recrea tu estructura de carpetas actual, así que necesita una carpeta de origen escaneada en esta sesión para calcular rutas relativas. Vuelve a escanear el origen, o elige &lt;b&gt;Por fecha&lt;/b&gt; o &lt;b&gt;Plano&lt;/b&gt;.</value></data>
 
   <data name="FaqQ9" xml:space="preserve"><value>Una ráfaga de tomas se agrupó como duplicados. ¿Se van a eliminar?</value></data>
-  <data name="FaqA9" xml:space="preserve"><value>No. Las ráfagas se agrupan para que puedas revisarlas, pero deliberadamente quedan excluidas de &lt;b&gt;Extras&lt;/b&gt;, así que una selección masiva no las tomará. Usa &lt;b&gt;Revisar duplicados&lt;/b&gt; para elegir qué tomas quieres. Si una ráfaga se está dividiendo en varios grupos, amplía la ventana de ráfaga en &lt;b&gt;Configuración&lt;/b&gt;.</value></data>
+  <data name="FaqA9" xml:space="preserve"><value>No mientras la agrupación de ráfagas esté activada, que es lo predeterminado: las ráfagas se agrupan para que puedas revisarlas y quedan excluidas de &lt;b&gt;Extras&lt;/b&gt;, así que una selección masiva no las tomará. Usa &lt;b&gt;Revisar duplicados&lt;/b&gt; para elegir qué tomas quieres. Si una ráfaga se está dividiendo en varios grupos, amplía la ventana de ráfaga en &lt;b&gt;Configuración&lt;/b&gt;. Si desactivaste la agrupación de ráfagas en &lt;b&gt;Configuración&lt;/b&gt;, esa protección desaparece y todos los cuadros de cada ráfaga menos uno se ofrecerán para un borrado masivo.</value></data>
 
   <data name="FaqQ10" xml:space="preserve"><value>¿Por qué no encontró mis copias recortadas?</value></data>
   <data name="FaqA10" xml:space="preserve"><value>No puede. Un recorte cambia la imagen lo suficiente para que la huella visual ya no coincida — es un límite conocido de cómo funciona la coincidencia, no algo que un ajuste vaya a arreglar.</value></data>

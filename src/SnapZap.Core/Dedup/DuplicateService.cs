@@ -58,7 +58,8 @@ public sealed class DuplicateService(Database db, SkiaImageService? imaging = nu
 
         // One phase per enabled detector, plus the load, plus reconciliation, plus the backfill
         // when there is one to do.
-        int total = 1 + 1 + 1 + 1 + (settings.VariantEnabled ? 1 : 0) + (needingPhash.Count > 0 ? 1 : 0);
+        int total = 1 + 1 + 1 + (settings.VariantEnabled ? 1 : 0) + (settings.BurstEnabled ? 1 : 0)
+                    + (needingPhash.Count > 0 ? 1 : 0);
         int done = 0;
         void Step(string? label) => progress?.Report(new DedupProgress(done, total, label));
 
@@ -119,12 +120,27 @@ public sealed class DuplicateService(Database db, SkiaImageService? imaging = nu
             new DupeRepository(db).ClearKind(DupeKind.Variant, root);
         }
 
-        // Always. Burst membership is what withholds different photographs from a bulk delete, and
-        // capture time is the only evidence that identifies them — VariantFinder above cannot,
-        // because a burst frame and a re-encode are indistinguishable by pixels. See DedupSettings.
-        Step("Grouping bursts");
-        var burst = await Task.Run(() => new BurstFinder(db).FindAndStore(images, settings, root, ct), ct);
-        done++;
+        // Burst membership is what withholds different photographs from a bulk delete, and capture
+        // time is the only evidence that identifies them — VariantFinder above cannot, because a
+        // burst frame and a re-encode are indistinguishable by pixels. See DedupSettings.BurstEnabled
+        // for why this is switchable at all and what switching it off actually does.
+        var burst = DetectorResult.None;
+        if (settings.BurstEnabled)
+        {
+            Step("Grouping bursts");
+            burst = await Task.Run(() => new BurstFinder(db).FindAndStore(images, settings, root, ct), ct);
+            done++;
+        }
+        else
+        {
+            // Two clears, and both are required. The groups, so the review queue stops offering
+            // bursts it is no longer detecting — same reason the disabled Variant branch above
+            // clears its own. And the burst_adjacent column, because it was written by an earlier
+            // run and survives in the catalogue: without this, frames stay unselectable with the
+            // setting off and nothing on screen says why.
+            new DupeRepository(db).ClearKind(DupeKind.Burst, root);
+            new BurstFinder(db).ClearProtection(root);
+        }
 
         // The detectors above answer independently over one image set, and their thresholds are
         // nested, so the same photos can be written as two or three groups. Collapse those before

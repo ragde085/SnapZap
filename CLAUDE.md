@@ -388,11 +388,20 @@ Full rationale in [docs/DEDUP-V2.md](docs/DEDUP-V2.md). The short version:
   processed closest-first; ids break ties so runs are reproducible. `GrouperTests` locks this in.
 - **Thresholds are in bits out of 272** and are *not* comparable to czkawka's old
   `--max-difference 10`. Defaults live in `DedupSettings`.
-- **Exact and Burst detection have no on/off switch.** Exact because a duplicate finder that
-  cannot find identical files is not one; Burst because a safety rule a checkbox can disable is not
-  one. Burst used to default to off, which did not leave bursts ungrouped — it left them grouped as
-  `Variant`, which *is* bulk-selectable, so the guard was inert as shipped. Only `VariantEnabled`
-  and the thresholds are settings.
+- **Exact detection has no on/off switch**, because a duplicate finder that cannot find identical
+  files is not one.
+- **`BurstEnabled` does have one, and it is a safety decision rather than a preference.** ⚠ Turning
+  it off does *not* leave bursts ungrouped: `VariantFinder` picks the frames up instead — pixel
+  distance cannot tell a burst frame from a re-encode — and `Variant` **is** bulk-selectable, so
+  "select extras" will sweep all but one frame of every burst. This setting existed before with the
+  default inverted, which made the protection inert as shipped; it is back **defaulted on**, with
+  the consequence stated at every surface that offers it (`SetupDialog`, Android `SettingsActivity`,
+  `HelpDialog`'s FAQ) and with `DedupTests.Disabling_burst_detection_makes_burst_frames_bulk_selectable`
+  asserting the dangerous direction on purpose. **Do not soften the default or the warnings, and do
+  not "fix" that test into passing** — if it fails, ask whether someone meant to change what the
+  setting does. Switching it off must also clear `images.burst_adjacent` for the root
+  (`BurstFinder.ClearProtection`), or stale protection outlives the setting; `CoveredKinds` must omit
+  `Burst` when it is off, or re-enabling looks like a no-op on every folder already checked.
 - **The kinds overlap, so `GroupReconciler` enforces one group per relationship** after the
   detectors run, dropping any group whose members are all covered by a stronger one. Precedence is
   **Exact → Burst → Variant**. Burst beating Variant is the safety-critical, non-obvious direction:

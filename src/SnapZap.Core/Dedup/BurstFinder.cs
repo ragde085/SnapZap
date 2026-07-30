@@ -91,6 +91,23 @@ public sealed class BurstFinder(Database db)
     }
 
     /// <summary>
+    /// Drops this root's burst protection without running detection — what
+    /// <c>DedupSettings.BurstEnabled = false</c> needs.
+    /// </summary>
+    /// <remarks>
+    /// <para>Skipping <see cref="FindAndStore"/> is not enough on its own. <c>images.burst_adjacent</c>
+    /// is written by a previous run and persists in the catalogue, so a folder that once earned
+    /// protection keeps it forever — the frames would stay unselectable with the setting off and
+    /// nothing on screen explaining why, which is the mirror image of the bug the flag was added to
+    /// fix.</para>
+    ///
+    /// <para>Deliberately routed through <see cref="MarkBurstAdjacent"/> with an empty set rather
+    /// than issuing its own UPDATE, so the root-scoping rule that method documents at length lives
+    /// in exactly one place. An unscoped clear here would wipe every other folder's protection.</para>
+    /// </remarks>
+    public void ClearProtection(string? root) => MarkBurstAdjacent([], root);
+
+    /// <summary>
     /// Records the burst-adjacent set for this root. Cleared first, for the same reason
     /// <c>ClearKind</c> is: a rerun under different settings must not leave yesterday's protection
     /// behind, or a photo stays unselectable forever with nothing on screen explaining why.
