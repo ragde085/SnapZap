@@ -84,19 +84,34 @@ public sealed class FiltersSheet(Activity host, string current, Dictionary<strin
         body.AddView(Design.Note(host, "Burst frames are separate photographs — no bulk path picks them."));
         body.AddView(Design.Gap(host, 16));
 
-        // Facets that exist but have nothing behind them yet. Shown greyed with the reason, per
-        // the handoff: "greyed reasons next to their fix".
+        // Live once anything in view has been scored, greyed with the reason until then — per the
+        // handoff's "greyed reasons next to their fix". The gate is whether scores exist, not
+        // whether the model does: a downloaded model with nothing scored yet still filters to
+        // nothing, and a row that offers a filter returning zero is worse than one that says why.
         body.AddView(Design.Eyebrow(host, "Content review"));
         body.AddView(Design.Gap(host, 6));
-        var likely = Design.ListRow(host, "Likely explicit", null, "not scored");
-        likely.Alpha = 0.45f;
-        body.AddView(likely);
-        var unsure = Design.ListRow(host, "Not sure — worth a look", null, "not scored");
-        unsure.Alpha = 0.45f;
-        body.AddView(unsure);
+
+        var scored = counts.GetValueOrDefault("_scored");
+        foreach (var (key, label) in new[]
+                 { ("LikelyExplicit", "Likely explicit"), ("WorthALook", "Not sure — worth a look") })
+        {
+            var on = chosen == key;
+            var row = Design.ListRow(host, label, null,
+                scored == 0 ? "not scored" : counts.GetValueOrDefault(key).ToString("N0"),
+                null, highlight: on);
+            // Same commit-and-dismiss shape as Facet above; not routed through it because the
+            // greyed state has no click at all and the trailing cell is a reason, not a count.
+            if (scored == 0) row.Alpha = 0.45f;
+            else row.Click += (_, _) => { onChosen(key); dialog.Dismiss(); };
+            body.AddView(row);
+        }
+
         body.AddView(Design.Gap(host, 9));
-        body.AddView(Design.Note(host,
-            "Content review needs the NSFW model beside the app. Everything else works without it."));
+        body.AddView(Design.Note(host, scored == 0
+            ? "Nothing in view has been scored yet. Run Content review from the Plan tab."
+            : scored == 1
+                ? "1 photo in view has been scored."
+                : $"{scored:N0} photos in view have been scored."));
 
         var scroll = new ScrollView(host);
         scroll.AddView(body, new ViewGroup.LayoutParams(

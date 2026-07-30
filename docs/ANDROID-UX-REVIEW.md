@@ -100,11 +100,19 @@ action. On desktop the Setup panel downloads and checksums it. On Android the on
 push`, which no real user will do — so the step is permanently stuck at "not started" with no path
 forward, which is worse than not listing it.
 
-**Fixed** by taking the second option, deliberately. A download action would mean adding the
-`INTERNET` permission to fetch a 328 MB model, and an app that reads an entire photo library and
-*cannot* talk to the network is worth more than the feature. Step 3 now reads "Desktop only" with the
-reason, marked with a dash instead of a number, and the header counts "of 3" rather than "of 5" — a
-plan permanently 60% done by construction reads as a stalled app rather than a smaller feature set.
+**Fixed twice, and the second answer overrode the first.** The original call was to state it as
+desktop-only, on the reasoning that an app which reads an entire photo library and *cannot* talk to
+the network is worth more than the feature. That reasoning was mine, not the product's: asked
+directly, the requirement turned out to be that *photos* are analysed locally, not that the app never
+opens a socket. So the model is now fetched in-app — one URL, pinned to an immutable revision,
+rejected unless it matches a known SHA-256 (`NsfwModelDownload`), with progress under the foreground
+service. Step 3 rejoined the plan and the header counts "of 4"; export is now the only step Android
+cannot complete.
+
+The promise had to change shape with it, and that is the part to be careful about: "no INTERNET
+permission" was enforced by the OS, and "your photos never leave this device" is enforced by us. The
+permission gate, Settings → About and the manifest all say the narrower, true thing now. **A second
+network call would break a promise several screens make in as many words.**
 
 ## 7. No settings at all · **Medium**
 
@@ -214,8 +222,10 @@ browser may walk up are different questions.
 - **The safety story is legible on screen**, not just in code: "Bursts are held back", "Keepers and
   bursts are not in here", and the two-variant removal warnings that distinguish "delete for good"
   from "only the record goes".
-- **No `INTERNET` permission.** An app that reads an entire photo library and cannot talk to the
-  network is a genuinely strong position. Defend it.
+- **One network call, in one direction.** The app fetches the scoring model and nothing else, from a
+  pinned revision it checksums before trusting. Photos are read, hashed and scored on the device.
+  That is still a genuinely strong position — it is just now a property of the code rather than of
+  the permission list, so it needs defending in review rather than by the OS.
 - **Progress and background safety** now hold the process across scan, dedup, delete and restore.
 - **Touch targets meet the 44dp commitment** where measured.
 

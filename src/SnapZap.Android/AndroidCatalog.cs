@@ -88,6 +88,32 @@ public sealed class AndroidCatalog : IDisposable
     public ImageRepository Images => new(Db);
 
     /// <summary>
+    /// The NSFW model on this device, or null. Most convenient location first.
+    /// </summary>
+    /// <remarks>
+    /// Shared rather than duplicated per activity, because the order matters and is not obvious.
+    /// A model the app downloaded lands in <see cref="AppDataDir"/>, which is private and cleaned up
+    /// on uninstall. The shared-storage locations come first anyway: they are where a hand-placed
+    /// file arrives, since neither <c>adb push</c> nor a browser download can write to app-private
+    /// storage on a release build — <c>run-as</c> only works on a debuggable one.
+    /// </remarks>
+    public string? FindNsfwModel()
+    {
+        var storage = DirectoryRoots.AndroidPrimaryStorage;
+        foreach (var candidate in new[]
+        {
+            Path.Combine(storage, "Download", "nsfw.onnx"),
+            Path.Combine(storage, "SnapZap", "nsfw.onnx"),
+            Path.Combine(AppDataDir, "nsfw.onnx"),
+        })
+        {
+            try { if (File.Exists(candidate)) return candidate; }
+            catch (Exception) { /* an unreadable candidate is just not the one */ }
+        }
+        return null;
+    }
+
+    /// <summary>
     /// The photos every screen should show: those under <see cref="ScanRoot"/>.
     /// </summary>
     /// <remarks>

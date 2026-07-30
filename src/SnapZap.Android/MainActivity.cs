@@ -8,6 +8,7 @@ using Android.Views;
 using Android.Widget;
 using SnapZap.Core;
 using SnapZap.Core.Dedup;
+using SnapZap.Core.Nsfw;
 using SnapZap.Core.Delete;
 using SnapZap.Core.Scanning;
 
@@ -81,6 +82,24 @@ public sealed class MainActivity : Activity
     /// <summary>Whether burst protection is switched on, read back from the catalogue in
     /// <see cref="CountGroups"/>. Several lines of copy here assert that it is.</summary>
     bool _burstEnabled = true;
+
+    /// <summary>Photos in the current scope carrying an NSFW score, and whether a pass is running.</summary>
+    int _nsfwScored;
+    bool _nsfwRunning;
+
+    /// <summary>
+    /// Above this many photos in scope, scoring is refused rather than warned about.
+    /// </summary>
+    /// <remarks>
+    /// Measured on a Galaxy S23: 2.9 s per photo at <c>NsfwDepth.Tiled</c>, which is ten inferences
+    /// through a ViT-base model. 2,000 photos is already about 1.6 hours. Two things make a higher
+    /// cap dishonest rather than merely slow — a phone throttles long before the end of a run that
+    /// size, and Android 15 stops a <c>dataSync</c> foreground service after six hours in any 24, so
+    /// a big enough job cannot finish however patient the user is. A dialog saying "this will take
+    /// eight hours, continue?" gets tapped through; refusing and pointing at the Folders chip does
+    /// not.
+    /// </remarks>
+    const int NsfwScopeLimit = 2000;
     List<ImageRecord> _photos = [];
 
     // Live scan read-outs, held so progress can update them without rebuilding the screen.
@@ -99,7 +118,14 @@ public sealed class MainActivity : Activity
 
     // Screen 7 — the active facet. Null means "Any".
     DupeFacet _facet = DupeFacet.Any;
-    enum DupeFacet { Any, ExtrasOnly, KeepersOnly, BurstFrames }
+    enum DupeFacet { Any, ExtrasOnly, KeepersOnly, BurstFrames, LikelyExplicit, WorthALook }
+
+    /// <summary>
+    /// The explicit-content rule in force. Read through <c>NsfwSettings</c> rather than compared
+    /// inline anywhere, exactly as CLAUDE.md requires of the desktop: the badge, the filter and the
+    /// counts have to be one decision or they start disagreeing.
+    /// </summary>
+    static readonly NsfwSettings NsfwRule = NsfwSettings.Default;
     Dictionary<long, DupeAssignment> _assign = [];
 
     /// <summary>
@@ -266,11 +292,13 @@ public sealed class MainActivity : Activity
             // becomes false when the setting is off, and "0 burst groups held back" would read as
             // "the protection ran and found none" rather than "the protection is not running".
             _burstEnabled = DedupSettings.Load(_catalog.Db).BurstEnabled;
+            _nsfwScored = ScopedPhotos().Count(p => p.NsfwScore is not null);
         }
         catch (Exception ex)
         {
             _reviewable = 0; _burstGroups = 0; _assign = [];
             _burstEnabled = true;   // the safe reading if the catalogue could not be asked
+            _nsfwScored = 0;
             Android.Util.Log.Warn(Tag, $"group count failed: {ex.Message}");
         }
     }
@@ -1142,6 +1170,8 @@ public sealed class MainActivity : Activity
         DupeFacet.ExtrasOnly => ScopedPhotos().Where(p => _assign.TryGetValue(p.Id, out var a) && a.IsBulkSelectableExtra),
         DupeFacet.KeepersOnly => ScopedPhotos().Where(p => _assign.TryGetValue(p.Id, out var a) && a.IsKeeper),
         DupeFacet.BurstFrames => ScopedPhotos().Where(p => _assign.TryGetValue(p.Id, out var a) && a.Kind == DupeKind.Burst),
+        DupeFacet.LikelyExplicit => ScopedPhotos().Where(p => NsfwRule.IsExplicit(p.NsfwScore, p.NsfwTileMean)),
+        DupeFacet.WorthALook => ScopedPhotos().Where(p => NsfwRule.IsUnsure(p.NsfwScore, p.NsfwTileMean)),
         _ => ScopedPhotos(),
     });
 
@@ -1150,6 +1180,8 @@ public sealed class MainActivity : Activity
         DupeFacet.ExtrasOnly => "Extra copies only",
         DupeFacet.KeepersOnly => "Keepers only",
         DupeFacet.BurstFrames => "Burst frames",
+        DupeFacet.LikelyExplicit => "Likely explicit",
+        DupeFacet.WorthALook => "Worth a look",
         _ => "Filters",
     };
 
@@ -1165,6 +1197,10 @@ public sealed class MainActivity : Activity
             ["ExtrasOnly"] = scoped.Count(p => _assign.TryGetValue(p.Id, out var a) && a.IsBulkSelectableExtra),
             ["KeepersOnly"] = scoped.Count(p => _assign.TryGetValue(p.Id, out var a) && a.IsKeeper),
             ["BurstFrames"] = scoped.Count(p => _assign.TryGetValue(p.Id, out var a) && a.Kind == DupeKind.Burst),
+            ["LikelyExplicit"] = scoped.Count(p => NsfwRule.IsExplicit(p.NsfwScore, p.NsfwTileMean)),
+            ["WorthALook"] = scoped.Count(p => NsfwRule.IsUnsure(p.NsfwScore, p.NsfwTileMean)),
+            // Not a facet — it is what decides whether the two above are offered at all.
+            ["_scored"] = scoped.Count(p => p.NsfwScore is not null),
         };
     }
 
@@ -1404,11 +1440,13 @@ public sealed class MainActivity : Activity
 
     void RenderPlan()
     {
-        // Counted against the three steps this version actually has. It used to say "of 5" while
-        // two of those five could never be completed on Android at all — a plan that is permanently
-        // 60% finished by construction reads as a stalled app rather than a shorter feature set.
+        // Counted against the steps this version actually has. It used to say "of 5" while two of
+        // those five could never be completed on Android at all — a plan permanently 60% finished by
+        // construction reads as a stalled app rather than a shorter feature set. Content review
+        // rejoined the count once the model became fetchable; export is still the only one that
+        // cannot be done here.
         var done = (_hasScanned ? 1 : 0) + (_reviewable > 0 || _lastDupes is not null ? 1 : 0) + (_hasScanned ? 1 : 0);
-        _content.AddView(Header("Plan", $"{done} of 3 done"));
+        _content.AddView(Header("Plan", $"{done} of 4 done"));
 
         var body = new LinearLayout(this) { Orientation = Orientation.Vertical };
 
@@ -1437,13 +1475,18 @@ public sealed class MainActivity : Activity
             _reviewable > 0 ? $"Review {_reviewable:N0} extras" : null, OpenReview,
             highlight: _reviewable > 0));
 
-        // Content review is not a step you can take here, and dressing it as one that merely has
-        // not started yet left it stuck at "not started" forever with no action to take. The model
-        // is a 328 MB sidecar and SnapZap holds no INTERNET permission — which is a property worth
-        // keeping, not a gap to close by adding one — so there is no honest in-app route to it.
-        body.AddView(Step(3, false, "Content review",
-            "Desktop only. The scoring model ships beside the desktop app; the Android build has no "
-            + "network access to fetch it, by design.", null, null, unavailable: true));
+        // Reachable now that the model can be fetched, but deliberately scoped and capped: ~2.9 s
+        // per photo on a Galaxy S23 makes this a per-folder job, not a library one. See ScoreNsfw.
+        var modelPath = _catalog!.FindNsfwModel();
+        var scope = ScopedPhotos();
+        body.AddView(Step(3, _nsfwScored > 0, "Content review",
+            modelPath is null
+                ? "Scores photos on this device. Needs a one-time model download — set it up in Settings."
+                : _nsfwScored > 0
+                    ? $"{_nsfwScored:N0} scored in this view"
+                    : $"{scope.Count:N0} photos in view · about {NsfwEta(scope.Count)} on this phone",
+            modelPath is null ? null : _nsfwRunning ? "Scoring…" : $"Score {scope.Count:N0} photos",
+            modelPath is null ? null : () => ScoreNsfw(modelPath)));
 
         body.AddView(Step(4, _hasScanned, "Sharpness", "Scored during the scan", null, null));
 
@@ -1533,6 +1576,93 @@ public sealed class MainActivity : Activity
         return holder;
     }
 
+    /// <summary>Rough wall-clock for a tiled pass, from the S23 measurement.</summary>
+    static string NsfwEta(int photos)
+    {
+        var t = TimeSpan.FromSeconds(photos * 2.9);
+        return t.TotalMinutes < 1 ? "under a minute"
+             : t.TotalHours < 1 ? $"{t.TotalMinutes:N0} minutes"
+             : $"{t.TotalHours:N1} hours";
+    }
+
+    /// <summary>
+    /// Scores the photos currently in view, on this device.
+    /// </summary>
+    /// <remarks>
+    /// <para>Scoped to <see cref="ScopedPhotos"/> rather than the catalogue, for the reason
+    /// <c>NsfwScorer</c>'s own <c>root</c> parameter documents: the catalogue outlives every folder
+    /// ever scanned, so an unscoped run goes off and scores thousands of photos the user cannot see
+    /// and did not ask about. Here that is worse than untidy — it is hours of phone CPU.</para>
+    ///
+    /// <para>Always <see cref="NsfwDepth.Tiled"/>. Whole-frame is ten times cheaper and is the mode
+    /// that scored 0.0014 on a photo the tiled pass scored 0.9983 — a fast scan that misses what it
+    /// exists to find is worse than none, because it leaves the user believing a folder was
+    /// checked.</para>
+    /// </remarks>
+    async void ScoreNsfw(string modelPath)
+    {
+        if (_nsfwRunning) return;
+
+        var scope = ScopedPhotos();
+        if (scope.Count == 0) { Toast.MakeText(this, "Nothing in view to score.", ToastLength.Short)!.Show(); return; }
+
+        if (scope.Count > NsfwScopeLimit)
+        {
+            new AlertDialog.Builder(this)
+                .SetTitle("Too many photos to score")!
+                .SetMessage($"{scope.Count:N0} photos would take about {NsfwEta(scope.Count)} on this "
+                          + $"phone, and Android stops background work of that length before it finishes.\n\n"
+                          + $"Narrow the library to a folder first — up to {NsfwScopeLimit:N0} photos at a time.")!
+                .SetPositiveButton("Choose a folder", (_, _) => OpenFoldersForScope())!
+                .SetNegativeButton("Cancel", (EventHandler<DialogClickEventArgs>?)null)!
+                .Show();
+            return;
+        }
+
+        new AlertDialog.Builder(this)
+            .SetTitle($"Score {scope.Count:N0} photos?")!
+            .SetMessage($"About {NsfwEta(scope.Count)} on this phone. Everything runs here — nothing "
+                      + "about your photos is sent anywhere.\n\nKeep SnapZap open or let it run in the "
+                      + "background; it is best on a charger.")!
+            .SetNegativeButton("Cancel", (EventHandler<DialogClickEventArgs>?)null)!
+            .SetPositiveButton("Score them", async (_, _) =>
+            {
+                _nsfwRunning = true;
+                Render();
+                WorkService.Start(this, "Scoring photos");
+                try
+                {
+                    var ids = scope.Select(p => p.Id).ToList();
+                    var progress = new Progress<NsfwProgress>(p =>
+                        WorkService.Report(this, "Scoring photos",
+                            $"{p.Done:N0} of {p.Total:N0}", p.Done, p.Total));
+
+                    var result = await Task.Run(() =>
+                        new NsfwScorer(_catalog!.Db, modelPath)
+                            .ScoreAllAsync(imageIds: ids, progress: progress, depth: NsfwDepth.Tiled));
+
+                    Toast.MakeText(this,
+                        result.ModelAvailable
+                            ? $"Scored {result.Scored:N0}{(result.Failed > 0 ? $", {result.Failed:N0} failed" : "")}"
+                            : result.Note ?? "Model unavailable",
+                        ToastLength.Long)!.Show();
+                }
+                catch (Exception ex)
+                {
+                    Toast.MakeText(this, $"Scoring failed: {ex.Message}", ToastLength.Long)!.Show();
+                    Android.Util.Log.Error(Tag, ex.ToString());
+                }
+                finally
+                {
+                    WorkService.Stop(this);
+                    _nsfwRunning = false;
+                    _photos = await Task.Run(() => _catalog!.Images.All().ToList());
+                    Render();
+                }
+            })!
+            .Show();
+    }
+
     // ══════════════════════════════════════════════════════════════════════════════════════
     //  Permission gate — not in the handoff, but Android requires it before any of it works
     // ══════════════════════════════════════════════════════════════════════════════════════
@@ -1553,7 +1683,8 @@ public sealed class MainActivity : Activity
             + "it from Settings.", 14.5f));
         body.AddView(Gap(16));
         body.AddView(Design.Note(this,
-            "SnapZap has no internet permission — nothing it reads can leave this device."));
+            "Your photos never leave this device. SnapZap downloads one thing — the optional "
+            + "content-scoring model — and sends nothing back."));
         body.AddView(Gap(20));
 
         var b = Design.Button(this, "Open Settings to grant access", Design.Btn.Primary, 52f);

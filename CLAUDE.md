@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-SnapZap (.NET 10, C#) finds duplicates, NSFW images, and blurry photos in a folder, then exports the clean set to a destination (e.g., for Plex to watch). It ships as a **Windows/macOS desktop app** (Blazor Server behind a local host) and, since 1.3.0, a **native Android app** — both over the same `SnapZap.Core`, with no cloud on either. The app is:
+SnapZap (.NET 10, C#) finds duplicates, NSFW images, and blurry photos in a folder, then exports the clean set to a destination (e.g., for Plex to watch). It ships as a **Windows/macOS desktop app** (Blazor Server behind a local host) and, since 1.3.0, a **native Android app** — both over the same `SnapZap.Core`, with no cloud on either — the only network call anywhere is the one-time, checksum-verified download of the optional NSFW model. The app is:
 - Developed on macOS, shipped as a self-contained `win-x64` executable; the Android head builds from the same repo (see `docs/ANDROID-PORT-ACS.md`)
 - ~90% cross-platform; four Windows-only paths behind `IPlatformServices` interfaces (Recycle Bin, hardlinks, DirectML GPU, native window host)
 - No cloud, no subscriptions, no paid dependencies

@@ -81,9 +81,13 @@ on-device: perceptual hashes are **bit-identical** to the desktop's, and NSFW sc
   done — the Plan tab used to print a default folder above a count of photos from somewhere else.
 - **The duplicates callout can be dismissed**, and a filter that matches nothing now says so and
   offers a way back instead of showing an empty grid.
-- **The plan reads "of 3", not "of 5".** Content review and export are marked as desktop-only rather
-  than as steps that have not started — neither can ever be completed on Android, and the model
-  content review needs cannot be fetched by an app with no network permission.
+- **The plan counts only the steps Android can actually complete.** Export is marked desktop-only
+  rather than as a step that has not started, so the plan is no longer permanently unfinishable.
+- **Content review works on Android.** The scoring model is downloaded once, from an address pinned
+  to an exact revision and rejected unless it matches a known checksum, with progress under the
+  foreground service. Scoring itself runs on the device — this is the only network call SnapZap
+  makes, it goes one way, and nothing derived from your photos is ever sent. Expect roughly three
+  seconds per photo on a recent phone, so it is a per-folder job rather than a whole-library one.
 - **Selecting photos no longer scrolls the grid back to the top** on every tap.
 - **The library now shows the folder you scanned, and refreshes when it changes.** Two defects
   together: every screen read the catalogue unscoped, so photos from folders scanned earlier stayed

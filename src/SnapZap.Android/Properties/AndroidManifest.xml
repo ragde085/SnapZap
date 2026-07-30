@@ -39,6 +39,22 @@
   <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
   <!--
+    INTERNET exists for exactly one thing: fetching the content-scoring model, from one URL pinned
+    to an immutable revision and rejected unless it hashes to a known SHA-256
+    (SnapZap.Core.Nsfw.NsfwModelDownload). It is the only network call in the app and it travels in
+    one direction.
+
+    ⚠ Adding this gave up something real, and the copy had to change with it. The app previously
+    declared no INTERNET at all, which meant "your photos cannot leave this device" was enforced by
+    the OS rather than promised by us. It is now a property of our own behaviour: photos are read,
+    decoded, hashed and scored entirely on-device, and nothing derived from them is ever sent. Any
+    change that adds a second network call breaks a promise several screens make in as many words —
+    see the permission gate and Settings → About.
+  -->
+  <uses-permission android:name="android.permission.INTERNET" />
+  <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+  <!--
     Note what is NOT here: android.permission.INTERNET, and any networkSecurityConfig permitting
     cleartext to 127.0.0.1. The port plan §3 required both, because its architecture ran Kestrel
     in-process and pointed a WebView at loopback. That architecture is dead (ANDROID-PORT-ACS

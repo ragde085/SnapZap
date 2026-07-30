@@ -4,6 +4,7 @@ using Android.OS;
 using Android.Views;
 using Android.Widget;
 using SnapZap.Core.Dedup;
+using SnapZap.Core.Nsfw;
 using SnapZap.Core.Scanning;
 
 namespace SnapZap.Droid;
@@ -52,6 +53,9 @@ public sealed class SettingsActivity : Activity
     /// </summary>
     bool _scanStale;
     bool _rerunning;
+
+    bool _downloading;
+    string _downloadStatus = "Downloading…";
 
     protected override void OnCreate(Bundle? savedInstanceState)
     {
@@ -331,12 +335,38 @@ public sealed class SettingsActivity : Activity
 
     void BuildContent()
     {
-        Section("Content review");
-        _body.AddView(Design.ListRow(this, "NSFW scoring",
-            "SnapZap holds no internet permission, so it cannot fetch the 328 MB scoring model — "
-            + "which is the trade being made deliberately. Nothing this app reads can leave the "
-            + "device. Score on the desktop instead; the results travel in the catalogue.",
-            "Desktop only"));
+        Section("Content review",
+            "Scoring runs on this device. The model is downloaded once — that is the only thing "
+            + "SnapZap ever fetches, and nothing about your photos is ever sent anywhere.");
+
+        var model = FindNsfwModel();
+        _body.AddView(Design.ListRow(this, "Scoring model",
+            model is null
+                ? $"Not installed. About {NsfwModelDownload.TotalApproxBytes / (1024 * 1024)} MB, "
+                  + "verified against a known checksum after downloading."
+                : model,
+            model is null ? "Missing" : "Ready"));
+
+        if (model is null)
+        {
+            var get = Design.Button(this,
+                _downloading ? _downloadStatus : "Download the model", Design.Btn.Primary, 48f);
+            get.LayoutParameters = Design.Wide();
+            get.Enabled = !_downloading;
+            get.Click += (_, _) => DownloadModel();
+            _downloadButton = get;
+            _body.AddView(Pad(get));
+            _body.AddView(Pad(Design.Note(this,
+                "Best on Wi-Fi. The download resumes from scratch if it fails — a partial file is "
+                + "never kept, because a half-downloaded model would score photos wrongly rather "
+                + "than not at all.")));
+        }
+
+        // Stated wherever the feature is offered, because the number is the whole decision: on a
+        // Galaxy S23 one photo takes ~2.9 s to score at full depth, so this is a per-folder job.
+        _body.AddView(Pad(Design.Note(this,
+            "Scoring is slow on a phone — roughly three seconds per photo, so a folder of 500 takes "
+            + "around 25 minutes. Narrow the library to a folder before running it.")));
     }
 
     void BuildStorage()
@@ -387,8 +417,7 @@ public sealed class SettingsActivity : Activity
     /// inferences, which is seconds at best and would otherwise trip the ANR watchdog.</para>
     ///
     /// <para>The model is looked for beside the catalogue — <c>&lt;app files&gt;/SnapZap/nsfw.onnx</c>
-    /// — because the app has no network permission and no in-app route to fetch it, so the only way
-    /// it gets there is <c>adb push</c>. Absent, the check reports a skip rather than a failure,
+    /// — or wherever <see cref="FindNsfwModel"/> locates it. Absent, the check reports a skip rather than a failure,
     /// matching how a missing model behaves everywhere else.</para>
     ///
     /// <para>Results go to the clipboard as well as the screen: the interesting part is a wall of
@@ -431,34 +460,68 @@ public sealed class SettingsActivity : Activity
     }
 
     /// <summary>
-    /// Where <c>nsfw.onnx</c> might be on this device, most convenient first.
+    /// Downloads the scoring model into app-private storage, verified by checksum.
     /// </summary>
     /// <remarks>
-    /// <para><b>Shared storage comes first on purpose, and app-private storage is nearly useless
-    /// here.</b> There is no in-app route to the model — no network permission — so it arrives by
-    /// <c>adb push</c> or by the user's own browser download. Neither can write into
-    /// <c>/data/user/0/…/files</c>: <c>adb push</c> has no access, and <c>run-as</c> only works on a
-    /// debuggable build, which a release APK is not. Picking the app-private path as the only
-    /// location would have meant the check could never run on the phone it was written for.</para>
+    /// <para>Runs under the foreground service: 328 MB over a phone connection is minutes, and
+    /// Android will otherwise freeze the process the moment the user switches away — the same
+    /// reason scanning and deleting hold one.</para>
     ///
-    /// <para><c>Download/</c> leads because it is where both routes naturally land. The app holds
-    /// <c>MANAGE_EXTERNAL_STORAGE</c>, so it can read all of these.</para>
+    /// <para>Written to app-private storage rather than <c>Download/</c>. That directory is only in
+    /// the lookup because it is where a hand-pushed file lands; a file the app fetched itself
+    /// belongs somewhere it will be cleaned up on uninstall, and where nothing else can replace it
+    /// after it has been verified.</para>
     /// </remarks>
-    string? FindNsfwModel()
+    async void DownloadModel()
     {
-        var storage = SnapZap.Core.Platform.DirectoryRoots.AndroidPrimaryStorage;
-        foreach (var candidate in new[]
+        if (_downloading) return;
+        _downloading = true;
+        _downloadStatus = "Starting…";
+        Render();
+
+        WorkService.Start(this, "Downloading scoring model");
+        try
         {
-            Path.Combine(storage, "Download", "nsfw.onnx"),
-            Path.Combine(storage, "SnapZap", "nsfw.onnx"),
-            Path.Combine(_catalog!.AppDataDir, "nsfw.onnx"),
-        })
-        {
-            try { if (File.Exists(candidate)) return candidate; }
-            catch (Exception) { /* an unreadable candidate is just not the one */ }
+            var dest = _catalog!.AppDataDir;
+            using var http = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
+
+            var progress = new Progress<DownloadProgress>(p =>
+            {
+                var mb = p.BytesReceived / (1024 * 1024);
+                var totalMb = (p.TotalBytes ?? NsfwModelDownload.TotalApproxBytes) / (1024 * 1024);
+                _downloadStatus = $"Downloading… {mb} of {totalMb} MB";
+                if (_downloadButton is not null) _downloadButton.Text = _downloadStatus;
+                WorkService.Report(this, "Downloading scoring model",
+                    $"{mb} of {totalMb} MB", (int)mb, (int)totalMb);
+            });
+
+            await NsfwModelDownload.FetchAsync(dest, http, progress);
+            Toast.MakeText(this, "Model downloaded and verified", ToastLength.Short)!.Show();
         }
-        return null;
+        catch (InvalidDataException ex)
+        {
+            // Checksum failure is its own message: it means the bytes were wrong, not that the
+            // network was, and re-trying is the right response rather than a bug report.
+            Toast.MakeText(this, ex.Message, ToastLength.Long)!.Show();
+            Android.Util.Log.Error("SnapZap", ex.ToString());
+        }
+        catch (Exception ex)
+        {
+            Toast.MakeText(this, $"Download failed: {ex.Message}", ToastLength.Long)!.Show();
+            Android.Util.Log.Error("SnapZap", ex.ToString());
+        }
+        finally
+        {
+            WorkService.Stop(this);
+            _downloading = false;
+            _downloadButton = null;
+            Render();
+        }
     }
+
+    Button? _downloadButton;
+
+    string? FindNsfwModel() => _catalog?.FindNsfwModel();
 
     void ConfirmForget(int photos)
     {
@@ -498,8 +561,10 @@ public sealed class SettingsActivity : Activity
         var pkg = PackageManager?.GetPackageInfo(PackageName!, 0);
         _body.AddView(Design.ListRow(this, "Version", null, pkg?.VersionName ?? "—"));
         _body.AddView(Design.ListRow(this, "Network access",
-            "The Android build declares no INTERNET permission at all, which the system enforces "
-            + "regardless of what the app does.", "None"));
+            "One download, one direction: the content-scoring model, from a fixed address pinned to "
+            + "an exact revision and rejected unless it matches a known checksum. Your photos are "
+            + "read, hashed and scored entirely on this device and nothing derived from them is "
+            + "ever sent.", "Model download only"));
 
         // CoreSelfTest had no caller anywhere — it validated Core on-device during the port and was
         // only ever run by hand from a debugger. That made its results unreachable on a real phone,
