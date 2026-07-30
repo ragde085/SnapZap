@@ -175,17 +175,54 @@ public static class CoreSelfTest
         {
             Check("onnx_nsfw", () =>
             {
+                // Timed, because throughput is the open question about NSFW on Android — not
+                // correctness, which this check already settled. The model is ViT-base: ~86M fp32
+                // parameters, and NsfwDepth.Tiled runs it ten times per photo (the whole frame plus
+                // NsfwDecision.Tiles). Whether the feature is usable at all is a straight
+                // multiplication from the per-inference cost, and that number cannot be taken from
+                // the emulator — it is x86_64 and says nothing about an arm64 phone. So it is
+                // measured here, on the device, and reported whether or not the scores match.
+                //
+                // Session construction is timed separately: 327.5 MiB of weights has to be read and
+                // laid out before the first inference, and that cost is paid once per scan rather
+                // than once per photo, so averaging it into the per-inference figure would flatter
+                // a long run and slander a short one.
+                var swLoad = System.Diagnostics.Stopwatch.StartNew();
                 using var clf = new OnnxNsfwClassifier(modelPath);
+                swLoad.Stop();
+
+                // One untimed pass first. The first inference pays for lazy allocation and JIT
+                // inside the runtime, so timing it would measure warm-up rather than steady state.
+                _ = clf.ScoreFile(pngPath);
+
+                var swWhole = System.Diagnostics.Stopwatch.StartNew();
                 var whole = clf.ScoreFile(pngPath);
+                swWhole.Stop();
+
+                var swTiled = System.Diagnostics.Stopwatch.StartNew();
                 var verdict = clf.ScoreFile(pngPath, NsfwDepth.Tiled);
+                swTiled.Stop();
 
                 var dw = Math.Abs(whole - RefNsfwWhole);
                 var dt = verdict.TileMean is { } tm ? Math.Abs(tm - RefNsfwTileMean) : double.NaN;
                 var ok = dw <= NsfwTolerance && (double.IsNaN(dt) || dt <= NsfwTolerance);
 
+                // Projected to a library-sized run, because "412 ms" invites a shrug and
+                // "1.1 hours for 10,000 photos" is a decision.
+                var perTiled = swTiled.Elapsed.TotalMilliseconds;
+                string Project(int photos) =>
+                    $"{photos:N0}→{TimeSpan.FromMilliseconds(perTiled * photos):d\\d\\ hh\\h\\ mm\\m}";
+
+                var timing =
+                    $"load={swLoad.ElapsedMilliseconds}ms whole={swWhole.Elapsed.TotalMilliseconds:F0}ms "
+                    + $"tiled(x{NsfwDecision.Tiles.Count + 1})={perTiled:F0}ms "
+                    + $"· tiled projection {Project(10_000)}, {Project(40_000)}";
+
                 return ok
-                    ? $"whole={whole:F7} (Δ{dw:E2}) tileMean={verdict.TileMean:F7} (Δ{dt:E2}), config_from_file={clf.ConfigFromFile}"
-                    : $"DIFFERS whole={whole:R} (desktop {RefNsfwWhole:R}, Δ{dw:E2}) tileMean={verdict.TileMean} (desktop {RefNsfwTileMean:R}, Δ{dt:E2})";
+                    ? $"whole={whole:F7} (Δ{dw:E2}) tileMean={verdict.TileMean:F7} (Δ{dt:E2}), "
+                      + $"config_from_file={clf.ConfigFromFile} · {timing}"
+                    : $"DIFFERS whole={whole:R} (desktop {RefNsfwWhole:R}, Δ{dw:E2}) tileMean={verdict.TileMean} "
+                      + $"(desktop {RefNsfwTileMean:R}, Δ{dt:E2}) · {timing}";
             });
         }
 

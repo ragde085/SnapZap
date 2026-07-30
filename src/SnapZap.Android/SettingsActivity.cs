@@ -379,6 +379,87 @@ public sealed class SettingsActivity : Activity
         _body.AddView(Pad(forget));
     }
 
+    /// <summary>
+    /// Runs <see cref="CoreSelfTest"/> and shows the report.
+    /// </summary>
+    /// <remarks>
+    /// <para>Off the UI thread: the NSFW branch constructs a 327.5 MiB ONNX session and runs eleven
+    /// inferences, which is seconds at best and would otherwise trip the ANR watchdog.</para>
+    ///
+    /// <para>The model is looked for beside the catalogue — <c>&lt;app files&gt;/SnapZap/nsfw.onnx</c>
+    /// — because the app has no network permission and no in-app route to fetch it, so the only way
+    /// it gets there is <c>adb push</c>. Absent, the check reports a skip rather than a failure,
+    /// matching how a missing model behaves everywhere else.</para>
+    ///
+    /// <para>Results go to the clipboard as well as the screen: the interesting part is a wall of
+    /// numbers to paste back, not something to read on a phone.</para>
+    /// </remarks>
+    async void RunSelfTest(Button trigger)
+    {
+        trigger.Enabled = false;
+        trigger.Text = "Running…";
+        try
+        {
+            var work = Path.Combine(_catalog!.AppDataDir, "selftest");
+            var model = FindNsfwModel();
+            var report = await Task.Run(() => CoreSelfTest.Format(CoreSelfTest.Run(work, model)));
+
+            Android.Util.Log.Info("SnapZap", "self-test\n" + report);
+            try
+            {
+                var cb = (ClipboardManager?)GetSystemService(ClipboardService);
+                cb?.PrimaryClip = ClipData.NewPlainText("SnapZap self-test", report);
+            }
+            catch (Exception) { /* a clipboard that refuses is not worth failing the run over */ }
+
+            new AlertDialog.Builder(this)
+                .SetTitle("Self-test")!
+                .SetMessage(report)!
+                .SetPositiveButton("Close", (EventHandler<DialogClickEventArgs>?)null)!
+                .Show();
+        }
+        catch (Exception ex)
+        {
+            Toast.MakeText(this, $"Self-test failed: {ex.Message}", ToastLength.Long)!.Show();
+            Android.Util.Log.Error("SnapZap", ex.ToString());
+        }
+        finally
+        {
+            trigger.Enabled = true;
+            trigger.Text = "Run self-test";
+        }
+    }
+
+    /// <summary>
+    /// Where <c>nsfw.onnx</c> might be on this device, most convenient first.
+    /// </summary>
+    /// <remarks>
+    /// <para><b>Shared storage comes first on purpose, and app-private storage is nearly useless
+    /// here.</b> There is no in-app route to the model — no network permission — so it arrives by
+    /// <c>adb push</c> or by the user's own browser download. Neither can write into
+    /// <c>/data/user/0/…/files</c>: <c>adb push</c> has no access, and <c>run-as</c> only works on a
+    /// debuggable build, which a release APK is not. Picking the app-private path as the only
+    /// location would have meant the check could never run on the phone it was written for.</para>
+    ///
+    /// <para><c>Download/</c> leads because it is where both routes naturally land. The app holds
+    /// <c>MANAGE_EXTERNAL_STORAGE</c>, so it can read all of these.</para>
+    /// </remarks>
+    string? FindNsfwModel()
+    {
+        var storage = SnapZap.Core.Platform.DirectoryRoots.AndroidPrimaryStorage;
+        foreach (var candidate in new[]
+        {
+            Path.Combine(storage, "Download", "nsfw.onnx"),
+            Path.Combine(storage, "SnapZap", "nsfw.onnx"),
+            Path.Combine(_catalog!.AppDataDir, "nsfw.onnx"),
+        })
+        {
+            try { if (File.Exists(candidate)) return candidate; }
+            catch (Exception) { /* an unreadable candidate is just not the one */ }
+        }
+        return null;
+    }
+
     void ConfirmForget(int photos)
     {
         new AlertDialog.Builder(this)
@@ -419,6 +500,20 @@ public sealed class SettingsActivity : Activity
         _body.AddView(Design.ListRow(this, "Network access",
             "The Android build declares no INTERNET permission at all, which the system enforces "
             + "regardless of what the app does.", "None"));
+
+        // CoreSelfTest had no caller anywhere — it validated Core on-device during the port and was
+        // only ever run by hand from a debugger. That made its results unreachable on a real phone,
+        // which is precisely where they matter: it is the one thing that reports how long an NSFW
+        // inference actually takes on this hardware, and that number decides whether the feature is
+        // viable at all (ViT-base, ten inferences per photo — see the check's own remarks).
+        var selfTest = Design.Button(this, "Run self-test", Design.Btn.Secondary, 44f);
+        selfTest.LayoutParameters = Design.Wide();
+        selfTest.Click += (_, _) => RunSelfTest(selfTest);
+        _body.AddView(Pad(selfTest));
+        _body.AddView(Pad(Design.Note(this,
+            "Checks the shared engine on this device — hashing, perceptual signatures, SQLite, and "
+            + "NSFW timing if nsfw.onnx is in Download/. Results copy "
+            + "to the clipboard.")));
         _body.AddView(Design.Gap(this, 24));
     }
 
