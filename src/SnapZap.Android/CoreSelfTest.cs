@@ -148,13 +148,49 @@ public static class CoreSelfTest
         //    module initialiser fires under this TFM. It would fail at first open, not at startup.
         Check("sqlite_open_and_roundtrip", () =>
         {
-            var dbPath = Path.Combine(workDir, "selftest.db");
-            File.Delete(dbPath);
-            using var db = new Database(dbPath);
-            using var cmd = db.Writer.CreateCommand();
-            cmd.CommandText = "select count(*) from images";
-            var n = Convert.ToInt64(cmd.ExecuteScalar());
-            return $"schema created, images row count = {n}, file {new FileInfo(dbPath).Length} bytes";
+            // A fresh filename per run, rather than deleting and reusing one.
+            //
+            // Microsoft.Data.Sqlite pools connections, so disposing a Database returns its
+            // connection to the pool with the file still open. Re-running this check then deleted a
+            // path that was still held open: on Linux that unlinks the directory entry while the
+            // inode lives on, so SQLite carried on writing to a file with no name. The query passed
+            // and the size read threw FileNotFoundException — which is exactly what the second run
+            // on the S23 reported. Sweeping the leftovers and taking a new name sidesteps the pool
+            // entirely, without reaching into Database's connection string, which the real
+            // catalogue shares.
+            foreach (var stale in Directory.EnumerateFiles(workDir, "selftest-*.db*"))
+            {
+                try { File.Delete(stale); }
+                catch (IOException) { /* still pooled open; the new name does not care */ }
+            }
+
+            var dbPath = Path.Combine(workDir, $"selftest-{Guid.NewGuid():N}.db");
+
+            long rows;
+            using (var db = new Database(dbPath))
+            {
+                using var cmd = db.Writer.CreateCommand();
+                cmd.CommandText = "select count(*) from images";
+                rows = Convert.ToInt64(cmd.ExecuteScalar());
+            }
+
+            // Summed after the connection closes: in WAL mode the schema sits in the -wal file until
+            // a checkpoint, and the checkpoint happens on close.
+            long bytes = 0;
+            foreach (var suffix in new[] { "", "-wal", "-shm" })
+            {
+                var f = dbPath + suffix;
+                if (File.Exists(f)) bytes += new FileInfo(f).Length;
+            }
+
+            // Asserted, not just reported. A schema that answers queries while leaving nothing on
+            // disk is the failure above wearing a PASS, and the whole point of this check is that
+            // SQLite really persists on this device.
+            if (bytes == 0)
+                throw new InvalidOperationException(
+                    $"query succeeded but nothing was written to '{dbPath}' — no file on disk");
+
+            return $"schema created, images row count = {rows}, {bytes} bytes on disk";
         });
 
         // 6. ONNX Runtime (AC-2.4) — the last native unknown, and the one with a live upstream

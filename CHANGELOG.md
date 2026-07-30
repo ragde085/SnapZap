@@ -113,6 +113,11 @@ on-device: perceptual hashes are **bit-identical** to the desktop's, and NSFW sc
 
 ### Fixed — Android
 
+- The self-test's SQLite check failed on every run after the first. It deleted and reused one
+  filename, but `Microsoft.Data.Sqlite` pools connections — so the delete unlinked a file that was
+  still open, SQLite carried on writing to an inode with no directory entry, and reading its size
+  threw. It now takes a fresh filename per run and asserts something reached the disk, so a schema
+  that answers queries while persisting nothing can no longer report a pass.
 - Back is routed through `OnBackInvokedDispatcher`. Overriding `OnBackPressed` silently stops
   working at API 36, which had made choosing a folder do nothing and made Back in selection mode
   close the app.
