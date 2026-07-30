@@ -199,6 +199,8 @@ public sealed class TrashActivity : Activity
                 {
                     WorkService.Start(this, "Restoring photos");
                     var r = await Task.Run(() => svc.RestoreAsync(b.BatchId));
+                    // Restored files are back on disk but their catalogue rows went with the delete.
+                    await _catalog.RescanAfterRestoreAsync();
                     Toast.MakeText(this,
                         r.Missing > 0
                             ? $"Restored {r.Restored}; {r.Missing} no longer in the trash"
@@ -324,6 +326,7 @@ public sealed class TrashActivity : Activity
             {
                 one.Enabled = false;
                 var ok = await Task.Run(() => _catalog.NewDeleteService().RestoreItemAsync(item.Id));
+                if (ok) await _catalog.RescanAfterRestoreAsync();
                 Toast.MakeText(this, ok ? "Restored" : "No longer in the trash", ToastLength.Short)!.Show();
                 Refresh();
             };
@@ -367,7 +370,7 @@ public sealed class TrashActivity : Activity
             {
                 WorkService.Start(this, "Restoring photos");
                 var r = await Task.Run(() => svc.RestoreAsync(b.BatchId));
-                WorkService.Stop(this);
+                await _catalog.RescanAfterRestoreAsync();
                 Toast.MakeText(this,
                     r.Missing > 0
                         ? $"Restored {r.Restored}; {r.Missing} no longer in the trash"
@@ -379,6 +382,9 @@ public sealed class TrashActivity : Activity
                 Toast.MakeText(this, $"Restore failed: {ex.Message}", ToastLength.Long)!.Show();
                 Android.Util.Log.Error("SnapZap", ex.ToString());
             }
+            // In a finally, like the batch Restore above: the WorkService.Stop used to sit on the
+            // success path only, so a throw left the notification up for good.
+            finally { WorkService.Stop(this); }
             Refresh();
         });
 

@@ -56,6 +56,18 @@ restore from history, all on the phone.
   existing results are judged.
 - **Screen-reader labels throughout.** Every icon control, photo tile, list row and plan step now
   announces itself; the app previously had none at all.
+- **Delete from the preview.** The full-size view could show you a photo you had clearly finished
+  with and offer nothing to do about it. Deleting steps to the next photo rather than closing, and
+  puts an undo bar within reach of the tap that caused it.
+- **Delete a group's extras from the comparison itself**, and move to the next one. Every button on
+  that screen used to only *mark* a keeper — actually reclaiming the space meant leaving for the
+  library, entering selection mode and finding the same photos again. The button names the count and
+  the bytes it will free, and excludes burst-adjacent frames through the same shared rule the
+  library's Select-all uses.
+- **Forget everything**, matching the desktop's Setup panel. Android had no way to clear the
+  catalogue at all — app-private storage cannot be reached to delete `catalog.db` by hand, so the
+  only reset was uninstalling. Photos are never touched; the confirmation says so, and warns that
+  History entries lose their previews because those *are* the thumbnail cache.
 
 The port required no change to the scanning, hashing, duplicate-detection or NSFW logic. Verified
 on-device: perceptual hashes are **bit-identical** to the desktop's, and NSFW scores match to
@@ -73,6 +85,14 @@ on-device: perceptual hashes are **bit-identical** to the desktop's, and NSFW sc
   than as steps that have not started — neither can ever be completed on Android, and the model
   content review needs cannot be fetched by an app with no network permission.
 - **Selecting photos no longer scrolls the grid back to the top** on every tap.
+- **The library now shows the folder you scanned, and refreshes when it changes.** Two defects
+  together: every screen read the catalogue unscoped, so photos from folders scanned earlier stayed
+  in the grid — and inside the reach of "Select all" → Delete — while nothing reloaded when returning
+  from another screen, so changing the folder, clearing the catalogue or deleting a photo left the
+  previous answer on display.
+- **Restoring from History puts photos back in the library.** Deleting removes the catalogue row as
+  well as moving the file, so restoring returned the file and left it invisible in the app until the
+  next scan. All four restore paths now re-read the folder, as the desktop has always done.
 - The review screen's footer no longer says "nothing is deleted here" on a screen where swiping down
   deletes.
 

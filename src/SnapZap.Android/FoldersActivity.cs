@@ -28,7 +28,7 @@ namespace SnapZap.Droid;
 /// (Core) is the closest fit and is reused for its prefix-range *idea* (a folder's subtree is every
 /// path starting with <c>folder + "/"</c>), but it is a SQL predicate, not a tree, so it does not
 /// itself answer "what are this folder's children." That is computed here, directly from
-/// <c>catalog.Images.All()</c>'s paths, in one linear pass per navigation
+/// <c>catalog.ScopedImages</c>'s paths, in one linear pass per navigation
 /// (<see cref="ComputeLevel"/>): every photo's path is trimmed to what falls under the folder being
 /// browsed, and the first remaining path segment is either "no separator left" (the photo sits
 /// directly in this folder) or a child folder name — which also means a child's *whole subtree*
@@ -148,7 +148,7 @@ public sealed class FoldersActivity : Activity
         base.OnCreate(savedInstanceState);
         _back = BackHandler.Attach(this, HandleBack);
         _catalog = new AndroidCatalog();
-        _photos = _catalog.Images.All().ToList();
+        _photos = _catalog.ScopedImages.ToList();
         _root = ComputeRoot(_photos);
 
         try

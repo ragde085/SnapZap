@@ -480,7 +480,19 @@ Full rationale in [docs/DEDUP-V2.md](docs/DEDUP-V2.md). The short version:
     using it as its ceiling and instantly lost the ability to navigate above DCIM. That activity
     pins itself to `AndroidPrimaryStorage` for exactly this reason — don't re-couple them.
 
-13. **Android's Library grid must not be rebuilt on a selection change.** `SelectionChanged` updates
+13. **Android screens read photos through `AndroidCatalog.ScopedImages`, never `Images.All()`.**
+    The catalogue keeps every folder ever scanned as cache, so an unscoped read puts a previous
+    folder's photos back in the grid *and* inside the reach of "Select all" → Delete — the exact
+    hazard `AppState.LoadAsync` documents on the desktop. Pair it with the reload in
+    `MainActivity.OnResume`: scoping alone still leaves a stale list when another activity changes
+    the catalogue.
+
+14. **A restore is not finished until the folder is re-scanned.** `RecycleAsync` drops the catalogue
+    row along with the file, so `RestoreAsync` alone returns a photo that the app cannot see. Every
+    restore path goes through `AndroidCatalog.RescanAfterRestoreAsync`, mirroring the desktop's
+    `RestoreAndReloadAsync`.
+
+15. **Android's Library grid must not be rebuilt on a selection change.** `SelectionChanged` updates
     the count and repaints tiles; `SelectionModeChanged` swaps the header and action-bar slots. A
     full `Render()` throws away the grid's scroll position on every tap *and* destroys the view the
     hold-and-drag range gesture's touch stream belongs to.

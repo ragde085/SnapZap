@@ -1,4 +1,5 @@
 using Android.App;
+using Android.Content;
 using Android.OS;
 using Android.Views;
 using Android.Widget;
@@ -223,6 +224,7 @@ public sealed class SettingsActivity : Activity
 
         BuildContent();
         BuildStorage();
+        BuildCatalogue();
         BuildAbout();
     }
 
@@ -348,6 +350,65 @@ public sealed class SettingsActivity : Activity
         _body.AddView(Pad(Design.Note(this,
             "Thumbnails are kept after a photo is deleted — History shows them, and losing them "
             + "would leave a restore with nothing to preview. Empty the trash from Trash & history.")));
+    }
+
+    /// <summary>
+    /// The desktop's "Forget everything", which Android had no equivalent of.
+    /// </summary>
+    /// <remarks>
+    /// Without it, the only way to get a clean catalogue on a phone was to uninstall the app — the
+    /// desktop can at least have its <c>catalog.db</c> deleted by hand, and app-private storage on
+    /// Android cannot. A stale catalogue is not cosmetic either: it keeps every folder ever scanned,
+    /// so old rows stay behind the folder scope and turn up again the moment the scope widens.
+    /// </remarks>
+    void BuildCatalogue()
+    {
+        var (photos, bytes) = _catalog!.Footprint();
+
+        Section("Catalogue",
+            "What SnapZap has worked out about your photos. Forgetting it never touches the photos "
+            + "themselves — it just means the next scan starts from scratch.");
+
+        _body.AddView(Design.ListRow(this, "Analysed", null, $"{photos:N0} photos"));
+        _body.AddView(Design.ListRow(this, "Held", null, Format(bytes)));
+
+        var forget = Design.Button(this, "Forget everything", Design.Btn.Secondary, 48f);
+        forget.LayoutParameters = Design.Wide();
+        forget.SetTextColor(Design.Accent700);
+        forget.Click += (_, _) => ConfirmForget(photos);
+        _body.AddView(Pad(forget));
+    }
+
+    void ConfirmForget(int photos)
+    {
+        new AlertDialog.Builder(this)
+            .SetTitle("Forget everything?")!
+            // Two facts the user needs and would otherwise have to infer: their photos are safe, and
+            // History loses its previews because those *are* the thumbnail cache.
+            .SetMessage($"{photos:N0} analysed photos, every duplicate group and the thumbnail cache "
+                      + "will be cleared.\n\nYour photos are not touched — nothing is deleted from "
+                      + "your device, and anything already in the trash can still be restored. Past "
+                      + "History entries will lose their previews, because those come from the "
+                      + "thumbnails being cleared.")!
+            .SetNegativeButton("Cancel", (EventHandler<DialogClickEventArgs>?)null)!
+            .SetPositiveButton("Forget everything", (_, _) =>
+            {
+                try
+                {
+                    _catalog!.Forget();
+                    _stale = false;
+                    _scanStale = false;
+                    Toast.MakeText(this, "Catalogue cleared. Scan a folder to start again.",
+                        ToastLength.Long)!.Show();
+                }
+                catch (Exception ex)
+                {
+                    Toast.MakeText(this, $"Could not clear: {ex.Message}", ToastLength.Long)!.Show();
+                    Android.Util.Log.Error("SnapZap", ex.ToString());
+                }
+                Render();
+            })!
+            .Show();
     }
 
     void BuildAbout()

@@ -7,6 +7,7 @@ using Android.Widget;
 using SnapZap.Core;
 using SnapZap.Core.Data;
 using SnapZap.Core.Dedup;
+using SnapZap.Core.Delete;
 
 namespace SnapZap.Droid;
 
@@ -35,6 +36,10 @@ public sealed class PreviewActivity : Activity
     Dictionary<long, DupeAssignment> _dupes = [];
     int _index;
 
+    FrameLayout _host = null!;
+    View? _undoBar;
+    bool _deleting;
+
     ImageView _photo = null!;
     LinearLayout _detail = null!;
     TextView _counter = null!;
@@ -44,7 +49,7 @@ public sealed class PreviewActivity : Activity
         base.OnCreate(savedInstanceState);
         _catalog = new AndroidCatalog();
 
-        _items = _catalog.Images.All().ToList();
+        _items = _catalog.ScopedImages.ToList();
         try
         {
             _dupes = DupeAssignmentResolver.Resolve(
@@ -55,12 +60,19 @@ public sealed class PreviewActivity : Activity
         var openAt = Intent?.GetLongExtra(ExtraImageId, -1) ?? -1;
         _index = Math.Max(0, _items.FindIndex(i => i.Id == openAt));
 
+        // FrameLayout host so the undo bar floats over the photo instead of pushing it, the same
+        // shape ReviewActivity uses for the same reason.
+        _host = new FrameLayout(this);
+        SetContentView(_host);
+
         var root = new LinearLayout(this) { Orientation = Orientation.Vertical };
         root.SetBackgroundColor(Design.Neutral300);   // the handoff darkens the frame behind the photo
         root.FocusableInTouchMode = true;
-        SetContentView(root);
-        root.SetOnApplyWindowInsetsListener(new InsetsPadder());
-        root.RequestApplyInsets();
+        root.LayoutParameters = new FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.MatchParent);
+        _host.AddView(root);
+        _host.SetOnApplyWindowInsetsListener(new InsetsPadder());
+        _host.RequestApplyInsets();
 
         // top bar — back, position counter
         var top = new LinearLayout(this) { Orientation = Orientation.Horizontal };
@@ -71,7 +83,17 @@ public sealed class PreviewActivity : Activity
         top.AddView(back);
         _counter = Design.Note(this, "");
         _counter.SetPadding(Design.Dp(this, 10), 0, 0, 0);
+        _counter.LayoutParameters = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f);
         top.AddView(_counter);
+
+        // Asked for explicitly: the preview could show you a photo you had clearly finished with and
+        // offer nothing to do about it. Reversible like every other delete here — it goes to the
+        // trash, and the undo bar below puts Restore within reach of the tap that caused it.
+        var del = Design.Button(this, "Delete", Design.Btn.Secondary, 40f);
+        del.SetTextSize(Android.Util.ComplexUnitType.Sp, 13f);
+        del.SetTextColor(Design.Accent700);
+        del.Click += (_, _) => DeleteCurrent();
+        top.AddView(del);
         root.AddView(top);
 
         // the photo itself, full bleed
@@ -143,8 +165,114 @@ public sealed class PreviewActivity : Activity
         }
 
         pad.AddView(Design.Gap(this, 9));
-        pad.AddView(Design.Note(this, "Swipe sideways to step through · back to close"));
+        pad.AddView(Design.Note(this, "Swipe sideways to step through · Delete moves this photo to the trash · back to close"));
         _detail.AddView(pad);
+    }
+
+    /// <summary>
+    /// Moves the photo on screen to the trash and steps to the next one.
+    /// </summary>
+    /// <remarks>
+    /// <para>Advances rather than closing. Deleting from a preview is usually one of a run — you are
+    /// stepping through and clearing as you go — and dropping back to the grid after each one would
+    /// make the second deletion cost four taps instead of one. When the list empties, there is
+    /// nothing left to show and the screen closes.</para>
+    ///
+    /// <para>No confirmation dialog, deliberately, and the undo bar is why: a modal on a reversible
+    /// action trains people to dismiss modals, whereas an undo that is already on screen costs
+    /// nothing to ignore and one tap to use. Same reasoning as the review queue's swipe-down.</para>
+    /// </remarks>
+    async void DeleteCurrent()
+    {
+        if (_deleting || _items.Count == 0) return;
+        var rec = _items[_index];
+        _deleting = true;
+
+        try
+        {
+            var result = await Task.Run(() => _catalog.NewDeleteService().RecycleAsync([rec.Id]));
+            if (result.Recycled == 0)
+            {
+                Toast.MakeText(this, "Could not move that photo to the trash", ToastLength.Short)!.Show();
+                return;
+            }
+
+            // Drop it from the local list rather than re-querying: the list is the set the grid handed
+            // over, and re-reading the catalogue here would silently widen it past whatever filter or
+            // folder scope produced this preview.
+            _items.RemoveAt(_index);
+            if (_items.Count == 0)
+            {
+                Toast.MakeText(this, $"Moved {System.IO.Path.GetFileName(rec.Path)} to trash — "
+                                   + "restore it from History", ToastLength.Long)!.Show();
+                Finish();
+                return;
+            }
+
+            Show();
+            ShowUndo($"Moved {System.IO.Path.GetFileName(rec.Path)} to trash", result.BatchId);
+        }
+        catch (Exception ex)
+        {
+            Toast.MakeText(this, $"Delete failed: {ex.Message}", ToastLength.Long)!.Show();
+            Android.Util.Log.Error("SnapZap", ex.ToString());
+        }
+        finally { _deleting = false; }
+    }
+
+    /// <summary>Floats an undo bar over the photo. Mirrors <c>ReviewActivity.ShowUndo</c>.</summary>
+    void ShowUndo(string message, string batchId)
+    {
+        DismissUndo();
+
+        var bar = Design.InkBar(this, message, "Undo", async () =>
+        {
+            DismissUndo();
+            try
+            {
+                var r = await Task.Run(() => _catalog.NewDeleteService().RestoreAsync(batchId));
+                // The row went with the file on delete, so the file coming back is not enough.
+                await _catalog.RescanAfterRestoreAsync();
+                Toast.MakeText(this, r.Restored > 0 ? "Restored" : "Nothing left to restore",
+                    ToastLength.Short)!.Show();
+            }
+            catch (Exception ex)
+            {
+                Toast.MakeText(this, $"Restore failed: {ex.Message}", ToastLength.Long)!.Show();
+                Android.Util.Log.Error("SnapZap", ex.ToString());
+            }
+            // The restored photo belongs back in the list, and its position is the catalogue's to
+            // decide, so re-read the scoped set rather than guessing where to reinsert it.
+            _items = _catalog.ScopedImages.ToList();
+            if (_items.Count == 0) { Finish(); return; }
+            _index = Math.Clamp(_index, 0, _items.Count - 1);
+            Show();
+        });
+
+        bar.LayoutParameters = new FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent)
+        {
+            Gravity = GravityFlags.Bottom,
+            LeftMargin = Design.Dp(this, 12),
+            RightMargin = Design.Dp(this, 12),
+            BottomMargin = Design.Dp(this, 20),
+        };
+
+        _host.AddView(bar);
+        _undoBar = bar;
+        bar.Alpha = 0f;
+        bar.TranslationY = Design.Dp(this, 20);
+        bar.Animate()!.Alpha(1f).TranslationY(0f).SetDuration(180).Start();
+        bar.PostDelayed(() => { if (_undoBar == bar) DismissUndo(); }, 6000);
+    }
+
+    void DismissUndo()
+    {
+        if (_undoBar is null) return;
+        var bar = _undoBar;
+        _undoBar = null;
+        bar.Animate()!.Alpha(0f).SetDuration(140)
+            .WithEndAction(new Java.Lang.Runnable(() => _host.RemoveView(bar)))!.Start();
     }
 
     /// <summary>Decodes at roughly screen width. See the class remarks for why never full-size.</summary>

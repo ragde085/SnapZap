@@ -23,10 +23,16 @@ namespace SnapZap.Droid;
 /// screen queued individual bulk-selectable photos and swiped keep/remove one at a time; the
 /// handoff's screens 5-6 instead show one whole duplicate group per step — the keeper large, its
 /// reason stated, the extras as a tappable filmstrip — because that is what actually lets someone
-/// "just confirm" rather than re-litigate every photo. <b>Nothing on this screen deletes anything.</b>
-/// Screen 5's own footer says so: "this only decides which copy survives an export or delete." The
-/// only destructive action left is the swipe-down-to-delete carried over from the previous
-/// implementation, and it goes through <see cref="DeleteService.RecycleAsync"/> exactly as before.</para>
+/// "just confirm" rather than re-litigate every photo.</para>
+///
+/// <para><b>This screen does delete, in two places, and both are reversible.</b> It originally did
+/// not — the handoff's footer said "this only decides which copy survives an export or delete", so
+/// every button merely marked a keeper and reclaiming the space meant leaving for the library,
+/// entering selection mode and finding the same photos again. Deleting a group's extras is the point
+/// of having compared them, so <see cref="DeleteExtrasAndAdvance"/> now offers it here, alongside the
+/// swipe-down that removes the framed photo. Both go through <see cref="DeleteService.RecycleAsync"/>
+/// — trash, not unlink — and both surface an undo bar rather than a confirmation dialog, because a
+/// modal on a reversible action only teaches people to dismiss modals.</para>
 ///
 /// <para><b>Two safety rules are load-bearing here, and neither is re-derived locally.</b></para>
 ///
@@ -57,6 +63,7 @@ public sealed class ReviewActivity : Activity
     LinearLayout _root = null!;
     FrameLayout _host = null!;
     View? _undoBar;
+    Dictionary<long, DupeAssignment> _assign = [];
 
     readonly List<GroupEntry> _queue = [];
     int _index;
@@ -67,6 +74,10 @@ public sealed class ReviewActivity : Activity
     /// rather than a live "marked so far" tally, since this build has no library-wide running
     /// counter the way the desktop's AppState does. Documented deviation, not an oversight.</summary>
     int _totalExtras;
+
+    /// <summary>How many extras this visit actually recycled, so the completion screen can say so
+    /// rather than claiming nothing here deletes.</summary>
+    int _deletedHere;
 
     /// <summary>Which images are currently ticked on the burst grid, local to the on-screen group
     /// until committed — see <see cref="CommitBurstChoice"/>. Tapping is cheap precisely because it
@@ -115,11 +126,26 @@ public sealed class ReviewActivity : Activity
     //  Building the queue
     // ══════════════════════════════════════════════════════════════════════════════════════
 
+    /// <summary>
+    /// Rebuilds the queue from the catalogue. Idempotent — safe to call more than once.
+    /// </summary>
+    /// <remarks>
+    /// It was called exactly once, from <c>OnCreate</c>, and appended without clearing. That became a
+    /// bug the moment anything re-loaded: undoing a delete, or deleting a group's extras, would have
+    /// appended a second copy of every group and doubled <see cref="_totalExtras"/>. Reset here rather
+    /// than at the call sites, so a future caller cannot reintroduce it.
+    /// </remarks>
     void LoadQueue()
     {
+        _queue.Clear();
+        _totalExtras = 0;
+
         var groups = new DupeRepository(_catalog.Db).Groups();
-        var images = _catalog.Images.All().ToDictionary(i => i.Id);
-        var assignment = DupeAssignmentResolver.Resolve(groups, _catalog.Images.BurstAdjacentIds());
+        var images = _catalog.ScopedImages.ToDictionary(i => i.Id);
+        // Held on the instance, not just used here: the delete-extras action has to filter by the
+        // *same* resolved assignment the queue was built from, or its count and what it deletes can
+        // disagree. Rebuilt by every LoadQueue, which is the only thing that invalidates it.
+        var assignment = _assign = DupeAssignmentResolver.Resolve(groups, _catalog.Images.BurstAdjacentIds());
 
         // Recover, per resolved group id, the full set of images presented under it. This is what
         // "the one group a photo is presented as belonging to" means for a *group-at-a-time*
@@ -251,10 +277,17 @@ public sealed class ReviewActivity : Activity
 
         body.AddView(Design.Title(this, _initialCount == 0 ? "Nothing to review." : "Review complete.", 24f));
         body.AddView(Design.Gap(this, 10));
+        // Third and last piece of copy on this screen that asserted nothing here deletes. It says
+        // what happened instead, and it has to distinguish the two outcomes: extras you deleted are
+        // in the trash, extras you kept are still waiting.
         body.AddView(Design.Note(this, _initialCount == 0
             ? "Run a scan first, or there are no duplicate groups in this folder yet."
-            : "Every group has a keeper. Extras are ready for Export or the Select mode's bulk "
-            + "delete — nothing was deleted from here."));
+            : _deletedHere > 0
+                ? $"Every group has a keeper. {_deletedHere:N0} extra "
+                  + $"{(_deletedHere == 1 ? "copy is" : "copies are")} in the trash — restorable from "
+                  + "History. Any you kept are still available to Export or the Select mode's bulk delete."
+                : "Every group has a keeper. Extras are still there — Export or the Select mode's "
+                  + "bulk delete is where they go."));
         body.AddView(Design.Gap(this, 20));
 
         var done = Design.Button(this, "Done", Design.Btn.Primary, 52f);
@@ -401,7 +434,25 @@ public sealed class ReviewActivity : Activity
         var bar = Design.ActionBar(this);
         var ab = Design.ActionBarBody(bar);
 
-        var primary = Design.Button(this, "Keep it — next group", Design.Btn.Primary, 52f);
+        // The action the queue was missing. Every button here only ever *marked* a keeper — actually
+        // reclaiming the space meant leaving, going to the library, entering selection mode and
+        // finding the same photos again. Deleting the extras is the whole point of having compared
+        // them, so it belongs on the screen where the comparison happened.
+        var deletable = DeletableExtras(g);
+        if (deletable.Count > 0)
+        {
+            var reclaim = deletable.Sum(m => m.FileSize);
+            var del = Design.Button(this,
+                $"Delete {deletable.Count} extra{(deletable.Count == 1 ? "" : "s")} · {FormatBytes(reclaim)}",
+                Design.Btn.Primary, 52f);
+            del.LayoutParameters = Design.Wide();
+            del.Click += (_, _) => DeleteExtrasAndAdvance(g);
+            ab.AddView(del);
+            ab.AddView(Design.Gap(this, 8));
+        }
+
+        var primary = Design.Button(this, "Keep it — next group",
+            deletable.Count > 0 ? Design.Btn.Secondary : Design.Btn.Primary, 52f);
         primary.LayoutParameters = Design.Wide();
         primary.Click += (_, _) => Advance();
         ab.AddView(primary);
@@ -426,10 +477,16 @@ public sealed class ReviewActivity : Activity
         // gesture and the sentence together made the app state something false about a destructive
         // action, which is the one place copy cannot be approximately right. The gesture stays —
         // it is genuinely useful once the comparison has settled it — and the sentence now says so.
+        // Rewritten twice now, both times because a destructive affordance was added underneath a
+        // sentence that denied one existed. It has to enumerate what deletes and what does not.
         var hint = Design.Note(this,
-            "Swipe left to keep and advance · right to go back · down to move this photo to the "
-            + "trash, restorable from History. The buttons below only decide which copy survives "
-            + "an export or delete.");
+            deletable.Count > 0
+                ? "Swipe left to keep and advance · right to go back · down to trash this photo. "
+                  + "Delete moves the extras to the trash — restorable from History. Keep and Skip "
+                  + "only mark which copy survives."
+                : "Swipe left to keep and advance · right to go back · down to move this photo to "
+                  + "the trash, restorable from History. Keep and Skip only mark which copy "
+                  + "survives an export or delete.");
         hint.Gravity = GravityFlags.CenterHorizontal;
         hint.SetPadding(0, Design.Dp(this, 9), 0, 0);
         ab.AddView(hint);
@@ -733,6 +790,66 @@ public sealed class ReviewActivity : Activity
     }
 
     /// <summary>
+    /// The extras of <paramref name="g"/> that a delete here may take.
+    /// </summary>
+    /// <remarks>
+    /// <b>Burst-adjacent frames are excluded, and that is not belt-and-braces.</b> This screen only
+    /// renders non-burst groups, so it is tempting to treat every non-keeper as a copy — but a photo
+    /// can be an exact duplicate <i>and</i> a member of a burst, which is exactly the case
+    /// <c>images.burst_adjacent</c> exists for (docs/ROADMAP.md, defect B). Filtering through the
+    /// shared <c>DupeAssignment.IsBulkSelectableExtra</c> rather than re-deriving "not the keeper"
+    /// is the same rule the library's Select-all and the reclaimable-bytes label use, so the button's
+    /// count cannot disagree with what it deletes.
+    /// </remarks>
+    List<MemberInfo> DeletableExtras(GroupEntry g) =>
+        g.Members.Where(m => !m.IsKeeper
+                             && _assign.TryGetValue(m.ImageId, out var a)
+                             && a.IsBulkSelectableExtra).ToList();
+
+    /// <summary>
+    /// Recycles this group's extras and moves to the next comparison.
+    /// </summary>
+    /// <remarks>
+    /// Confirmed by an undo bar rather than a dialog, matching the swipe-down and the preview: the
+    /// files go to the trash, so the reversal is cheap and belongs next to the action. The group
+    /// leaves the queue outright — with its extras gone it is not a duplicate of anything any more,
+    /// so re-presenting it would be asking about a decision already made.
+    /// </remarks>
+    async void DeleteExtrasAndAdvance(GroupEntry g)
+    {
+        var extras = DeletableExtras(g);
+        if (extras.Count == 0) return;
+
+        var ids = extras.Select(m => m.ImageId).ToList();
+        try
+        {
+            WorkService.Start(this, "Moving to trash");
+            var result = await Task.Run(() => _catalog.NewDeleteService().RecycleAsync(ids));
+
+            // Rebuilds the queue and _assign together from the catalogue, which is what the recycle
+            // just changed. Cheaper than reasoning about which other groups those ids also appeared
+            // in — an exact duplicate can be a member of more than one relationship.
+            var wasAt = _index;
+            LoadQueue();
+            _index = Math.Min(wasAt, Math.Max(0, _queue.Count));
+            Render();
+
+            ShowUndo(
+                result.Recycled == 1
+                    ? "1 extra copy moved to trash"
+                    : $"{result.Recycled:N0} extra copies moved to trash",
+                result.BatchId);
+        }
+        catch (Exception ex)
+        {
+            Toast.MakeText(this, $"Delete failed: {ex.Message}", ToastLength.Long)!.Show();
+            Android.Util.Log.Error("SnapZap", ex.ToString());
+            Render();
+        }
+        finally { WorkService.Stop(this); }
+    }
+
+    /// <summary>
     /// Floats an undo bar over the queue after a swipe-delete.
     /// </summary>
     /// <remarks>
@@ -756,6 +873,7 @@ public sealed class ReviewActivity : Activity
             try
             {
                 var r = await Task.Run(() => _catalog.NewDeleteService().RestoreAsync(batchId));
+                await _catalog.RescanAfterRestoreAsync();
                 Toast.MakeText(this,
                     r.Restored > 0 ? "Restored" : "Nothing left to restore", ToastLength.Short)!.Show();
             }

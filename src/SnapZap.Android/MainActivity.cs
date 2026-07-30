@@ -62,6 +62,9 @@ public sealed class MainActivity : Activity
     /// scan root yet. Once per launch — after that the user's choice wins.</summary>
     bool _folderRestored;
 
+    /// <summary>Set by <see cref="OnResume"/>; the next <see cref="Render"/> re-reads the catalogue.</summary>
+    bool _needsReload;
+
     // The folder the Library grid is narrowed to, distinct from _folder (the scan target): picking
     // one from the Folders chip filters what is already in the catalogue, it does not change what a
     // re-scan would read. Null means "whole library".
@@ -167,10 +170,27 @@ public sealed class MainActivity : Activity
         Render();
     }
 
+    /// <summary>
+    /// Anything could have changed the catalogue while another screen was in front.
+    /// </summary>
+    /// <remarks>
+    /// <para>The reload used to be gated on <c>!_hasScanned</c>, so it ran once — on the very first
+    /// render — and never again. Everything that edits the catalogue from another activity therefore
+    /// left this screen showing a stale list: Settings' Forget left the Plan tab reporting photos
+    /// that no longer existed, deleting from the preview left the tile in the grid, and re-running
+    /// detection left the counts on the previous answer. It is also half of why changing the scan
+    /// folder appeared not to refresh anything (the other half was reading the catalogue unscoped —
+    /// see <c>AndroidCatalog.ScopedImages</c>).</para>
+    ///
+    /// <para>Once per resume rather than once per <see cref="Render"/>: Render also runs on every
+    /// tab switch and selection change, and this is a full table read.</para>
+    /// </remarks>
     protected override void OnResume()
     {
         base.OnResume();
-        if (!_scanning) Render();
+        if (_scanning) return;
+        _needsReload = true;
+        Render();
     }
 
     static bool HasAllFilesAccess =>
@@ -202,10 +222,14 @@ public sealed class MainActivity : Activity
             if (!string.IsNullOrEmpty(stored) && Directory.Exists(stored)) _folder = stored!;
         }
 
-        if (!_hasScanned && !_scanning)
+        if (_needsReload || (!_hasScanned && !_scanning))
         {
-            _photos = _catalog.Images.All().ToList();
+            _needsReload = false;
+            _photos = _catalog.ScopedImages.ToList();
             _hasScanned = _photos.Count > 0;
+            // Reset so a catalogue emptied by Settings' Forget does not leave the grid narrowed to a
+            // folder that no longer has rows, which reads as "the scan lost my photos".
+            if (!_hasScanned) { _libraryScope = null; _facet = DupeFacet.Any; }
         }
         if (!_scanning) CountGroups();
 
@@ -694,7 +718,7 @@ public sealed class MainActivity : Activity
                 new DuplicateService(_catalog!.Db, _catalog.Imaging, _catalog.ThumbDir)
                     .DetectAsync(_folder, dedupProgress, ct), ct);
 
-            _photos = await Task.Run(() => _catalog!.Images.All().ToList());
+            _photos = await Task.Run(() => _catalog!.ScopedImages.ToList());
             _hasScanned = _photos.Count > 0;
             _scanNotice = ScanNotice(_lastScan);
 
@@ -718,7 +742,7 @@ public sealed class MainActivity : Activity
             // answer. _lastScan is cleared because a partial run's totals would be read as the
             // folder's totals everywhere they are shown.
             _lastScan = null;
-            _photos = await Task.Run(() => _catalog!.Images.All().ToList());
+            _photos = await Task.Run(() => _catalog!.ScopedImages.ToList());
             _hasScanned = _photos.Count > 0;
             _scanNotice = _hasScanned
                 ? $"Scan stopped. {_photos.Count:N0} photos kept — scanning again picks up where it left off."
@@ -1281,7 +1305,7 @@ public sealed class MainActivity : Activity
                     var r = await Task.Run(() =>
                         _catalog!.NewDeleteService().RecycleAsync(ids, deleteProgress));
                     _selectionMode = false; _selected.Clear();
-                    _photos = await Task.Run(() => _catalog!.Images.All().ToList());
+                    _photos = await Task.Run(() => _catalog!.ScopedImages.ToList());
                     Toast.MakeText(this, $"Moved {r.Recycled:N0} to trash", ToastLength.Short)!.Show();
                 }
                 catch (Exception ex)
