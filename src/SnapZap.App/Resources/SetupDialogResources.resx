@@ -71,4 +71,13 @@
   <data name="BurstOffWarning" xml:space="preserve">
     <value>Off — burst frames are treated as copies. All but one frame of every burst will be offered to a bulk delete. Turn this back on and run Find duplicates again to restore the protection; nothing needs re-scanning.</value>
   </data>
+  <data name="SkipHiddenLabel" xml:space="preserve">
+    <value>Skip hidden folders</value>
+  </data>
+  <data name="SkipHiddenDetail" xml:space="preserve">
+    <value>Folders whose name starts with a dot, and anything marked hidden. They hold caches — .thumbnails, .trashed, .git — not photos.</value>
+  </data>
+  <data name="SkipHiddenRescanHint" xml:space="preserve">
+    <value>Saved. This one needs the folder scanned again, not just Find duplicates — anything already indexed from a hidden folder drops out on the next scan.</value>
+  </data>
 </root>

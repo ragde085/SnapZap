@@ -3,6 +3,7 @@ using Android.OS;
 using Android.Views;
 using Android.Widget;
 using SnapZap.Core.Dedup;
+using SnapZap.Core.Scanning;
 
 namespace SnapZap.Droid;
 
@@ -11,11 +12,11 @@ namespace SnapZap.Droid;
 /// </summary>
 /// <remarks>
 /// <para><b>Deliberately the same surface as the desktop's <c>SetupDialog</c></b>, control for
-/// control: variant detection on/off, rotation matching, how different two photos may look, and the
-/// burst window. Exact and Burst detection have no switch on either head, and <c>BurstMaxBits</c> is
-/// exposed on neither — a loose gate that only stops a camera left running across two scenes from
-/// merging them is not a number a user has any way to reason about. Ranges and step sizes match the
-/// desktop's sliders so neither head can express a setting the other cannot.</para>
+/// control: skip-hidden, variant detection on/off, rotation matching, how different two photos may
+/// look, the burst switch and the burst window. Exact detection has no switch on either head, and
+/// <c>BurstMaxBits</c> is exposed on neither — a loose gate that only stops a camera left running
+/// across two scenes from merging them is not a number a user has any way to reason about. Ranges and
+/// step sizes match the desktop's sliders so neither head can express a setting the other cannot.</para>
 ///
 /// <para><b>Why these live here and not in app preferences.</b> <c>DedupSettings</c> is stored in the
 /// catalogue's <c>meta</c> table, because <c>images.dupe_checked_kinds</c> only means anything
@@ -23,11 +24,12 @@ namespace SnapZap.Droid;
 /// The practical consequence is worth stating on screen, and is: a catalogue carries its settings,
 /// so a folder tuned on the desktop behaves the same way when the phone opens it.</para>
 ///
-/// <para><b>Changing a threshold does not change any result on its own.</b> Unlike the NSFW bands —
-/// which re-judge scores already in hand — these decide what detection *finds*, so nothing moves
-/// until detection runs again. That is why this screen tracks a dirty flag and offers to re-run it
-/// rather than quietly leaving the old groups on display, which is exactly the "turning the setting
-/// on appears to do nothing" failure the codebase keeps designing out.</para>
+/// <para><b>Changing a setting here does not change any result on its own</b>, and the two kinds of
+/// setting need different follow-up. Unlike the NSFW bands — which re-judge scores already in hand —
+/// the dedup settings decide what detection *finds*, so this screen tracks a dirty flag and offers to
+/// re-run detection itself. The scan settings decide which rows exist at all, which detection cannot
+/// fix, so those say plainly that the folder needs scanning again. Both exist because "turning the
+/// setting on appears to do nothing" is the failure this codebase keeps designing out.</para>
 /// </remarks>
 [Activity(Label = "Settings", Theme = "@android:style/Theme.Material.Light.NoActionBar")]
 public sealed class SettingsActivity : Activity
@@ -35,11 +37,19 @@ public sealed class SettingsActivity : Activity
     AndroidCatalog? _catalog;
     BackHandler? _back;
     DedupSettings _dedup = new();
+    ScanSettings _scan = new();
 
     LinearLayout _body = null!;
 
     /// <summary>Settings have changed since detection last ran, so the groups on display are stale.</summary>
     bool _stale;
+
+    /// <summary>
+    /// A scan option changed. Deliberately a separate flag from <see cref="_stale"/>: this one
+    /// cannot be resolved from here. Re-running detection would do nothing for it, because the
+    /// setting governs which rows the <i>scan</i> writes, and the scan lives on the Plan tab.
+    /// </summary>
+    bool _scanStale;
     bool _rerunning;
 
     protected override void OnCreate(Bundle? savedInstanceState)
@@ -53,7 +63,7 @@ public sealed class SettingsActivity : Activity
         page.SetOnApplyWindowInsetsListener(new InsetsPadder());
         page.RequestApplyInsets();
 
-        page.AddView(Design.HeaderBar(this, "‹", Finish, "Settings", "How duplicates are found"));
+        page.AddView(Design.HeaderBar(this, "‹", Finish, "Settings", "What gets scanned, and what counts as a duplicate"));
 
         var scroll = new ScrollView(this);
         scroll.LayoutParameters = new LinearLayout.LayoutParams(
@@ -67,6 +77,7 @@ public sealed class SettingsActivity : Activity
         {
             _catalog = new AndroidCatalog();
             _dedup = DedupSettings.Load(_catalog.Db);
+            _scan = ScanSettings.Load(_catalog.Db);
         }
         catch (Exception ex)
         {
@@ -96,6 +107,24 @@ public sealed class SettingsActivity : Activity
         Render();
     }
 
+    /// <summary>
+    /// Saves a scan option. Same save-immediately rule as <see cref="Set"/>, but it marks
+    /// <see cref="_scanStale"/> rather than <see cref="_stale"/> — see that field.
+    /// </summary>
+    void SetScan(ScanSettings next)
+    {
+        _scan = next;
+        try { _scan.Save(_catalog!.Db); }
+        catch (Exception ex)
+        {
+            Toast.MakeText(this, $"Could not save: {ex.Message}", ToastLength.Long)!.Show();
+            Android.Util.Log.Error("SnapZap", ex.ToString());
+            return;
+        }
+        _scanStale = true;
+        Render();
+    }
+
     void Render()
     {
         _body.RemoveAllViews();
@@ -106,6 +135,24 @@ public sealed class SettingsActivity : Activity
         }
 
         if (_stale) _body.AddView(StaleCallout());
+
+        Section("Scanning");
+
+        // Its own section above duplicate detection, because it is a different kind of setting: this
+        // one decides which photos exist in the catalogue at all, so changing it needs a re-scan
+        // rather than the re-detect the dedup settings below need.
+        _body.AddView(Design.ToggleRow(this, "Skip hidden folders",
+            _scan.SkipHidden
+                ? "Folders whose name starts with a dot — .thumbnails, .trashed and the like. They "
+                  + "hold caches, not photos."
+                : "Off — hidden folders are scanned, including caches like .thumbnails.",
+            _scan.SkipHidden,
+            on => SetScan(_scan with { SkipHidden = on })));
+
+        if (_scanStale)
+            _body.AddView(Warning(
+                "Scan the folder again for this to take effect — re-running duplicates is not enough. "
+                + "Anything already indexed from a hidden folder drops out on the next scan."));
 
         Section("Duplicate detection",
             "Stored in this catalogue, not in app preferences — so these are the same settings the "

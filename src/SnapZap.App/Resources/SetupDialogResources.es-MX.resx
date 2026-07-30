@@ -71,4 +71,13 @@
   <data name="BurstOffWarning" xml:space="preserve">
     <value>Desactivado: los cuadros de ráfaga se tratan como copias. Todos los cuadros de cada ráfaga menos uno se ofrecerán para un borrado masivo. Vuelve a activarlo y ejecuta Buscar duplicados otra vez para restaurar la protección; no hace falta volver a escanear.</value>
   </data>
+  <data name="SkipHiddenLabel" xml:space="preserve">
+    <value>Omitir carpetas ocultas</value>
+  </data>
+  <data name="SkipHiddenDetail" xml:space="preserve">
+    <value>Carpetas cuyo nombre empieza con punto, y cualquiera marcada como oculta. Guardan cachés — .thumbnails, .trashed, .git — no fotos.</value>
+  </data>
+  <data name="SkipHiddenRescanHint" xml:space="preserve">
+    <value>Guardado. Esto requiere volver a escanear la carpeta, no solo Buscar duplicados — lo que ya se haya indexado de una carpeta oculta desaparecerá en el siguiente escaneo.</value>
+  </data>
 </root>

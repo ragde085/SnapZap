@@ -6,6 +6,7 @@
 
 @using SnapZap.Core.Dedup
 @using SnapZap.Core.Nsfw
+@using SnapZap.Core.Scanning
 
 @*
     Everything configurable, reachable from the gear in the top bar. Distinct from
@@ -155,6 +156,25 @@
                                tolerance for being wrong, so which ones run is the user's call
                                rather than a constant. *@
                             <p class="setup-lede">@((MarkupString)L["DuplicatesLede"].Value)</p>
+
+                            @* First, because it governs which photos exist at all — everything
+                               below only decides what to make of them. It is also the one setting
+                               in this pane that a re-detect cannot apply: it needs a re-scan, which
+                               is why its hint says so instead of borrowing SettingsSavedHint. *@
+                            <label class="setup-check">
+                                <input type="checkbox" checked="@_scan.SkipHidden"
+                                       @onchange="e => SetScan(_scan with { SkipHidden = (bool)e.Value! })" />
+                                <span>
+                                    <b>@L["SkipHiddenLabel"]</b>
+                                    <span class="quiet">@L["SkipHiddenDetail"]</span>
+                                </span>
+                            </label>
+                            @if (_scanChanged)
+                            {
+                                <div class="setup-nested">
+                                    <p class="hint" style="color:var(--color-danger)">@L["SkipHiddenRescanHint"]</p>
+                                </div>
+                            }
 
                             <label class="setup-check">
                                 <input type="checkbox" checked disabled />
@@ -318,6 +338,14 @@
     (int Photos, long DbBytes, long ThumbBytes) _footprint;
 
     DedupSettings _dedup = new();
+    ScanSettings _scan = new();
+
+    /// <summary>
+    /// A scan option changed. Separate from <see cref="_settingsChanged"/> because the follow-up
+    /// differs: the dedup settings need Find duplicates again, this one needs the folder scanned
+    /// again, and telling the user to do the wrong one is worse than saying nothing.
+    /// </summary>
+    bool _scanChanged;
     NsfwSettings _nsfw = NsfwSettings.Default;
     bool _settingsChanged;
 
@@ -395,6 +423,18 @@
     /// Thresholds re-judge the whole grid the moment they change — no re-scoring, the scores are
     /// already there — so the grid behind this dialog has to be told.
     /// </remarks>
+    /// <summary>
+    /// Saves a scan option. Persisted immediately, like <see cref="Set"/>, and for the same reason.
+    /// Does not notify AppState: nothing already loaded changes meaning, because the setting only
+    /// governs what the next walk of the folder puts in the catalogue.
+    /// </summary>
+    void SetScan(ScanSettings next)
+    {
+        _scan = next;
+        _scan.Save(Catalog.Db);
+        _scanChanged = true;
+    }
+
     void SetNsfw(NsfwSettings next)
     {
         Checker.Nsfw = next;
@@ -431,6 +471,7 @@
             // these, and showing a stale checkbox for a setting that governs deletion is not a
             // cosmetic problem.
             _dedup = DedupSettings.Load(Catalog.Db);
+            _scan = ScanSettings.Load(Catalog.Db);
             _nsfw = Checker.Nsfw;
             _settingsChanged = false;
         }
