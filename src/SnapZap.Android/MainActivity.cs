@@ -1484,8 +1484,8 @@ public sealed class MainActivity : Activity
                 ? "Scores photos on this device. Needs a one-time model download — set it up in Settings."
                 : _nsfwScored > 0
                     ? $"{_nsfwScored:N0} scored in this view"
-                    : $"{scope.Count:N0} photos in view · about {NsfwEta(scope.Count)} on this phone",
-            modelPath is null ? null : _nsfwRunning ? "Scoring…" : $"Score {scope.Count:N0} photos",
+                    : $"{Photos(scope.Count)} in view · about {NsfwEta(scope.Count)} on this phone",
+            modelPath is null ? null : _nsfwRunning ? "Scoring…" : $"Score {Photos(scope.Count)}",
             modelPath is null ? null : () => ScoreNsfw(modelPath)));
 
         body.AddView(Step(4, _hasScanned, "Sharpness", "Scored during the scan", null, null));
@@ -1576,6 +1576,8 @@ public sealed class MainActivity : Activity
         return holder;
     }
 
+    static string Photos(int n) => n == 1 ? "1 photo" : $"{n:N0} photos";
+
     /// <summary>Rough wall-clock for a tiled pass, from the S23 measurement.</summary>
     static string NsfwEta(int photos)
     {
@@ -1610,7 +1612,7 @@ public sealed class MainActivity : Activity
         {
             new AlertDialog.Builder(this)
                 .SetTitle("Too many photos to score")!
-                .SetMessage($"{scope.Count:N0} photos would take about {NsfwEta(scope.Count)} on this "
+                .SetMessage($"{Photos(scope.Count)} would take about {NsfwEta(scope.Count)} on this "
                           + $"phone, and Android stops background work of that length before it finishes.\n\n"
                           + $"Narrow the library to a folder first — up to {NsfwScopeLimit:N0} photos at a time.")!
                 .SetPositiveButton("Choose a folder", (_, _) => OpenFoldersForScope())!
@@ -1619,13 +1621,20 @@ public sealed class MainActivity : Activity
             return;
         }
 
+        // Leads with the cost, not with the feature. The estimate is the whole decision here: on a
+        // phone this is minutes-to-hours of sustained work, and a dialog that opens with what the
+        // button does buries the only fact the user needs to weigh.
         new AlertDialog.Builder(this)
-            .SetTitle($"Score {scope.Count:N0} photos?")!
-            .SetMessage($"About {NsfwEta(scope.Count)} on this phone. Everything runs here — nothing "
-                      + "about your photos is sent anywhere.\n\nKeep SnapZap open or let it run in the "
-                      + "background; it is best on a charger.")!
-            .SetNegativeButton("Cancel", (EventHandler<DialogClickEventArgs>?)null)!
-            .SetPositiveButton("Score them", async (_, _) =>
+            .SetTitle("This is slow on a phone")!
+            .SetMessage(
+                $"{Photos(scope.Count)} in this view · about {NsfwEta(scope.Count)} on this device.\n\n"
+                + "Every photo is examined ten times over — the whole frame and nine overlapping "
+                + "parts of it — which is what catches a subject filling only part of the picture. "
+                + "That is roughly three seconds each, and it cannot be made much faster here.\n\n"
+                + "It runs on this device; nothing about your photos is sent anywhere. Best on a "
+                + "charger. You can keep using the phone, or switch away and let it continue.")!
+            .SetNegativeButton("Not now", (EventHandler<DialogClickEventArgs>?)null)!
+            .SetPositiveButton("Start scoring", async (_, _) =>
             {
                 _nsfwRunning = true;
                 Render();
@@ -1643,7 +1652,7 @@ public sealed class MainActivity : Activity
 
                     Toast.MakeText(this,
                         result.ModelAvailable
-                            ? $"Scored {result.Scored:N0}{(result.Failed > 0 ? $", {result.Failed:N0} failed" : "")}"
+                            ? $"Scored {Photos(result.Scored)}{(result.Failed > 0 ? $", {result.Failed:N0} failed" : "")}"
                             : result.Note ?? "Model unavailable",
                         ToastLength.Long)!.Show();
                 }
