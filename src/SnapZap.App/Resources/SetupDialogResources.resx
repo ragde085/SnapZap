@@ -11,7 +11,7 @@
   <data name="PaneExplicit" xml:space="preserve"><value>Explicit content</value></data>
   <data name="PaneDuplicates" xml:space="preserve"><value>Duplicates</value></data>
   <data name="PaneCatalogue" xml:space="preserve"><value>Catalogue</value></data>
-  <data name="AddOnsLede" xml:space="preserve"><value>One optional add-on. SnapZap scans, finds duplicates, exports and deletes without it.</value></data>
+  <data name="AddOnsLede" xml:space="preserve"><value>One optional add-on. SnapZap scans, finds duplicates, moves and deletes without it.</value></data>
   <data name="CheckingButton" xml:space="preserve"><value>Checking…</value></data>
   <data name="CheckAgainButton" xml:space="preserve"><value>Check again</value></data>
   <data name="AddOnsHint" xml:space="preserve"><value>Drop a file in and press Check again — no restart needed.</value></data>

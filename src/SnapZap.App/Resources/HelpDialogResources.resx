@@ -16,7 +16,7 @@
   <data name="SectionDuplicates" xml:space="preserve"><value>Duplicates</value></data>
   <data name="SectionExplicit" xml:space="preserve"><value>Explicit content</value></data>
   <data name="SectionSelecting" xml:space="preserve"><value>Selecting</value></data>
-  <data name="SectionExporting" xml:space="preserve"><value>Exporting</value></data>
+  <data name="SectionExporting" xml:space="preserve"><value>Moving to a folder</value></data>
   <data name="SectionDeleting" xml:space="preserve"><value>Deleting &amp; undo</value></data>
   <data name="SectionKeyboard" xml:space="preserve"><value>Keyboard</value></data>
   <data name="SectionFaq" xml:space="preserve"><value>FAQ</value></data>
@@ -26,9 +26,9 @@
   <data name="StartStep1" xml:space="preserve"><value>&lt;b&gt;Scan a folder.&lt;/b&gt; Type or paste its path and press &lt;b&gt;Scan&lt;/b&gt;. SnapZap reads every photo under it and remembers what it found.</value></data>
   <data name="StartStep2" xml:space="preserve"><value>&lt;b&gt;Duplicates are found automatically&lt;/b&gt; the moment the scan ends — no button to press. The rail's &lt;b&gt;Plan&lt;/b&gt; tab shows a &lt;b&gt;Review N groups&lt;/b&gt; button once they're ready; optionally press &lt;b&gt;Run&lt;/b&gt; under &lt;b&gt;Content review&lt;/b&gt; to flag explicit photos.</value></data>
   <data name="StartStep3" xml:space="preserve"><value>&lt;b&gt;Pick the photos you want to keep.&lt;/b&gt; Click them, or use &lt;b&gt;Select all N shown&lt;/b&gt; at the top of the grid.</value></data>
-  <data name="StartStep4" xml:space="preserve"><value>&lt;b&gt;Press &lt;b&gt;Export…&lt;/b&gt;&lt;/b&gt; to write them somewhere clean — or &lt;b&gt;Delete…&lt;/b&gt; to recycle what you don't want.</value></data>
+  <data name="StartStep4" xml:space="preserve"><value>&lt;b&gt;Press &lt;b&gt;Move…&lt;/b&gt;&lt;/b&gt; to write them somewhere clean — or &lt;b&gt;Delete…&lt;/b&gt; to recycle what you don't want.</value></data>
   <data name="StartNoteTitle" xml:space="preserve"><value>Two things that are always true</value></data>
-  <data name="StartNoteFolder" xml:space="preserve"><value>Your original folder is never touched unless you explicitly ask — an export in &lt;i&gt;Move&lt;/i&gt; mode, or the opt-in "also recycle what I didn't pick" box.</value></data>
+  <data name="StartNoteFolder" xml:space="preserve"><value>Your original folder is never touched unless you explicitly ask — answering &lt;i&gt;Remove originals&lt;/i&gt; when you move them, or the opt-in “also recycle what I didn't pick” box.</value></data>
   <data name="StartNoteDelete" xml:space="preserve"><value>Nothing is ever hard-deleted. Deleting goes to the Recycle Bin, and every batch is reversible from &lt;b&gt;History&lt;/b&gt;.</value></data>
   <data name="StartWhereHeading" xml:space="preserve"><value>Where things are</value></data>
   <data name="StartTopBarTerm" xml:space="preserve"><value>Top bar</value></data>
@@ -38,7 +38,7 @@
   <data name="StartGridHeaderTerm" xml:space="preserve"><value>Grid header</value></data>
   <data name="StartGridHeaderDesc" xml:space="preserve"><value>&lt;b&gt;Select all N shown&lt;/b&gt; (with a menu for Flagged / Not sure / Keepers), the active filter as a clearable chip, and Sort.</value></data>
   <data name="StartBottomBarTerm" xml:space="preserve"><value>Bottom bar</value></data>
-  <data name="StartBottomBarDesc" xml:space="preserve"><value>&lt;b&gt;Export…&lt;/b&gt;, &lt;b&gt;Delete…&lt;/b&gt; and &lt;b&gt;Hide in Image…&lt;/b&gt;, plus &lt;b&gt;Invert&lt;/b&gt; / &lt;b&gt;Clear&lt;/b&gt; — it appears once you have selected at least one photo.</value></data>
+  <data name="StartBottomBarDesc" xml:space="preserve"><value>&lt;b&gt;Move…&lt;/b&gt;, &lt;b&gt;Delete…&lt;/b&gt; and &lt;b&gt;Hide in Image…&lt;/b&gt;, plus &lt;b&gt;Invert&lt;/b&gt; / &lt;b&gt;Clear&lt;/b&gt; — it appears once you have selected at least one photo.</value></data>
   <data name="StartGearTerm" xml:space="preserve"><value>Gear icon</value></data>
   <data name="StartGearDesc" xml:space="preserve"><value>&lt;b&gt;Setup&lt;/b&gt;: the optional add-on, what duplicate detection checks, and the catalogue.</value></data>
 
@@ -75,7 +75,7 @@
   <data name="DupeBadgesNote" xml:space="preserve"><value>Cards pick up a badge: &lt;b&gt;✓&lt;/b&gt; for the copy being kept from its group, &lt;b&gt;▣&lt;/b&gt; for an extra copy. Hover either for the group number and kind.</value></data>
   <data name="DupeReviewingHeading" xml:space="preserve"><value>Reviewing them</value></data>
   <data name="DupeReviewP1" xml:space="preserve"><value>Press &lt;b&gt;Review N groups&lt;/b&gt; (Plan tab, or the banner above the grid) for the good way to work through them — one group at a time, copies side by side. Facts that are identical across the group are greyed out because they cannot help you choose; whatever differs stays bright, and a clear winner on resolution or file size is highlighted.</value></data>
-  <data name="DupeReviewP2" xml:space="preserve"><value>Click a copy to make it the keeper. &lt;b&gt;Compare full size&lt;/b&gt; opens them at full resolution with the panes panning together. &lt;b&gt;Nothing is deleted in that dialog&lt;/b&gt; — it only decides which copy survives an export or delete you run afterwards.</value></data>
+  <data name="DupeReviewP2" xml:space="preserve"><value>Click a copy to make it the keeper. &lt;b&gt;Compare full size&lt;/b&gt; opens them at full resolution with the panes panning together. &lt;b&gt;Nothing is deleted in that dialog&lt;/b&gt; — it only decides which copy survives a move or delete you run afterwards.</value></data>
   <data name="DupeTuningHeading" xml:space="preserve"><value>Tuning it</value></data>
   <data name="DupeTuningIntro" xml:space="preserve"><value>In &lt;b&gt;Setup → Duplicates&lt;/b&gt;:</value></data>
   <data name="DupeTuningIdentical" xml:space="preserve"><value>&lt;b&gt;Identical files&lt;/b&gt; — always on. A duplicate finder that cannot find identical files is not one.</value></data>
@@ -106,7 +106,7 @@
 
   <!-- Selecting -->
   <data name="SelectHeading1" xml:space="preserve"><value>Nothing happens until you select something</value></data>
-  <data name="SelectIntro" xml:space="preserve"><value>The &lt;b&gt;Export…&lt;/b&gt; and &lt;b&gt;Delete…&lt;/b&gt; buttons only appear once at least one photo is picked.</value></data>
+  <data name="SelectIntro" xml:space="preserve"><value>The &lt;b&gt;Move…&lt;/b&gt; and &lt;b&gt;Delete…&lt;/b&gt; buttons only appear once at least one photo is picked.</value></data>
   <data name="SelectByHandHeading" xml:space="preserve"><value>By hand</value></data>
   <data name="SelectClickTerm" xml:space="preserve"><value>Click</value></data>
   <data name="SelectClickDesc" xml:space="preserve"><value>Select or deselect one photo.</value></data>
@@ -128,11 +128,11 @@
   <data name="SelectInvertClearNote" xml:space="preserve"><value>Once something is selected, &lt;b&gt;Invert&lt;/b&gt; and &lt;b&gt;Clear&lt;/b&gt; appear in the bar at the bottom of the grid, next to the count (&lt;kbd&gt;{0}&lt;/kbd&gt;&lt;kbd&gt;D&lt;/kbd&gt; also clears).</value></data>
   <data name="SelectGreyedHint" xml:space="preserve"><value>A command that cannot do anything stays visible but greyed, and its tooltip says which step is actually missing.</value></data>
   <data name="SelectSharedTitle" xml:space="preserve"><value>The selection is shared by every SnapZap window</value></data>
-  <data name="SelectSharedBody" xml:space="preserve"><value>Picking a scope &lt;i&gt;replaces&lt;/i&gt; the selection rather than adding to it, so a press in one window changes what the other is about to export or delete.</value></data>
+  <data name="SelectSharedBody" xml:space="preserve"><value>Picking a scope &lt;i&gt;replaces&lt;/i&gt; the selection rather than adding to it, so a press in one window changes what the other is about to move or delete.</value></data>
 
   <!-- Exporting -->
-  <data name="ExportHeading" xml:space="preserve"><value>Exporting</value></data>
-  <data name="ExportIntro" xml:space="preserve"><value>Select the photos you want, then press &lt;b&gt;Export…&lt;/b&gt;. Give it a &lt;b&gt;full path&lt;/b&gt; starting from the root of the drive — a relative one is rejected, because it would quietly resolve somewhere inside the folder you are cleaning.</value></data>
+  <data name="ExportHeading" xml:space="preserve"><value>Moving to a folder</value></data>
+  <data name="ExportIntro" xml:space="preserve"><value>Select the photos you want, then press &lt;b&gt;Move…&lt;/b&gt;. Give it a &lt;b&gt;full path&lt;/b&gt; starting from the root of the drive — a relative one is rejected, because it would quietly resolve somewhere inside the folder you are cleaning.</value></data>
   <data name="ExportModeHeading" xml:space="preserve"><value>Transfer mode</value></data>
   <data name="ExportCopyTerm" xml:space="preserve"><value>Copy</value></data>
   <data name="ExportCopyDesc" xml:space="preserve"><value>The default, and the safest. Originals stay exactly where they are.</value></data>
@@ -148,13 +148,13 @@
   <data name="ExportFlatTerm" xml:space="preserve"><value>Flat</value></data>
   <data name="ExportFlatDesc" xml:space="preserve"><value>Everything in one folder, with collision-safe renaming.</value></data>
   <data name="ExportCheckHeading" xml:space="preserve"><value>Check destination</value></data>
-  <data name="ExportCheckP1" xml:space="preserve"><value>Press it before exporting. You get the count and total size to be written, the free space at the destination and whether that is enough, whether hardlinks are available, and an example of the folders that will be created.</value></data>
-  <data name="ExportCheckP2" xml:space="preserve"><value>&lt;b&gt;Export stays disabled until this check passes&lt;/b&gt;, and changing the destination, mode or structure invalidates it — so the button can never be armed for a plan nobody verified.</value></data>
+  <data name="ExportCheckP1" xml:space="preserve"><value>Press it before moving anything. You get the count and total size to be written, the free space at the destination and whether that is enough, and an example of the folders that will be created.</value></data>
+  <data name="ExportCheckP2" xml:space="preserve"><value>&lt;b&gt;The move stays disabled until this check passes&lt;/b&gt;, and changing the destination or structure invalidates it — so the button can never be armed for a plan nobody verified.</value></data>
   <data name="ExportRecycleHeading" xml:space="preserve"><value>Also recycle what you didn't pick</value></data>
-  <data name="ExportRecycleP1" xml:space="preserve"><value>This opt-in box sends every photo you did &lt;i&gt;not&lt;/i&gt; select to the Recycle Bin, but only &lt;b&gt;after&lt;/b&gt; the export has been written and verified.</value></data>
+  <data name="ExportRecycleP1" xml:space="preserve"><value>This opt-in box sends every photo you did &lt;i&gt;not&lt;/i&gt; select to the Recycle Bin, but only &lt;b&gt;after&lt;/b&gt; the files have been written and verified.</value></data>
   <data name="ExportRecycleP2" xml:space="preserve"><value>&lt;b&gt;Filters do not limit it&lt;/b&gt; — it covers the whole catalogue, not just what is on screen. It is reversible from &lt;b&gt;History&lt;/b&gt;.</value></data>
   <data name="ExportWhileHeading" xml:space="preserve"><value>While it runs, and after</value></data>
-  <data name="ExportWhileP1" xml:space="preserve"><value>&lt;b&gt;Stop&lt;/b&gt; is always safe: everything already copied has been verified, and running the export again resumes where it left off rather than starting over.</value></data>
+  <data name="ExportWhileP1" xml:space="preserve"><value>&lt;b&gt;Stop&lt;/b&gt; is always safe: everything already written has been verified, and running it again resumes where it left off rather than starting over.</value></data>
   <data name="ExportWhileP2" xml:space="preserve"><value>When it finishes you get a summary and the path to a &lt;b&gt;manifest&lt;/b&gt; — a CSV recording exactly what went where.</value></data>
 
   <!-- Deleting -->
@@ -167,10 +167,10 @@
   <data name="DeleteTableWhatHeader" xml:space="preserve"><value>What it was</value></data>
   <data name="DeleteEntryDeletedTerm" xml:space="preserve"><value>Deleted</value></data>
   <data name="DeleteEntryDeletedDesc" xml:space="preserve"><value>A normal delete</value></data>
-  <data name="DeleteEntryRecycledTerm" xml:space="preserve"><value>Recycled during export</value></data>
+  <data name="DeleteEntryRecycledTerm" xml:space="preserve"><value>Recycled during a move</value></data>
   <data name="DeleteEntryRecycledDesc" xml:space="preserve"><value>The "also recycle what I didn't pick" option</value></data>
-  <data name="DeleteEntryMovedTerm" xml:space="preserve"><value>Moved out by export</value></data>
-  <data name="DeleteEntryMovedDesc" xml:space="preserve"><value>An export in Move mode. These were &lt;i&gt;relocated&lt;/i&gt;, not binned — so the Recycle Bin is the wrong place to look for them.</value></data>
+  <data name="DeleteEntryMovedTerm" xml:space="preserve"><value>Moved out of the source folder</value></data>
+  <data name="DeleteEntryMovedDesc" xml:space="preserve"><value>You answered &lt;i&gt;Remove originals&lt;/i&gt;. These were &lt;i&gt;relocated&lt;/i&gt;, not binned — so the Recycle Bin is the wrong place to look for them.</value></data>
   <data name="DeleteRestoreHint" xml:space="preserve"><value>You can also restore from the Recycle Bin's own right-click menu.</value></data>
 
   <!-- Keyboard -->
@@ -206,10 +206,10 @@
   <data name="FaqHeading" xml:space="preserve"><value>Frequently asked</value></data>
 
   <data name="FaqQ1" xml:space="preserve"><value>Is anything uploaded, or does this need an internet connection?</value></data>
-  <data name="FaqA1" xml:space="preserve"><value>No, to both. SnapZap runs entirely on your own machine. It opens in your browser because that is its window, not because anything is going online. Duplicate detection, blur, dates and export are all in-process; the only download is the optional explicit-content model, and that is a one-time install.</value></data>
+  <data name="FaqA1" xml:space="preserve"><value>No, to both. SnapZap runs entirely on your own machine. It opens in your browser because that is its window, not because anything is going online. Duplicate detection, blur, dates and moving are all in-process; the only download is the optional explicit-content model, and that is a one-time install.</value></data>
 
   <data name="FaqQ2" xml:space="preserve"><value>Will SnapZap delete my photos?</value></data>
-  <data name="FaqA2" xml:space="preserve"><value>Not without you asking, and never permanently. Scanning and finding duplicates are read-only. Deleting moves files to the Recycle Bin and every batch is restorable from &lt;b&gt;History&lt;/b&gt;. The only ways your source folder is touched are an export in &lt;i&gt;Move&lt;/i&gt; mode and the opt-in "also recycle what I didn't pick" box — both clearly labelled, both undoable.</value></data>
+  <data name="FaqA2" xml:space="preserve"><value>Not without you asking, and never permanently. Scanning and finding duplicates are read-only. Deleting moves files to the Recycle Bin and every batch is restorable from &lt;b&gt;History&lt;/b&gt;. The only ways your source folder is touched are answering &lt;i&gt;Remove originals&lt;/i&gt; when you move photos, and the opt-in “also recycle what I didn't pick” box — both clearly labelled, both undoable.</value></data>
 
   <data name="FaqQ3" xml:space="preserve"><value>My iPhone photos don't show up.</value></data>
   <data name="FaqA3" xml:space="preserve"><value>They are almost certainly HEIC, which SnapZap cannot decode yet — nor AVIF, nor camera RAW. They are counted and reported in the note above the grid, and left completely untouched. Converting them to JPEG makes them visible.</value></data>
@@ -220,13 +220,13 @@
   <data name="FaqQ5" xml:space="preserve"><value>Where's the "Find duplicates" button?</value></data>
   <data name="FaqA5" xml:space="preserve"><value>There isn't one to press the first time — duplicate detection runs automatically the moment a scan finishes, no download or setup needed. To re-run it later (after changing a setting in &lt;b&gt;Setup → Duplicates&lt;/b&gt;, say), use &lt;b&gt;Find again&lt;/b&gt; under the Duplicates step in the Plan tab.</value></data>
 
-  <data name="FaqQ6" xml:space="preserve"><value>Why won't the Export button turn on?</value></data>
-  <data name="FaqA6" xml:space="preserve"><value>Press &lt;b&gt;Check destination&lt;/b&gt; first. If you changed the destination, mode or structure after checking, check again — the button deliberately disarms so it can never run a plan that nothing verified. If the check says there is not enough room, the export stays blocked.</value></data>
+  <data name="FaqQ6" xml:space="preserve"><value>Why won't the Move button turn on?</value></data>
+  <data name="FaqA6" xml:space="preserve"><value>Press &lt;b&gt;Check destination&lt;/b&gt; first. If you changed the destination or structure after checking, check again — the button deliberately disarms so it can never run a plan that nothing verified. If the check says there is not enough room, the move stays blocked.</value></data>
 
   <data name="FaqQ7" xml:space="preserve"><value>It says "Enter a full path, starting from the root of the drive."</value></data>
   <data name="FaqA7" xml:space="preserve"><value>Relative destination paths are rejected, because one would resolve somewhere unexpected — possibly inside the very folder you are cleaning. Use a full path.</value></data>
 
-  <data name="FaqQ8" xml:space="preserve"><value>Mirror structure won't let me export.</value></data>
+  <data name="FaqQ8" xml:space="preserve"><value>Mirror structure won't let me move them.</value></data>
   <data name="FaqA8" xml:space="preserve"><value>Mirror recreates your existing folder layout, so it needs a source folder scanned in this session to make paths relative to. Scan the source again, or choose &lt;b&gt;By date&lt;/b&gt; or &lt;b&gt;Flat&lt;/b&gt;.</value></data>
 
   <data name="FaqQ9" xml:space="preserve"><value>A burst of shots got grouped as duplicates. Will they be deleted?</value></data>
@@ -242,7 +242,7 @@
   <data name="FaqA12" xml:space="preserve"><value>No. The first scan analyses every photo. After that, any file whose path, size and modification time are unchanged is reused from the catalogue, so re-scanning the same library is close to instant. &lt;b&gt;Stop&lt;/b&gt; is safe at any point — the work done so far is kept.</value></data>
 
   <data name="FaqQ13" xml:space="preserve"><value>Where does SnapZap keep its own data?</value></data>
-  <data name="FaqA13" xml:space="preserve"><value>In your local app-data folder, deliberately &lt;i&gt;outside&lt;/i&gt; the folder you scan, so it never writes into your photo library: the catalogue database, thumbnails, export manifests and preferences. &lt;b&gt;Setup → Forget everything&lt;/b&gt; clears all of it — no photo is deleted or moved, and a scan rebuilds it.</value></data>
+  <data name="FaqA13" xml:space="preserve"><value>In your local app-data folder, deliberately &lt;i&gt;outside&lt;/i&gt; the folder you scan, so it never writes into your photo library: the catalogue database, thumbnails, move manifests and preferences. &lt;b&gt;Setup → Forget everything&lt;/b&gt; clears all of it — no photo is deleted or moved, and a scan rebuilds it.</value></data>
 
   <data name="FaqQ14" xml:space="preserve"><value>Can I run two windows on the same library?</value></data>
   <data name="FaqA14" xml:space="preserve"><value>Yes, but they share one selection. A command like &lt;b&gt;Extras&lt;/b&gt; replaces the selection rather than adding to it, so a press in one window changes what the other is about to act on.</value></data>

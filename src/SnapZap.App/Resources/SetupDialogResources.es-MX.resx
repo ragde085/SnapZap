@@ -11,7 +11,7 @@
   <data name="PaneExplicit" xml:space="preserve"><value>Contenido explícito</value></data>
   <data name="PaneDuplicates" xml:space="preserve"><value>Duplicados</value></data>
   <data name="PaneCatalogue" xml:space="preserve"><value>Catálogo</value></data>
-  <data name="AddOnsLede" xml:space="preserve"><value>Un complemento opcional. SnapZap escanea, encuentra duplicados, exporta y elimina sin él.</value></data>
+  <data name="AddOnsLede" xml:space="preserve"><value>Un complemento opcional. SnapZap escanea, encuentra duplicados, mueve y elimina sin él.</value></data>
   <data name="CheckingButton" xml:space="preserve"><value>Comprobando…</value></data>
   <data name="CheckAgainButton" xml:space="preserve"><value>Comprobar de nuevo</value></data>
   <data name="AddOnsHint" xml:space="preserve"><value>Coloca un archivo y presiona Comprobar de nuevo — no necesitas reiniciar.</value></data>

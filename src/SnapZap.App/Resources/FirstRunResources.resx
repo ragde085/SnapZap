@@ -6,13 +6,13 @@
   <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
   <data name="NothingScannedYet" xml:space="preserve"><value>Nothing scanned yet</value></data>
   <data name="PointAtFolder" xml:space="preserve"><value>Point SnapZap at a folder.</value></data>
-  <data name="FirstRunLede" xml:space="preserve"><value>It reads everything underneath, works out which photos are copies of each other, and hands you a clean library to export. All of it on this machine.</value></data>
+  <data name="FirstRunLede" xml:space="preserve"><value>It reads everything underneath, works out which photos are copies of each other, and hands you a clean library to move somewhere. All of it on this machine.</value></data>
   <data name="EnterScansHint" xml:space="preserve"><value>Enter scans. A leading ~ expands to your home folder.</value></data>
   <data name="SupportedFormats" xml:space="preserve"><value>Reads JPEG · PNG · WebP · GIF · TIFF · BMP. HEIC/HEIF, AVIF and camera RAW are counted and reported, never touched — so a folder of iPhone photos never looks like an empty scan.</value></data>
   <data name="HowSnapZapWorks" xml:space="preserve"><value>How SnapZap works</value></data>
   <data name="TwoPromises" xml:space="preserve"><value>Two promises</value></data>
   <data name="OriginalsStayPutTitle" xml:space="preserve"><value>Your originals stay put</value></data>
-  <data name="OriginalsStayPutBody" xml:space="preserve"><value>Scanning only reads. Files move in exactly two cases, both of which you have to ask for: an export in Move mode, or ticking "also recycle what I didn't pick".</value></data>
+  <data name="OriginalsStayPutBody" xml:space="preserve"><value>Scanning only reads. Files leave your source folder in exactly two cases, both of which you have to ask for: answering “Remove originals” when you move them, or ticking “also recycle what I didn't pick”.</value></data>
   <data name="NeverHardDeletedTitle" xml:space="preserve"><value>Nothing is ever hard-deleted</value></data>
   <data name="NeverHardDeletedBody" xml:space="preserve"><value>Delete means the Recycle Bin. Every batch lands in History with a Restore next to it, for as long as the bin holds it.</value></data>
   <data name="ShownOnceBanner" xml:space="preserve"><value>SHOWN ONCE. NOT REPEATED LATER.</value></data>

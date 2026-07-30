@@ -285,9 +285,9 @@ public sealed class ReviewActivity : Activity
             : _deletedHere > 0
                 ? $"Every group has a keeper. {_deletedHere:N0} extra "
                   + $"{(_deletedHere == 1 ? "copy is" : "copies are")} in the trash — restorable from "
-                  + "History. Any you kept are still available to Export or the Select mode's bulk delete."
-                : "Every group has a keeper. Extras are still there — Export or the Select mode's "
-                  + "bulk delete is where they go."));
+                  + "History. Any you kept are still available to the Select mode's bulk delete."
+                : "Every group has a keeper. Extras are still there — the Select mode's bulk "
+                  + "delete is where they go."));
         body.AddView(Design.Gap(this, 20));
 
         var done = Design.Button(this, "Done", Design.Btn.Primary, 52f);
@@ -486,7 +486,7 @@ public sealed class ReviewActivity : Activity
                   + "only mark which copy survives."
                 : "Swipe left to keep and advance · right to go back · down to move this photo to "
                   + "the trash, restorable from History. Keep and Skip only mark which copy "
-                  + "survives an export or delete.");
+                  + "survives a move or delete.");
         hint.Gravity = GravityFlags.CenterHorizontal;
         hint.SetPadding(0, Design.Dp(this, 9), 0, 0);
         ab.AddView(hint);

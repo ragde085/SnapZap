@@ -30,19 +30,6 @@
                     </div>
 
                     <div class="field">
-                        <label>@L["TransferModeLabel"]</label>
-                        <div class="seg">
-                            @foreach (var m in Enum.GetValues<TransferMode>())
-                            {
-                                <label class="seg-opt">
-                                    <input type="radio" name="mode" checked="@(_mode == m)" @onchange="() => SetMode(m)" />@ModeLabel(m)
-                                </label>
-                            }
-                        </div>
-                        <div class="hint">@L["TransferModeHint"]</div>
-                    </div>
-
-                    <div class="field">
                         <label>@L["FolderStructureLabel"]</label>
                         <div class="seg">
                             @foreach (var s in Enum.GetValues<ExportStructure>())
@@ -116,20 +103,6 @@
                                     <span>@L["FreeSpaceUnknown"]</span>
                                 </div>
                             }
-                            @if (p.HardlinkPossible)
-                            {
-                                <div class="preflight-row ok">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
-                                    <span>@L["HardlinkAvailable"]</span>
-                                </div>
-                            }
-                            else if (_mode == TransferMode.Hardlink)
-                            {
-                                <div class="preflight-row warn">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10" /><path d="M12 16v-4" /><path d="M12 8h.01" /></svg>
-                                    <span>@L["HardlinkUnavailable"]</span>
-                                </div>
-                            }
                             @if (p.SampleDestinations.Count > 0)
                             {
                                 <div class="preflight-row ok">
@@ -146,9 +119,28 @@
                     }
 
                     <button class="btn btn-secondary btn-block" @onclick="RunPreflight">@(_preflight is null ? L["CheckDestinationButton"] : L["CheckAgainButton"])</button>
-                    <button class="btn btn-primary btn-block" disabled="@(_preflight is null || !_preflight.EnoughSpace || _running || _done)" @onclick="RunExport">
-                        @(_running ? L["ExportingStatus"] : L["ExportButton", AppState.Selected.Count.ToString("N0")])
-                    </button>
+
+                    @* The originals question is asked here, between the button and the work, rather
+                       than as a mode three fields up. Both answers are offered as explicit buttons —
+                       there is no default and no pre-ticked box, because "keep" and "remove" are not
+                       a safe option and a variant of it, they are two different intentions. *@
+                    @if (_confirmRemove)
+                    {
+                        <div class="confirm" role="alertdialog" aria-modal="true" aria-label="@L["ConfirmRemoveAriaLabel"]">
+                            <p>@((MarkupString)L["ConfirmRemoveBody", AppState.Selected.Count.ToString("N0")].Value)</p>
+                            <p class="hint">@L["ConfirmRemoveHint"]</p>
+                            <div class="dlg-actions">
+                                <button class="btn btn-secondary" @onclick="() => Commit(remove: false)">@L["KeepOriginalsButton"]</button>
+                                <button class="btn btn-danger" @onclick="() => Commit(remove: true)">@L["RemoveOriginalsButton"]</button>
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        <button class="btn btn-primary btn-block" disabled="@(_preflight is null || !_preflight.EnoughSpace || _running || _done)" @onclick="() => _confirmRemove = true">
+                            @(_running ? L["ExportingStatus"] : L["ExportButton", AppState.Selected.Count.ToString("N0")])
+                        </button>
+                    }
 
                     <div class="dlg-actions" style="margin-top:10px">
                         @if (_running)
@@ -185,7 +177,19 @@
 
     bool _showPicker;
     string _destination = "";
+    // The Copy/Move/Hardlink radio is gone from the UI. "Move files to a folder" is one action; the
+    // only genuine choice left is whether the originals survive it, and that is asked as a
+    // confirmation at commit time (see _confirmRemove) rather than as a mode picked up front —
+    // a destructive option should be answered next to the button that performs it, not three
+    // fields above it.
+    //
+    // TransferMode itself stays: ExportEngine's Hardlink mode is a real capability with its own
+    // Windows-verify entry, and Copy/Move are what this boolean maps onto. It is simply no longer
+    // something the user picks from a list.
     TransferMode _mode = TransferMode.Copy;
+
+    /// <summary>The commit-time confirmation is open, asking whether to remove the originals.</summary>
+    bool _confirmRemove;
     ExportStructure _structure = ExportStructure.Date;
     bool _recycleRejects;
     bool _running;
@@ -196,7 +200,6 @@
     ElementReference _dlgRef;
     CancellationTokenSource? _cts;
 
-    void SetMode(TransferMode m) { _mode = m; InvalidatePreflight(); }
     void SetStructure(ExportStructure s) { _structure = s; InvalidatePreflight(); }
 
     string StructureLabel(ExportStructure s) => s switch
@@ -205,14 +208,6 @@
         ExportStructure.Mirror => (string)L["StructureMirror"],
         ExportStructure.Flat => (string)L["StructureFlat"],
         _ => s.ToString(),
-    };
-
-    string ModeLabel(TransferMode m) => m switch
-    {
-        TransferMode.Copy => (string)L["ModeCopy"],
-        TransferMode.Move => (string)L["ModeMove"],
-        TransferMode.Hardlink => (string)L["ModeHardlink"],
-        _ => m.ToString(),
     };
 
     int RejectCount => AppState.Images.Count - AppState.Selected.Count;
@@ -262,7 +257,7 @@
 
     protected override void OnParametersSet()
     {
-        if (Show && !_wasShown) { _preflight = null; _resultText = ""; _done = false; _needsFocus = true; }
+        if (Show && !_wasShown) { _preflight = null; _resultText = ""; _done = false; _needsFocus = true; _confirmRemove = false; }
         _wasShown = Show;
     }
 
@@ -321,11 +316,26 @@
     /// showing a stale "enough room" for a destination and mode the user had since changed —
     /// so Export stayed armed for a Move into a folder that was never checked.
     /// </summary>
+    /// <summary>
+    /// Answers the originals question, then runs. Copy and Move are the same write followed by the
+    /// same hash verification; Move only differs in removing the source afterwards, and never before
+    /// verification (DESIGN §7 — no destructive step precedes hash-verification).
+    /// </summary>
+    void Commit(bool remove)
+    {
+        _confirmRemove = false;
+        _mode = remove ? TransferMode.Move : TransferMode.Copy;
+        _ = RunExport();
+    }
+
     void InvalidatePreflight()
     {
         if (_done) return;   // a finished run is history, not a stale check
         _preflight = null;
         _resultText = "";
+        // Editing the destination while the originals question is open would leave the answer
+        // attached to a folder it was never asked about.
+        _confirmRemove = false;
     }
 
     void OnDestinationPicked(string path)

@@ -11,7 +11,7 @@
   <data name="ClearButton" xml:space="preserve"><value>Clear</value></data>
   <data name="DeleteButton" xml:space="preserve"><value>Delete…</value></data>
   <data name="HideButton" xml:space="preserve"><value>Hide in Image…</value></data>
-  <data name="ExportButton" xml:space="preserve"><value>Export…</value></data>
+  <data name="ExportButton" xml:space="preserve"><value>Move…</value></data>
   <data name="WaitForJobHint" xml:space="preserve"><value>Wait for the current job to finish.</value></data>
   <data name="InvertHint" xml:space="preserve"><value>Select everything shown that is not selected now</value></data>
   <data name="ConfirmDeleteAriaLabel" xml:space="preserve"><value>Confirm delete</value></data>

@@ -12,6 +12,6 @@
   <data name="ReconnectRetryingOf" xml:space="preserve"><value>de</value></data>
   <data name="ReconnectFailed" xml:space="preserve"><value>El proceso de SnapZap ya no se está ejecutando. Inícialo de nuevo y luego recarga.</value></data>
   <data name="ReconnectRejected" xml:space="preserve"><value>Esta ventana quedó desactualizada porque SnapZap se reinició. Recarga para continuar donde lo dejaste.</value></data>
-  <data name="ReconnectSafe" xml:space="preserve"><value>No se perdió nada. Tu selección está guardada, y cada escaneo, exportación y eliminación queda registrado — el trabajo terminado está en el disco, y una exportación interrumpida continúa donde se detuvo.</value></data>
+  <data name="ReconnectSafe" xml:space="preserve"><value>No se ha perdido nada. Tu selección está guardada, y cada escaneo, movimiento y borrado queda registrado — el trabajo terminado sigue terminado.</value></data>
   <data name="TryAgain" xml:space="preserve"><value>Reintentar</value></data>
 </root>

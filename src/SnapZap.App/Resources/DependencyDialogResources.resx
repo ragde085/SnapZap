@@ -7,7 +7,7 @@
   <data name="OptionalFeaturesLabel" xml:space="preserve"><value>Optional features</value></data>
   <data name="HeadingSingular" xml:space="preserve"><value>One optional extra</value></data>
   <data name="HeadingPlural" xml:space="preserve"><value>{0} optional extras</value></data>
-  <data name="ReadyIntro" xml:space="preserve"><value>SnapZap is ready to use right now — scanning, exact duplicates, export and delete all work.</value></data>
+  <data name="ReadyIntro" xml:space="preserve"><value>SnapZap is ready to use right now — scanning, exact duplicates, moving and deleting all work.</value></data>
   <data name="UnlocksSingular" xml:space="preserve"><value>This add-on unlocks one more filter whenever you want it.</value></data>
   <data name="UnlocksPlural" xml:space="preserve"><value>These add-ons unlock the remaining filters whenever you want them.</value></data>
   <data name="Checking" xml:space="preserve"><value>Checking…</value></data>

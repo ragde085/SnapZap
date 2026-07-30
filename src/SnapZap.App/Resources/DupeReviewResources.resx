@@ -29,7 +29,7 @@
   <data name="ReviewHintMoveGroups" xml:space="preserve"><value>move between groups</value></data>
   <data name="ReviewHintToggleKeeper" xml:space="preserve"><value>toggle a keeper (more than one can survive)</value></data>
   <data name="ReviewHintClose" xml:space="preserve"><value>close.</value></data>
-  <data name="ReviewHintSafetyNote" xml:space="preserve"><value>Nothing is deleted here — this only decides which copies survive an export.</value></data>
+  <data name="ReviewHintSafetyNote" xml:space="preserve"><value>Nothing is deleted here — this only decides which copies survive a move or a delete.</value></data>
   <data name="DistinguisherDifferentResolutions" xml:space="preserve"><value>different resolutions</value></data>
   <data name="DistinguisherDifferentFileSizes" xml:space="preserve"><value>different file sizes</value></data>
   <data name="DistinguisherChooseByLocation" xml:space="preserve"><value>identical copies — choose by location</value></data>

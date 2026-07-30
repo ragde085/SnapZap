@@ -412,7 +412,7 @@ public sealed class TrashActivity : Activity
     static (string Title, string Location, string? Extra) Describe(UndoBatch b)
     {
         if (b.BatchId.StartsWith("move-", StringComparison.Ordinal))
-            return ("Moved out by export", "relocated by export, not in SnapZap's trash",
+            return ("Moved out of the source folder", "relocated, not in SnapZap's trash",
                     "Relocated, not binned — SnapZap's trash would be the wrong place to look "
                     + "for these.");
         if (b.BatchId.StartsWith("export-", StringComparison.Ordinal))

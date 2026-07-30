@@ -497,7 +497,7 @@ public sealed class MainActivity : Activity
         body.AddView(Gap(10));
         body.AddView(Promise("Your originals stay put",
             "Scanning only reads. Files move in exactly two cases, both of which you ask for: an "
-            + "export in Move mode, or ticking “also recycle what I didn’t pick”."));
+            + "answering “Remove originals” when you move them, or ticking “also recycle what I didn’t pick”."));
         body.AddView(Promise("Nothing is ever hard-deleted",
             "Delete means the Recycle Bin. Every batch lands in History with a Restore beside it."));
 
@@ -1260,7 +1260,7 @@ public sealed class MainActivity : Activity
         del.Click += (_, _) => ConfirmDelete();
         row.AddView(del);
 
-        var exp = Design.Button(this, "Export…", Design.Btn.Primary, 48f);
+        var exp = Design.Button(this, "Move…", Design.Btn.Primary, 48f);
         exp.LayoutParameters = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f)
         { LeftMargin = Design.Dp(this, 8) };
         // Screen 11 is out of v1 scope (ANDROID-PORT-PLAN §1). Dimmed to the system's own
@@ -1269,7 +1269,7 @@ public sealed class MainActivity : Activity
         exp.Enabled = false;
         exp.Alpha = 0.45f;
         exp.Click += (_, _) => Toast.MakeText(this,
-            "Export is not part of the Android version yet.", ToastLength.Short)!.Show();
+            "Moving photos to a folder is not part of the Android version yet.", ToastLength.Short)!.Show();
         row.AddView(exp);
         body.AddView(row);
 
@@ -1447,7 +1447,7 @@ public sealed class MainActivity : Activity
 
         body.AddView(Step(4, _hasScanned, "Sharpness", "Scored during the scan", null, null));
 
-        body.AddView(Step(5, false, "Export a clean library",
+        body.AddView(Step(5, false, "Move to a clean folder",
             "Desktop only in this version.", null, null, unavailable: true));
 
         var wrap = new LinearLayout(this) { Orientation = Orientation.Vertical };

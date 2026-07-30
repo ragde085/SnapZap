@@ -16,7 +16,7 @@
   <data name="SectionDuplicates" xml:space="preserve"><value>Duplicados</value></data>
   <data name="SectionExplicit" xml:space="preserve"><value>Contenido explícito</value></data>
   <data name="SectionSelecting" xml:space="preserve"><value>Selección</value></data>
-  <data name="SectionExporting" xml:space="preserve"><value>Exportación</value></data>
+  <data name="SectionExporting" xml:space="preserve"><value>Mover a una carpeta</value></data>
   <data name="SectionDeleting" xml:space="preserve"><value>Eliminar y deshacer</value></data>
   <data name="SectionKeyboard" xml:space="preserve"><value>Teclado</value></data>
   <data name="SectionFaq" xml:space="preserve"><value>Preguntas frecuentes</value></data>
@@ -26,9 +26,9 @@
   <data name="StartStep1" xml:space="preserve"><value>&lt;b&gt;Escanea una carpeta.&lt;/b&gt; Escribe o pega su ruta y presiona &lt;b&gt;Escanear&lt;/b&gt;. SnapZap lee cada foto dentro de ella y recuerda lo que encontró.</value></data>
   <data name="StartStep2" xml:space="preserve"><value>&lt;b&gt;Los duplicados se encuentran automáticamente&lt;/b&gt; en cuanto termina el escaneo — no hay que presionar ningún botón. La pestaña &lt;b&gt;Plan&lt;/b&gt; del panel lateral muestra un botón &lt;b&gt;Revisar N grupos&lt;/b&gt; en cuanto están listos; opcionalmente presiona &lt;b&gt;Ejecutar&lt;/b&gt; en &lt;b&gt;Revisión de contenido&lt;/b&gt; para marcar fotos explícitas.</value></data>
   <data name="StartStep3" xml:space="preserve"><value>&lt;b&gt;Elige las fotos que quieres conservar.&lt;/b&gt; Haz clic en ellas, o usa &lt;b&gt;Seleccionar las N mostradas&lt;/b&gt; en la parte superior de la cuadrícula.</value></data>
-  <data name="StartStep4" xml:space="preserve"><value>&lt;b&gt;Presiona &lt;b&gt;Exportar…&lt;/b&gt;&lt;/b&gt; para guardarlas en un lugar limpio — o &lt;b&gt;Eliminar…&lt;/b&gt; para enviar a la papelera las que no quieres.</value></data>
+  <data name="StartStep4" xml:space="preserve"><value>&lt;b&gt;Presiona &lt;b&gt;Mover…&lt;/b&gt;&lt;/b&gt; para guardarlas en un lugar limpio — o &lt;b&gt;Eliminar…&lt;/b&gt; para enviar a la papelera las que no quieras.</value></data>
   <data name="StartNoteTitle" xml:space="preserve"><value>Dos cosas que siempre son ciertas</value></data>
-  <data name="StartNoteFolder" xml:space="preserve"><value>Tu carpeta original nunca se toca a menos que lo pidas explícitamente — una exportación en modo &lt;i&gt;Mover&lt;/i&gt;, o la casilla opcional "también reciclar lo que no elegí".</value></data>
+  <data name="StartNoteFolder" xml:space="preserve"><value>Tu carpeta original nunca se toca a menos que lo pidas explícitamente — responder &lt;i&gt;Quitar originales&lt;/i&gt; al moverlas, o la casilla opcional “reciclar también lo que no elegí”.</value></data>
   <data name="StartNoteDelete" xml:space="preserve"><value>Nada se elimina permanentemente. Eliminar envía a la papelera de reciclaje, y cada lote se puede revertir desde &lt;b&gt;Historial&lt;/b&gt;.</value></data>
   <data name="StartWhereHeading" xml:space="preserve"><value>Dónde está cada cosa</value></data>
   <data name="StartTopBarTerm" xml:space="preserve"><value>Barra superior</value></data>
@@ -38,7 +38,7 @@
   <data name="StartGridHeaderTerm" xml:space="preserve"><value>Encabezado de la cuadrícula</value></data>
   <data name="StartGridHeaderDesc" xml:space="preserve"><value>&lt;b&gt;Seleccionar las N mostradas&lt;/b&gt; (con un menú para Marcadas / No seguras / Conservadas), el filtro activo como una etiqueta que se puede quitar, y Ordenar.</value></data>
   <data name="StartBottomBarTerm" xml:space="preserve"><value>Barra inferior</value></data>
-  <data name="StartBottomBarDesc" xml:space="preserve"><value>&lt;b&gt;Exportar…&lt;/b&gt;, &lt;b&gt;Eliminar…&lt;/b&gt; y &lt;b&gt;Ocultar en imagen…&lt;/b&gt;, además de &lt;b&gt;Invertir&lt;/b&gt; / &lt;b&gt;Limpiar&lt;/b&gt; — aparece en cuanto seleccionas al menos una foto.</value></data>
+  <data name="StartBottomBarDesc" xml:space="preserve"><value>&lt;b&gt;Mover…&lt;/b&gt;, &lt;b&gt;Eliminar…&lt;/b&gt; y &lt;b&gt;Ocultar en imagen…&lt;/b&gt;, además de &lt;b&gt;Invertir&lt;/b&gt; / &lt;b&gt;Limpiar&lt;/b&gt; — aparece en cuanto seleccionas al menos una foto.</value></data>
   <data name="StartGearTerm" xml:space="preserve"><value>Icono de engrane</value></data>
   <data name="StartGearDesc" xml:space="preserve"><value>&lt;b&gt;Configuración&lt;/b&gt;: el complemento opcional, qué revisa la detección de duplicados, y el catálogo.</value></data>
 
@@ -75,7 +75,7 @@
   <data name="DupeBadgesNote" xml:space="preserve"><value>Las tarjetas muestran una insignia: &lt;b&gt;✓&lt;/b&gt; para la copia que se conserva de su grupo, &lt;b&gt;▣&lt;/b&gt; para una copia extra. Pasa el cursor sobre cualquiera para ver el número de grupo y el tipo.</value></data>
   <data name="DupeReviewingHeading" xml:space="preserve"><value>Revisarlos</value></data>
   <data name="DupeReviewP1" xml:space="preserve"><value>Presiona &lt;b&gt;Revisar N grupos&lt;/b&gt; (pestaña Plan, o el aviso arriba de la cuadrícula) para la mejor forma de revisarlos — un grupo a la vez, copias una junto a otra. Los datos idénticos en todo el grupo aparecen en gris porque no ayudan a decidir; lo que difiere se resalta, y un ganador claro en resolución o tamaño de archivo se destaca.</value></data>
-  <data name="DupeReviewP2" xml:space="preserve"><value>Haz clic en una copia para hacerla la que se conserva. &lt;b&gt;Comparar a tamaño completo&lt;/b&gt; las abre a resolución completa con los paneles desplazándose juntos. &lt;b&gt;Nada se elimina en ese cuadro de diálogo&lt;/b&gt; — solo decide qué copia sobrevive a una exportación o eliminación que hagas después.</value></data>
+  <data name="DupeReviewP2" xml:space="preserve"><value>Haz clic en una copia para hacerla la que se conserva. &lt;b&gt;Comparar a tamaño completo&lt;/b&gt; las abre a resolución completa con los paneles desplazándose juntos. &lt;b&gt;Nada se elimina en ese cuadro de diálogo&lt;/b&gt; — solo decide qué copia sobrevive a una movimiento o eliminación que hagas después.</value></data>
   <data name="DupeTuningHeading" xml:space="preserve"><value>Ajustarlo</value></data>
   <data name="DupeTuningIntro" xml:space="preserve"><value>En &lt;b&gt;Configuración → Duplicados&lt;/b&gt;:</value></data>
   <data name="DupeTuningIdentical" xml:space="preserve"><value>&lt;b&gt;Archivos idénticos&lt;/b&gt; — siempre activado. Un buscador de duplicados que no encuentra archivos idénticos no es uno.</value></data>
@@ -106,7 +106,7 @@
 
   <!-- Selecting -->
   <data name="SelectHeading1" xml:space="preserve"><value>No pasa nada hasta que selecciones algo</value></data>
-  <data name="SelectIntro" xml:space="preserve"><value>Los botones &lt;b&gt;Exportar…&lt;/b&gt; y &lt;b&gt;Eliminar…&lt;/b&gt; solo aparecen cuando al menos una foto está seleccionada.</value></data>
+  <data name="SelectIntro" xml:space="preserve"><value>Los botones &lt;b&gt;Mover…&lt;/b&gt; y &lt;b&gt;Eliminar…&lt;/b&gt; solo aparecen cuando al menos una foto está seleccionada.</value></data>
   <data name="SelectByHandHeading" xml:space="preserve"><value>A mano</value></data>
   <data name="SelectClickTerm" xml:space="preserve"><value>Clic</value></data>
   <data name="SelectClickDesc" xml:space="preserve"><value>Selecciona o deselecciona una foto.</value></data>
@@ -128,11 +128,11 @@
   <data name="SelectInvertClearNote" xml:space="preserve"><value>En cuanto seleccionas algo, &lt;b&gt;Invertir&lt;/b&gt; y &lt;b&gt;Limpiar&lt;/b&gt; aparecen en la barra inferior de la cuadrícula, junto al contador (&lt;kbd&gt;{0}&lt;/kbd&gt;&lt;kbd&gt;D&lt;/kbd&gt; también limpia).</value></data>
   <data name="SelectGreyedHint" xml:space="preserve"><value>Un comando que no puede hacer nada se mantiene visible pero deshabilitado, y su descripción emergente dice qué paso falta en realidad.</value></data>
   <data name="SelectSharedTitle" xml:space="preserve"><value>La selección se comparte entre todas las ventanas de SnapZap</value></data>
-  <data name="SelectSharedBody" xml:space="preserve"><value>Elegir un alcance &lt;i&gt;reemplaza&lt;/i&gt; la selección en lugar de sumarse a ella, así que una acción en una ventana cambia lo que la otra está por exportar o eliminar.</value></data>
+  <data name="SelectSharedBody" xml:space="preserve"><value>Elegir un alcance &lt;i&gt;reemplaza&lt;/i&gt; la selección en lugar de sumarse a ella, así que una acción en una ventana cambia lo que la otra está por mover o eliminar.</value></data>
 
   <!-- Exporting -->
-  <data name="ExportHeading" xml:space="preserve"><value>Exportar</value></data>
-  <data name="ExportIntro" xml:space="preserve"><value>Selecciona las fotos que quieres, luego presiona &lt;b&gt;Exportar…&lt;/b&gt;. Dale una &lt;b&gt;ruta completa&lt;/b&gt; que empiece desde la raíz de la unidad — una ruta relativa se rechaza, porque podría resolverse sin darte cuenta dentro de la carpeta que estás limpiando.</value></data>
+  <data name="ExportHeading" xml:space="preserve"><value>Mover a una carpeta</value></data>
+  <data name="ExportIntro" xml:space="preserve"><value>Selecciona las fotos que quieres, luego presiona &lt;b&gt;Mover…&lt;/b&gt;. Dale una &lt;b&gt;ruta completa&lt;/b&gt; que empiece desde la raíz de la unidad — una relativa se rechaza, porque se resolvería silenciosamente dentro de la carpeta que estás limpiando.</value></data>
   <data name="ExportModeHeading" xml:space="preserve"><value>Modo de transferencia</value></data>
   <data name="ExportCopyTerm" xml:space="preserve"><value>Copiar</value></data>
   <data name="ExportCopyDesc" xml:space="preserve"><value>El valor por defecto, y el más seguro. Los originales se quedan exactamente donde están.</value></data>
@@ -148,13 +148,13 @@
   <data name="ExportFlatTerm" xml:space="preserve"><value>Plano</value></data>
   <data name="ExportFlatDesc" xml:space="preserve"><value>Todo en una sola carpeta, con renombrado seguro ante colisiones.</value></data>
   <data name="ExportCheckHeading" xml:space="preserve"><value>Verificar destino</value></data>
-  <data name="ExportCheckP1" xml:space="preserve"><value>Presiónalo antes de exportar. Obtienes el conteo y el tamaño total que se va a escribir, el espacio libre en el destino y si es suficiente, si hay enlaces duros disponibles, y un ejemplo de las carpetas que se crearán.</value></data>
-  <data name="ExportCheckP2" xml:space="preserve"><value>&lt;b&gt;Exportar permanece deshabilitado hasta que esta verificación pase&lt;/b&gt;, y cambiar el destino, el modo o la estructura la invalida — así el botón nunca puede activarse para un plan que nadie verificó.</value></data>
+  <data name="ExportCheckP1" xml:space="preserve"><value>Presiónalo antes de mover nada. Obtienes la cantidad y el tamaño total a escribir, el espacio libre en el destino y si alcanza, y un ejemplo de las carpetas que se crearán.</value></data>
+  <data name="ExportCheckP2" xml:space="preserve"><value>&lt;b&gt;El movimiento permanece deshabilitado hasta que esta verificación pase&lt;/b&gt;, y cambiar el destino o la estructura la invalida — así el botón nunca puede quedar armado para un plan que nadie verificó.</value></data>
   <data name="ExportRecycleHeading" xml:space="preserve"><value>También reciclar lo que no elegiste</value></data>
-  <data name="ExportRecycleP1" xml:space="preserve"><value>Esta casilla opcional envía a la papelera de reciclaje cada foto que &lt;i&gt;no&lt;/i&gt; seleccionaste, pero solo &lt;b&gt;después&lt;/b&gt; de que la exportación se haya escrito y verificado.</value></data>
+  <data name="ExportRecycleP1" xml:space="preserve"><value>Esta casilla opcional envía a la Papelera todas las fotos que &lt;i&gt;no&lt;/i&gt; seleccionaste, pero solo &lt;b&gt;después&lt;/b&gt; de que los archivos se hayan escrito y verificado.</value></data>
   <data name="ExportRecycleP2" xml:space="preserve"><value>&lt;b&gt;Los filtros no la limitan&lt;/b&gt; — cubre todo el catálogo, no solo lo que está en pantalla. Se puede revertir desde &lt;b&gt;Historial&lt;/b&gt;.</value></data>
   <data name="ExportWhileHeading" xml:space="preserve"><value>Mientras corre, y después</value></data>
-  <data name="ExportWhileP1" xml:space="preserve"><value>&lt;b&gt;Detener&lt;/b&gt; siempre es seguro: todo lo ya copiado ha sido verificado, y volver a ejecutar la exportación retoma donde se quedó en lugar de empezar de nuevo.</value></data>
+  <data name="ExportWhileP1" xml:space="preserve"><value>&lt;b&gt;Detener&lt;/b&gt; siempre es seguro: todo lo ya escrito está verificado, y volver a ejecutarlo continúa donde se quedó en vez de empezar de nuevo.</value></data>
   <data name="ExportWhileP2" xml:space="preserve"><value>Cuando termina, obtienes un resumen y la ruta de un &lt;b&gt;manifiesto&lt;/b&gt; — un CSV que registra exactamente qué fue a dónde.</value></data>
 
   <!-- Deleting -->
@@ -167,10 +167,10 @@
   <data name="DeleteTableWhatHeader" xml:space="preserve"><value>Qué fue</value></data>
   <data name="DeleteEntryDeletedTerm" xml:space="preserve"><value>Eliminado</value></data>
   <data name="DeleteEntryDeletedDesc" xml:space="preserve"><value>Una eliminación normal</value></data>
-  <data name="DeleteEntryRecycledTerm" xml:space="preserve"><value>Reciclado durante la exportación</value></data>
+  <data name="DeleteEntryRecycledTerm" xml:space="preserve"><value>Reciclado durante un movimiento</value></data>
   <data name="DeleteEntryRecycledDesc" xml:space="preserve"><value>La opción "también reciclar lo que no elegí"</value></data>
-  <data name="DeleteEntryMovedTerm" xml:space="preserve"><value>Movido por la exportación</value></data>
-  <data name="DeleteEntryMovedDesc" xml:space="preserve"><value>Una exportación en modo Mover. Estos fueron &lt;i&gt;reubicados&lt;/i&gt;, no enviados a la papelera — así que la papelera de reciclaje es el lugar equivocado para buscarlos.</value></data>
+  <data name="DeleteEntryMovedTerm" xml:space="preserve"><value>Sacado de la carpeta de origen</value></data>
+  <data name="DeleteEntryMovedDesc" xml:space="preserve"><value>Respondiste &lt;i&gt;Quitar originales&lt;/i&gt;. Estos fueron &lt;i&gt;reubicados&lt;/i&gt;, no enviados a la papelera — así que la Papelera es el lugar equivocado para buscarlos.</value></data>
   <data name="DeleteRestoreHint" xml:space="preserve"><value>También puedes restaurar desde el propio menú contextual de la papelera de reciclaje.</value></data>
 
   <!-- Keyboard -->
@@ -206,10 +206,10 @@
   <data name="FaqHeading" xml:space="preserve"><value>Preguntas frecuentes</value></data>
 
   <data name="FaqQ1" xml:space="preserve"><value>¿Se sube algo, o esto necesita conexión a internet?</value></data>
-  <data name="FaqA1" xml:space="preserve"><value>No, en ambos casos. SnapZap corre completamente en tu propia máquina. Se abre en tu navegador porque esa es su ventana, no porque algo se conecte en línea. La detección de duplicados, el desenfoque, las fechas y la exportación son todos en el propio proceso; la única descarga es el modelo opcional de contenido explícito, y esa es una instalación única.</value></data>
+  <data name="FaqA1" xml:space="preserve"><value>No, a ambas. SnapZap se ejecuta por completo en tu propia máquina. Se abre en tu navegador porque esa es su ventana, no porque algo salga a internet. La detección de duplicados, el desenfoque, las fechas y el movimiento son todos en proceso; la única descarga es el modelo opcional de contenido explícito, y eso lo pides tú.</value></data>
 
   <data name="FaqQ2" xml:space="preserve"><value>¿SnapZap va a eliminar mis fotos?</value></data>
-  <data name="FaqA2" xml:space="preserve"><value>No sin que lo pidas, y nunca de forma permanente. Escanear y buscar duplicados son operaciones de solo lectura. Eliminar mueve los archivos a la papelera de reciclaje y cada lote se puede restaurar desde &lt;b&gt;Historial&lt;/b&gt;. Las únicas formas en que se toca tu carpeta de origen son una exportación en modo &lt;i&gt;Mover&lt;/i&gt; y la casilla opcional "también reciclar lo que no elegí" — ambas claramente etiquetadas, ambas reversibles.</value></data>
+  <data name="FaqA2" xml:space="preserve"><value>No sin que lo pidas, y nunca de forma permanente. Escanear y buscar duplicados son de solo lectura. Eliminar envía los archivos a la Papelera y cada lote se puede restaurar desde &lt;b&gt;Historial&lt;/b&gt;. Las únicas formas en que se toca tu carpeta de origen son responder &lt;i&gt;Quitar originales&lt;/i&gt; al mover fotos, y la casilla opcional “reciclar también lo que no elegí” — ambas claramente etiquetadas, ambas reversibles.</value></data>
 
   <data name="FaqQ3" xml:space="preserve"><value>Mis fotos del iPhone no aparecen.</value></data>
   <data name="FaqA3" xml:space="preserve"><value>Casi seguro son HEIC, que SnapZap todavía no puede decodificar — tampoco AVIF, ni RAW de cámara. Se cuentan y se reportan en el aviso arriba de la cuadrícula, y se dejan completamente sin tocar. Convertirlas a JPEG las hace visibles.</value></data>
@@ -220,13 +220,13 @@
   <data name="FaqQ5" xml:space="preserve"><value>¿Dónde está el botón "Buscar duplicados"?</value></data>
   <data name="FaqA5" xml:space="preserve"><value>No hay uno que presionar la primera vez — la detección de duplicados corre automáticamente en cuanto termina un escaneo, sin necesidad de descarga ni configuración. Para volver a ejecutarla después (por ejemplo, tras cambiar un ajuste en &lt;b&gt;Configuración → Duplicados&lt;/b&gt;), usa &lt;b&gt;Buscar de nuevo&lt;/b&gt; en el paso Duplicados de la pestaña Plan.</value></data>
 
-  <data name="FaqQ6" xml:space="preserve"><value>¿Por qué no se activa el botón Exportar?</value></data>
-  <data name="FaqA6" xml:space="preserve"><value>Primero presiona &lt;b&gt;Verificar destino&lt;/b&gt;. Si cambiaste el destino, el modo o la estructura después de verificar, vuelve a verificar — el botón se desarma a propósito para nunca ejecutar un plan que nadie confirmó. Si la verificación dice que no hay suficiente espacio, la exportación se queda bloqueada.</value></data>
+  <data name="FaqQ6" xml:space="preserve"><value>¿Por qué no se activa el botón Mover?</value></data>
+  <data name="FaqA6" xml:space="preserve"><value>Presiona &lt;b&gt;Verificar destino&lt;/b&gt; primero. Si cambiaste el destino o la estructura después de verificar, verifica de nuevo — el botón se desarma a propósito para que nunca ejecute un plan que nadie verificó. Si la verificación dice que no hay espacio suficiente, el movimiento queda bloqueado.</value></data>
 
   <data name="FaqQ7" xml:space="preserve"><value>Dice: "Escribe una ruta completa, empezando desde la raíz de la unidad."</value></data>
   <data name="FaqA7" xml:space="preserve"><value>Las rutas de destino relativas se rechazan, porque podrían resolverse en un lugar inesperado — posiblemente dentro de la misma carpeta que estás limpiando. Usa una ruta completa.</value></data>
 
-  <data name="FaqQ8" xml:space="preserve"><value>La estructura Igualar no me deja exportar.</value></data>
+  <data name="FaqQ8" xml:space="preserve"><value>La estructura Igualar no me deja moverlas.</value></data>
   <data name="FaqA8" xml:space="preserve"><value>Igualar recrea tu estructura de carpetas actual, así que necesita una carpeta de origen escaneada en esta sesión para calcular rutas relativas. Vuelve a escanear el origen, o elige &lt;b&gt;Por fecha&lt;/b&gt; o &lt;b&gt;Plano&lt;/b&gt;.</value></data>
 
   <data name="FaqQ9" xml:space="preserve"><value>Una ráfaga de tomas se agrupó como duplicados. ¿Se van a eliminar?</value></data>
@@ -242,7 +242,7 @@
   <data name="FaqA12" xml:space="preserve"><value>No. El primer escaneo analiza cada foto. Después de eso, cualquier archivo cuya ruta, tamaño y fecha de modificación no hayan cambiado se reutiliza del catálogo, así que volver a escanear la misma biblioteca es casi instantáneo. &lt;b&gt;Detener&lt;/b&gt; es seguro en cualquier momento — el trabajo hecho hasta ahí se conserva.</value></data>
 
   <data name="FaqQ13" xml:space="preserve"><value>¿Dónde guarda SnapZap sus propios datos?</value></data>
-  <data name="FaqA13" xml:space="preserve"><value>En tu carpeta local de datos de aplicaciones, deliberadamente &lt;i&gt;fuera&lt;/i&gt; de la carpeta que escaneas, para nunca escribir dentro de tu biblioteca de fotos: la base de datos del catálogo, las miniaturas, los manifiestos de exportación y las preferencias. &lt;b&gt;Configuración → Olvidar todo&lt;/b&gt; borra todo esto — ninguna foto se elimina ni se mueve, y un escaneo lo reconstruye.</value></data>
+  <data name="FaqA13" xml:space="preserve"><value>En tu carpeta local de datos de la aplicación, deliberadamente &lt;i&gt;fuera&lt;/i&gt; de la carpeta que escaneas, para que nunca escriba en tu biblioteca de fotos: la base de datos del catálogo, las miniaturas, los manifiestos de movimiento y las preferencias. &lt;b&gt;Configuración → Olvidar todo&lt;/b&gt; lo borra todo — ninguna foto se toca.</value></data>
 
   <data name="FaqQ14" xml:space="preserve"><value>¿Puedo usar dos ventanas con la misma biblioteca?</value></data>
   <data name="FaqA14" xml:space="preserve"><value>Sí, pero comparten una sola selección. Un comando como &lt;b&gt;Extras&lt;/b&gt; reemplaza la selección en lugar de sumarse a ella, así que una acción en una ventana cambia lo que la otra está a punto de hacer.</value></data>

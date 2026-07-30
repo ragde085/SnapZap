@@ -7,7 +7,7 @@
   <data name="OptionalFeaturesLabel" xml:space="preserve"><value>Funciones opcionales</value></data>
   <data name="HeadingSingular" xml:space="preserve"><value>Un extra opcional</value></data>
   <data name="HeadingPlural" xml:space="preserve"><value>{0} extras opcionales</value></data>
-  <data name="ReadyIntro" xml:space="preserve"><value>SnapZap está listo para usarse ahora mismo: el escaneo, los duplicados exactos, la exportación y la eliminación ya funcionan.</value></data>
+  <data name="ReadyIntro" xml:space="preserve"><value>SnapZap ya está listo para usarse — escanear, duplicados exactos, mover y eliminar funcionan sin él.</value></data>
   <data name="UnlocksSingular" xml:space="preserve"><value>Este complemento desbloquea un filtro más cuando tú quieras.</value></data>
   <data name="UnlocksPlural" xml:space="preserve"><value>Estos complementos desbloquean los filtros restantes cuando tú quieras.</value></data>
   <data name="Checking" xml:space="preserve"><value>Comprobando…</value></data>

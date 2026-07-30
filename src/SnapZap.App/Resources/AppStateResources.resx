@@ -30,7 +30,7 @@
   <data name="PlanStepDuplicates" xml:space="preserve"><value>Duplicates</value></data>
   <data name="PlanStepContentReview" xml:space="preserve"><value>Content review</value></data>
   <data name="PlanStepSharpness" xml:space="preserve"><value>Sharpness</value></data>
-  <data name="PlanStepExport" xml:space="preserve"><value>Export a clean library</value></data>
+  <data name="PlanStepExport" xml:space="preserve"><value>Move to a clean folder</value></data>
   <data name="WaitsForScan" xml:space="preserve"><value>Waits for the scan</value></data>
   <data name="ReadingProgress" xml:space="preserve"><value>Reading… {0}</value></data>
   <data name="PhotosCountWithTime" xml:space="preserve"><value>{0:N0} photos · {1}</value></data>
@@ -45,8 +45,8 @@
   <data name="NothingScoredYet" xml:space="preserve"><value>Nothing scored yet</value></data>
   <data name="SoftShotsFound" xml:space="preserve"><value>{0:N0} soft shots found</value></data>
   <data name="NothingSoftFound" xml:space="preserve"><value>Nothing soft found</value></data>
-  <data name="ExportedThisSession" xml:space="preserve"><value>Exported this session</value></data>
-  <data name="NothingExportedYet" xml:space="preserve"><value>Nothing exported yet</value></data>
+  <data name="ExportedThisSession" xml:space="preserve"><value>Moved this session</value></data>
+  <data name="NothingExportedYet" xml:space="preserve"><value>Nothing moved yet</value></data>
   <data name="CatalogueEmptiedStatus" xml:space="preserve"><value>Catalogue emptied. Scan a folder to start again.</value></data>
   <data name="FolderNotFound" xml:space="preserve"><value>Folder not found: {0}</value></data>
   <data name="ScanSummary" xml:space="preserve"><value>Scanned {0} new, {1} cached</value></data>

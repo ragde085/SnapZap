@@ -121,6 +121,13 @@ on-device: perceptual hashes are **bit-identical** to the desktop's, and NSFW sc
 
 ### Changed — both heads
 
+- **"Export" is now "Move to a folder".** Same action, clearer name — nothing here was ever an
+  export in the sense of producing a different format. The Copy/Move/Hardlink mode picker is gone
+  with it: there is one action, and the only real choice left — whether the originals survive it —
+  is now a confirmation asked next to the button that performs it rather than a radio three fields
+  above. Both answers are explicit buttons, because "keep" and "remove" are two intentions, not a
+  safe default and a variant of it. Hardlink stays in the engine (it has its own Windows
+  verification) but is no longer something to pick from a list.
 - **Burst grouping can now be switched off**, in Setup on the desktop and Settings on Android. It
   stays **on by default**, and both screens say what turning it off means, because it is not the
   harmless-sounding toggle it looks like: burst frames do not become ungrouped, they get picked up as

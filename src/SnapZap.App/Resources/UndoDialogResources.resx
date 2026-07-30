@@ -12,8 +12,8 @@
   <data name="ColumnWhatHappened" xml:space="preserve"><value>What happened</value></data>
   <data name="ColumnPhotos" xml:space="preserve"><value>Photos</value></data>
   <data name="BatchTimestamp" xml:space="preserve"><value>{0:MMM d, yyyy} at {0:h:mm tt}</value></data>
-  <data name="WhatMoved" xml:space="preserve"><value>Moved out by export</value></data>
-  <data name="WhatExportRecycled" xml:space="preserve"><value>Recycled during export — the photos you didn't pick</value></data>
+  <data name="WhatMoved" xml:space="preserve"><value>Moved out of the source folder</value></data>
+  <data name="WhatExportRecycled" xml:space="preserve"><value>Recycled during a move — the photos you didn't pick</value></data>
   <data name="WhatSelectionDeleted" xml:space="preserve"><value>Deleted — recycled from a selection</value></data>
   <data name="SubRelocated" xml:space="preserve"><value>Relocated, not binned</value></data>
   <data name="SubEmptied" xml:space="preserve"><value>Emptied from the bin since</value></data>
