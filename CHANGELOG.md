@@ -11,7 +11,63 @@ Since 1.3.0 the Android head carries its own pair, because the platform requires
 
 `versionCode` is a build counter rather than a second version number, so it advances independently
 of the sections below — any APK that has to install over an earlier one needs a higher code, and it
-can never go backwards. 1.3.0 exists as code 2 and, after the UX-review work, as code 3.
+can never go backwards. 1.3.0 exists as code 2 and, after the UX-review work, as code 3. 1.3.1 is
+code 4.
+
+## 1.3.1 — 2026-07-31
+
+Two defects in duplicate detection, both found from a real six-photo "duplicate" group that
+contained four desktop wallpapers and two unrelated sunset photographs.
+
+### Fixed
+
+- **Photos that merely share a left-to-right brightness pattern are no longer called duplicates.**
+  The perceptual signature encoded only horizontal comparisons between neighbouring cells, which
+  meant a photo's entire fingerprint was its left-to-right luminance profile. Any image that
+  brightens toward the middle of the frame and darkens after produced the same bits as any other,
+  whatever was actually in it — so a grey wallpaper with a centre glow and a photograph of the sun
+  over the sea were indistinguishable. Measured on a 2,218-photo library, six such images sat 0–16
+  bits apart against a threshold of 20. The signature now encodes vertical comparisons as well
+  (272 → 544 bits); those pairs move to 41–87 bits, while genuine resizes, re-encodes and rotations
+  stay together.
+
+- **Duplicate groups are once again guaranteed to be groups of mutually-similar photos.** Comparing
+  two signatures gave a different answer depending on which one was named first — 69% of sampled
+  library pairs disagreed, the worst by 247 of 272 bits. Because grouping checks pairs in whichever
+  order it happens to reach them, its "every member matches every other member" rule was only ever
+  enforced in one direction. The same library had a seven-member group whose furthest pair was 259
+  bits apart, mixing a wallpaper and five unrelated photos, with one of them nominated as the copy
+  to keep. Comparison is now symmetric by construction.
+
+- **Blank frames no longer match each other.** A frame of one flat colour produced an empty
+  signature, making a solid black image and a solid white image identical to the matcher. Such
+  signatures now match nothing.
+
+- **Same-shot matching no longer misses pairs that only matched "the other way round."** The
+  candidate index for the fast matching path was consulted in one direction only, so a minority of
+  genuine matches were never even considered.
+
+- **"Recomputing signatures" no longer looks like a hung app.** That step decodes every photo it
+  lists, so a signature change routes the whole library through it — and it reported itself as a
+  single tick on the progress bar, leaving the bar motionless for minutes with no indication
+  anything was happening. It now counts photos: the bar advances through the phase and the label
+  reads "Recomputing signatures (1,204 of 2,185)".
+
+- **"Recomputing signatures" runs on all cores.** It was the one decode-per-photo pass in the app
+  still running one photo at a time, while the scan doing identical work has always been parallel.
+  Measured on a real 1,988-photo library: **48.7s → 7.5s**, the latter covering the whole detection
+  run rather than just the backfill.
+
+### Changed
+
+- **Every photo's visual signature is recomputed once, on the first duplicate scan after
+  upgrading.** Nothing needs re-scanning and no files are touched; the catalogue is backed up
+  automatically before the change, as it is for any signature change. Expect the first "Find
+  duplicates" run after updating to take noticeably longer than usual.
+- **The same-shot strictness slider now runs 8–120 instead of 4–60**, and its default is 40 instead
+  of 20, because the signature it measures is twice as wide. This is the same strictness as before,
+  expressed against the larger number — a previously-saved value resets to the new default rather
+  than being silently reinterpreted as twice as strict.
 
 ## 1.3.0 — 2026-07-29
 

@@ -91,7 +91,7 @@ public class PerceptualHashTests : IDisposable
         return swapped;
     }
 
-    const int Threshold = 20;   // the shipped DedupSettings default, out of 272
+    static readonly int Threshold = new SnapZap.Core.Dedup.DedupSettings().VariantMaxBits;   // 40, of 544
 
     [Fact]
     public void A_downscaled_copy_matches_the_original()
@@ -158,6 +158,137 @@ public class PerceptualHashTests : IDisposable
         var d = a.DistanceTo(b, PerceptualHash.Bits, allowRotation: true);
         Assert.True(d > Threshold * 2,
             $"unrelated images should be far apart even allowing rotation; distance was {d}");
+    }
+
+    // ---- The vertical half of the signature (PhashRecipeVersion 4) ----------------------------
+
+    /// <summary>
+    /// Paint a frame whose brightness is <c>f(x) * g(y)</c>, so the horizontal ordering within
+    /// every row is decided by <c>f</c> alone and is therefore identical for any positive
+    /// <c>g</c>.
+    /// </summary>
+    static SKBitmap Separable(int w, int h, Func<float, float> f, Func<float, float> g)
+    {
+        var bmp = new SKBitmap(w, h);
+        for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++)
+            {
+                var v = (byte)Math.Clamp(255f * f(x / (float)(w - 1)) * g(y / (float)(h - 1)), 0f, 255f);
+                bmp.SetPixel(x, y, new SKColor(v, v, v));
+            }
+        return bmp;
+    }
+
+    /// <summary>
+    /// The defect that produced the six-photo "duplicate" group of four desktop wallpapers and two
+    /// sunsets: with only horizontal comparisons encoded, a photo's entire signature was its
+    /// left-to-right luminance profile, so <em>any</em> two images sharing one were indistinguishable
+    /// no matter what else was in the frame.
+    /// </summary>
+    /// <remarks>
+    /// Both frames here use the same triangular horizontal ramp — brightness rising to the middle
+    /// and falling after, which is what a centre-glow wallpaper and a sun in the sky both reduce to
+    /// on a 17-cell grid. They differ only vertically: one is constant down each column, the other
+    /// brightens toward the bottom. Under the horizontal-only encoding their signatures were
+    /// <b>bit-for-bit identical</b> — distance 0 against a threshold of 20 — and no threshold could
+    /// have separated them. This asserts the vertical half is carrying that distinction, not merely
+    /// that the two happen to land apart.
+    /// </remarks>
+    [Fact]
+    public void Frames_with_identical_horizontal_profiles_are_still_told_apart()
+    {
+        static float Ramp(float t) => 0.25f + 0.75f * (1f - Math.Abs(2f * t - 1f)); // peaks at centre
+
+        using var flatDown = Separable(800, 600, Ramp, _ => 1f);              // constant down each column
+        using var brightBelow = Separable(800, 600, Ramp, t => 0.35f + 0.65f * t); // brightens downward
+
+        var a = HashOf(Write("ramp-flat.png", flatDown, SKEncodedImageFormat.Png, 100));
+        var b = HashOf(Write("ramp-below.png", brightBelow, SKEncodedImageFormat.Png, 100));
+
+        var d = a.DistanceTo(b, PerceptualHash.Bits, allowRotation: false);
+        Assert.True(d > PerceptualHash.VerticalBits / 2,
+            $"the vertical half must separate two frames sharing a horizontal profile; distance was only {d}");
+    }
+
+    /// <summary>
+    /// <see cref="PerceptualHash.DistanceTo"/> must give the same answer whichever argument is the
+    /// receiver.
+    /// </summary>
+    /// <remarks>
+    /// It did not. Rotations are produced by turning the cell grid and re-encoding, so a rotated
+    /// signature is not a bit-permutation of the unrotated one, and rotating only the receiver made
+    /// the comparison order-dependent — 55,269 of 79,800 sampled pairs from a real library
+    /// disagreed, the worst by 247 bits. <see cref="SimilarityGrouper"/> tests pairs in whichever
+    /// order it reaches them, so that turned complete linkage into a one-directional check and put
+    /// photos 259 bits apart in one 20-bit group. Do not "optimise" this back to one side.
+    /// </remarks>
+    [Fact]
+    public void Distance_is_symmetric_in_both_argument_orders()
+    {
+        using var scene = Scene(800, 800);
+        using var turned = Rotated(scene, 1);
+        using var stripes = new SKBitmap(800, 800);
+        using (var canvas = new SKCanvas(stripes))
+        {
+            canvas.Clear(SKColors.White);
+            using var paint = new SKPaint { Color = SKColors.Black };
+            for (int i = 0; i < 12; i++) canvas.DrawRect(new SKRect(i * 60, 0, i * 60 + 30, 800), paint);
+        }
+
+        var hashes = new[]
+        {
+            HashOf(Write("sym-a.png", scene, SKEncodedImageFormat.Png, 100)),
+            HashOf(Write("sym-b.png", turned, SKEncodedImageFormat.Png, 100)),
+            HashOf(Write("sym-c.png", stripes, SKEncodedImageFormat.Png, 100)),
+            HashOf(Write("sym-d.jpg", scene, SKEncodedImageFormat.Jpeg, 30)),
+        };
+
+        for (int i = 0; i < hashes.Length; i++)
+            for (int j = 0; j < hashes.Length; j++)
+                Assert.Equal(
+                    hashes[i].DistanceTo(hashes[j], PerceptualHash.Bits, allowRotation: true),
+                    hashes[j].DistanceTo(hashes[i], PerceptualHash.Bits, allowRotation: true));
+    }
+
+    /// <summary>
+    /// A frame of one flat colour ties every comparison, ties encode as 0, so solid black and solid
+    /// white produce byte-identical all-zero signatures and would sit 0 bits apart. In a tool that
+    /// offers duplicates for deletion, "these two blank frames are the same photo" is not an
+    /// acceptable answer, so such a signature matches nothing at all.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately narrower than a general low-contrast gate. A featureless-but-not-flat photo has
+    /// its bits decided by noise, and noise does not collide: measured over 179,675 unrelated pairs
+    /// from a real library, a minimum-contrast floor anywhere from 2 to 8 grey levels changed the
+    /// number of pairs under every tested threshold by exactly zero while discarding up to 8% of
+    /// the library from matching. Only the perfectly flat case is a real collision.
+    /// </remarks>
+    [Fact]
+    public void Flat_frames_are_degenerate_signatures_and_match_nothing()
+    {
+        using var black = Separable(400, 300, _ => 0f, _ => 1f);
+        using var white = Separable(400, 300, _ => 1f, _ => 1f);
+        using var scene = Scene(400, 300);
+
+        var a = HashOf(Write("flat-black.png", black, SKEncodedImageFormat.Png, 100));
+        var b = HashOf(Write("flat-white.png", white, SKEncodedImageFormat.Png, 100));
+        var real = HashOf(Write("not-flat.png", scene, SKEncodedImageFormat.Png, 100));
+
+        Assert.True(a.IsDegenerate);
+        Assert.True(b.IsDegenerate);
+        Assert.False(real.IsDegenerate);
+
+        // They really are identical bit patterns — the guard is what stops them matching, not luck.
+        Assert.Equal(a, b);
+
+        Assert.Equal(int.MaxValue, a.DistanceTo(b, PerceptualHash.Bits, allowRotation: true));
+        Assert.Equal(int.MaxValue, a.DistanceTo(real, PerceptualHash.Bits, allowRotation: true));
+        Assert.Equal(int.MaxValue, real.DistanceTo(a, PerceptualHash.Bits, allowRotation: true));
+
+        // A degenerate signature is present, not absent: it round-trips and is not IsEmpty, so a
+        // catalogue never re-decodes the file hoping for a better answer.
+        Assert.False(a.IsEmpty);
+        Assert.True(a.IsUnusable);
     }
 
     /// <summary>

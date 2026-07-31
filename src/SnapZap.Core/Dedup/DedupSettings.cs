@@ -27,12 +27,36 @@ public sealed record DedupSettings
     /// to count as the same shot.
     /// </summary>
     /// <remarks>
-    /// Not comparable to czkawka's <c>--max-difference</c>, which was 10 bits out of 256 on a
+    /// <para>Not comparable to czkawka's <c>--max-difference</c>, which was 10 bits out of 256 on a
     /// different grid. Any intuition calibrated on that number has to be re-derived here. Starts
     /// strict on purpose: this feeds a tool that deletes things, so a miss costs less than a false
-    /// positive.
+    /// positive.</para>
+    ///
+    /// <para><b>Nor is it comparable to the 20 this defaulted to before the signature grew a
+    /// vertical half</b> (<see cref="PerceptualHash.PhashRecipeVersion"/> 4). 40 of 544 is the same
+    /// 7.35% of the signature that 20 of 272 was, deliberately: the proportion is what was
+    /// calibrated, and holding it keeps the shipped strictness unchanged in the only terms that
+    /// mean anything.</para>
+    ///
+    /// <para>Measured against a real 2,218-photo library — 720 generated variants (50%/25% resize,
+    /// quality-50 re-encode, 90-degree rotation) against 179,693 genuinely-unrelated pairs:</para>
+    /// <code>
+    ///   threshold | variants found | unrelated pairs wrongly matched
+    ///          24 |          95.8% |      0
+    ///          32 |          97.9% |      0
+    ///          40 |          98.2% |      0     &lt;-- shipped
+    ///          44 |          98.5% |      2
+    ///          48 |          99.0% |      2
+    /// </code>
+    /// <para>The curve is flat from 32 to 40 and turns over immediately after, so 40 sits at the
+    /// last point before false matches appear. It is not a hard floor on them: two photographs that
+    /// are each almost entirely one flat colour — an accidental near-black frame and a plain
+    /// wallpaper with a small motif — measured 37 bits apart in the same library, because a 17x17
+    /// grid has almost nothing to describe in either. That is the residual limit of this hash
+    /// family, not a threshold that can be tuned away; the slider is there for a user who wants to
+    /// trade differently.</para>
     /// </remarks>
-    public int VariantMaxBits { get; init; } = 20;
+    public int VariantMaxBits { get; init; } = 40;
 
     /// <summary>Also match a photo against 90/180/270-degree rotations of another.</summary>
     public bool VariantRotations { get; init; } = true;
@@ -77,7 +101,7 @@ public sealed record DedupSettings
     /// differ. It exists to stop a camera left running across two different scenes from merging
     /// them, not to establish that the frames are the same photo.
     /// </summary>
-    public int BurstMaxBits { get; init; } = 60;
+    public int BurstMaxBits { get; init; } = 120;
 
     /// <summary>
     /// Kinds a run with these settings actually covers, as stored in
@@ -99,28 +123,43 @@ public sealed record DedupSettings
 
     const string Prefix = "dedup.";
 
+    /// <summary>
+    /// Key suffix for the two settings whose <em>unit</em> changed when the signature went from 272
+    /// to 544 bits.
+    /// </summary>
+    /// <remarks>
+    /// A stored <c>20</c> written against a 272-bit signature means "7.35% of the signature"; read
+    /// back against a 544-bit one it silently means 3.7%, i.e. twice as strict as the user chose,
+    /// with nothing on screen saying so. Bumping <see cref="PerceptualHash.PhashRecipeVersion"/>
+    /// does not help — it clears <c>images.phash</c>, not the <c>meta</c> table. Renaming the keys
+    /// makes the old values unreadable, so an upgraded catalogue falls back to the new defaults and
+    /// the user's other choices (which detectors are on, the burst window) survive untouched. Only
+    /// the numbers whose units moved are reset.
+    /// </remarks>
+    const string BitsUnitSuffix = ".b544";
+
     public static DedupSettings Load(Database db)
     {
         var fallback = new DedupSettings();
         return new DedupSettings
         {
             VariantEnabled = Bool(db, "variant.enabled", fallback.VariantEnabled),
-            VariantMaxBits = Int(db, "variant.maxbits", fallback.VariantMaxBits, 0, PerceptualHash.Bits),
+            VariantMaxBits = Int(db, "variant.maxbits" + BitsUnitSuffix, fallback.VariantMaxBits, 0, PerceptualHash.Bits),
             VariantRotations = Bool(db, "variant.rotations", fallback.VariantRotations),
             BurstEnabled = Bool(db, "burst.enabled", fallback.BurstEnabled),
             BurstWindowSeconds = Int(db, "burst.windowsec", fallback.BurstWindowSeconds, 0, 3600),
-            BurstMaxBits = Int(db, "burst.maxbits", fallback.BurstMaxBits, 0, PerceptualHash.Bits),
+            BurstMaxBits = Int(db, "burst.maxbits" + BitsUnitSuffix, fallback.BurstMaxBits, 0, PerceptualHash.Bits),
         };
     }
 
     public void Save(Database db)
     {
         db.SetMeta(Prefix + "variant.enabled", VariantEnabled ? "1" : "0");
-        db.SetMeta(Prefix + "variant.maxbits", VariantMaxBits.ToString());
+        db.SetMeta(Prefix + "variant.maxbits" + BitsUnitSuffix, VariantMaxBits.ToString());
         db.SetMeta(Prefix + "variant.rotations", VariantRotations ? "1" : "0");
         db.SetMeta(Prefix + "burst.enabled", BurstEnabled ? "1" : "0");
         db.SetMeta(Prefix + "burst.windowsec", BurstWindowSeconds.ToString());
-        db.SetMeta(Prefix + "burst.maxbits", BurstMaxBits.ToString());
+        db.SetMeta(Prefix + "burst.maxbits" + BitsUnitSuffix, BurstMaxBits.ToString());
     }
 
     // A malformed or out-of-range stored value falls back to the default rather than throwing.

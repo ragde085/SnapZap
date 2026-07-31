@@ -79,7 +79,7 @@
   <data name="DupeTuningHeading" xml:space="preserve"><value>Ajustarlo</value></data>
   <data name="DupeTuningIntro" xml:space="preserve"><value>En &lt;b&gt;Configuración → Duplicados&lt;/b&gt;:</value></data>
   <data name="DupeTuningIdentical" xml:space="preserve"><value>&lt;b&gt;Archivos idénticos&lt;/b&gt; — siempre activado. Un buscador de duplicados que no encuentra archivos idénticos no es uno.</value></data>
-  <data name="DupeTuningSameShot" xml:space="preserve"><value>&lt;b&gt;La misma toma en otro tamaño&lt;/b&gt; — activado por defecto, con un control deslizante de estrictez (20 de 272 por defecto) y una opción para igualar copias rotadas.</value></data>
+  <data name="DupeTuningSameShot" xml:space="preserve"><value>&lt;b&gt;La misma toma en otro tamaño&lt;/b&gt; — activado por defecto, con un control deslizante de estrictez (40 de 544 por defecto) y una opción para igualar copias rotadas.</value></data>
   <data name="DupeTuningBursts" xml:space="preserve"><value>&lt;b&gt;Ráfagas&lt;/b&gt; — activado por defecto, con una ventana ajustable (3 segundos por defecto). Desactivarlo no deja las ráfagas en paz: los cuadros se detectan como “la misma toma”, que &lt;i&gt;sí&lt;/i&gt; entra en la selección masiva.</value></data>
   <data name="DupeTuningHint" xml:space="preserve"><value>Los cambios se guardan de inmediato. Presiona &lt;b&gt;Buscar de nuevo&lt;/b&gt; en el paso Duplicados (pestaña Plan) para aplicarlos.</value></data>
 

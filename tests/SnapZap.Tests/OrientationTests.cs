@@ -167,8 +167,8 @@ public class OrientationTests : IDisposable
         return data.ToArray();
     }
 
-    const int Threshold = 20; // the shipped DedupSettings default, out of 272 — same tolerance
-                               // PerceptualHashTests uses for a lossy re-encode.
+    // 40 of 544 — the same tolerance PerceptualHashTests uses for a lossy re-encode.
+    static readonly int Threshold = new DedupSettings().VariantMaxBits;
 
     public static IEnumerable<object[]> AllOrigins()
     {

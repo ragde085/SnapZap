@@ -171,11 +171,23 @@ the tag and a schema column to store it.
 
 ## 4. The hash
 
-**Grid: 17 × 17, gradient (dHash), 272 bits.**
+**Grid: 17 × 17, gradient (dHash), 544 bits — both axes.**
 
 Square because rotation has to be well-defined; a 9×8 grid cannot be rotated 90° into itself.
-17 wide gives 16 horizontal comparisons per row, 17 rows → 17 × 16 = **272 bits**, five `ulong`
-words with 48 bits unused in the last.
+17 wide gives 16 horizontal comparisons per row over 17 rows (272 bits) and 16 vertical
+comparisons per column over 17 columns (272 bits) → **544 bits**, nine `ulong` words with 32 bits
+unused in the last.
+
+> ⚠ **The vertical half was not in the original design, and its absence was a shipped defect.**
+> Encoding only horizontal comparisons meant a photo's entire signature was its left-to-right
+> luminance profile. Any frame that brightens toward the middle and darkens after produces the
+> same 272 bits — eight set per row, on all seventeen rows — whatever the subject actually is.
+> Measured on a real 2,218-photo library: four grey "Black Matter" desktop wallpapers (a centre
+> glow over a dark base) and two sunset photographs (a bright sun over a dark foreground) formed
+> **one six-member `Variant` group with every pairwise distance between 0 and 16 bits**, against a
+> threshold of 20. No threshold separates them; the information simply was not in the signature.
+> With the vertical half those same pairs sit at 41–87 bits while genuine resizes, re-encodes and
+> rotations keep a p99 of 41 out of 544. **Do not drop it to halve the storage.**
 
 Aspect ratio is deliberately destroyed by the downsample — every hash of this family does this,
 and it is what makes the hash resolution-invariant. A 4000 × 3000 original and its 800 × 600
@@ -186,14 +198,39 @@ export land on the same grid and produce the same bits.
 The tempting shortcut is to hash all four rotations and store the numerically smallest, so
 rotated copies collide. It is broken. Canonical-form-plus-fuzzy-match fails because image noise
 can flip which rotation wins the minimum: two near-identical photos canonicalise to *different*
-orbit members and then never match at all. So all four are stored (4 × 5 words = 160 bytes/image,
-8 MB at 50k) and matching takes the minimum distance over `A`'s four rotations against `B`'s
-first. Detecting "A is B rotated by r" only needs one side rotated.
+orbit members and then never match at all. So all four are stored (4 × 9 words = 288 bytes/image,
+14 MB at 50k).
 
-**Thresholds are expressed in bits out of 272 and are not portable.** The old
-`--max-difference 10` was 10 bits out of czkawka's 256 at `--hash-size 16`. Any intuition
-calibrated on that number has to be re-derived here against the fixture in §10. Defaults start
-strict, because this feeds a tool that deletes things.
+**Matching is the minimum over both argument orders.** The original design said "detecting 'A is
+B rotated by r' only needs one side rotated", and took the minimum over `A`'s four rotations
+against `B`'s first. That is true for an *exact* rotation, where the two signatures' orbits
+coincide — and false for approximate matching, which is the entire job. Rotations are produced by
+turning the cell grid and re-encoding, so a rotated signature is not a bit-permutation of the
+unrotated one: `min_r popcount(H_r(A) ^ H_0(B))` need not equal `min_r popcount(H_r(B) ^ H_0(A))`.
+Measured: **55,269 of 79,800 sampled library pairs disagreed**, one of them by 247 bits (259 one
+way, 12 the other). Because `SimilarityGrouper` tests candidates in whichever order grouping
+reaches them, that reduced complete linkage to a one-directional check and produced a
+seven-member `Variant` group holding pairs 259 bits apart under a 20-bit threshold — see §6.
+`PerceptualHash.DistanceTo` now evaluates both directions and returns the smaller, so no caller
+has to know which argument order is safe.
+
+**A flat frame is degenerate and matches nothing.** Ties encode as 0, so a frame of one colour
+hashes to all zeros in every rotation — solid black and solid white are byte-identical and 0 bits
+apart. `PerceptualHash.IsDegenerate` reports that and `DistanceTo` returns `int.MaxValue`, the
+same treatment an absent signature gets. A *general* low-contrast gate was measured and rejected:
+across 179,675 genuinely-unrelated real pairs, a minimum-contrast floor anywhere from 2 to 8 grey
+levels changed the number of pairs falling under every tested threshold by exactly zero, while
+discarding up to 8% of the library from matching. A featureless-but-not-flat photo's bits are
+decided by noise, and noise does not collide.
+
+**Thresholds are expressed in bits out of 544 and are not portable.** The old
+`--max-difference 10` was 10 bits out of czkawka's 256 at `--hash-size 16`. Neither are they
+comparable to the pre-544 values out of 272: the shipped defaults were rescaled by exactly the
+same proportion (20/272 → 40/544, 60/272 → 120/544) so strictness is unchanged in the only terms
+that mean anything, and the `meta` keys carry a `.b544` suffix so an upgraded catalogue cannot
+silently read an old 20 as twice as strict. Any intuition calibrated on any of those numbers has
+to be re-derived against the fixture in §10. Defaults start strict, because this feeds a tool that
+deletes things.
 
 **Computed from the scan's existing decode.** `BlurDetector` already asks
 `SkiaImageService.DecodeGray(path, 512)` for an aspect-preserving greyscale buffer. The 17 × 17
@@ -218,35 +255,44 @@ who wants them should opt in.
 
 Superseded from the original design: matching was brute force "deliberately", with the note
 above defending it as "one XOR and one PopCount" per unrelated pair and setting the revisit point
-at ~150k photos. Both understated the cost. Measured: with rotations enabled the five-word
-`DistanceTo` loop runs once per rotation and `best` rarely reaches 0 to trigger the early break —
-**~8×** worse than the "one XOR and one PopCount" framing implied, not the ~4x a naive rotation
-count would suggest.
+at ~150k photos. Both understated the cost. Measured: with rotations enabled the `DistanceTo` loop
+runs once per rotation — and, since the symmetry fix in §4, once per rotation *per direction* —
+with `best` rarely reaching 0 to trigger the early break. Far worse than the "one XOR and one
+PopCount" framing implied.
 
-`VariantFinder.BandPrefilterPairs` splits each 272-bit signature into `B = VariantMaxBits + 1`
+`VariantFinder.BandPrefilterPairs` splits each 544-bit signature into `B = VariantMaxBits + 1`
 contiguous bands and indexes rotation 0 of every signature by `(band index, band value)`. This is
 **exact, not approximate**: two hashes differing in at most `VariantMaxBits` bits cannot differ in
 all `B` bands, so by pigeonhole at least one band must be bit-for-bit identical between them.
 Probing with all four rotations of each image therefore cannot miss a true match — band collisions
 only ever add candidates that the unchanged, exact `DistanceTo` check filters back out.
 
-**This guarantee depends on actually building `B` non-empty bands, which the first cut of this
-code did not.** It allocated `bandWidth = ceil(272 / B)` for every band; whenever that didn't
-divide 272 evenly, the trailing bands ran past bit 272 and were silently dropped — at
-`VariantMaxBits=32` (`B=33`), `ceil(272/33)=9` gives only 31 real bands, not 33, breaking pigeonhole
-for a 32-bit difference spread one-or-two per band across all 31. That's a silent false negative —
-no error, no truncation flag — across roughly 40% of the slider's range (caught in tech-lead
-review, not by the original test suite, whose planted distances happened not to hit the failure
-mode). `VariantFinder.BandLayout` fixes this: `baseWidth = 272 / B` (floor) with the first
-`272 % B` bands getting one extra bit, which always yields exactly `B` non-empty bands regardless
+**The index holds only rotation 0, so candidates must be gathered in both directions.** With the
+distance now symmetric (§4), the pair `(i, j)` is within threshold if *either* some rotation of `i`
+matches `j` or some rotation of `j` matches `i` — different questions, and only the first is
+answered by `i`'s own probe. The original gather kept candidates `j > idx` only, which silently
+dropped every pair matching the other way round. Candidates are now gathered for all `j != idx` and
+the emitted pair de-duplicated on `(lower, higher)`.
+
+**The guarantee also depends on actually building `B` non-empty bands, which the first cut of this
+code did not.** It allocated `bandWidth = ceil(Bits / B)` for every band; whenever that didn't
+divide evenly, the trailing bands ran past the end of the signature and were silently dropped — at
+`VariantMaxBits=32` (`B=33`), `ceil(544/33)=17` gives only 32 real bands, not 33, breaking
+pigeonhole for a 32-bit difference spread one per band across all 32. That's a silent false
+negative — no error, no truncation flag — across roughly 40% of the slider's range (caught in
+tech-lead review, not by the original test suite, whose planted distances happened not to hit the
+failure mode). `VariantFinder.BandLayout` fixes this: `baseWidth = Bits / B` (floor) with the first
+`Bits % B` bands getting one extra bit, which always yields exactly `B` non-empty bands regardless
 of divisibility. See its doc-comment and the regression test in `BandPrefilterTests.cs`.
 
 Measured (M1, uniformly random hashes — real libraries cluster and will skew differently; see
 `docs/PERFORMANCE.md`'s caveats): **6.5× / 12× / 20×** at 20k / 50k / 100k photos, identical pair
-sets confirmed against brute force in every run. At high thresholds (`VariantMaxBits` up to 60)
-band width collapses far enough that the prefilter degenerates to brute force plus indexing
-overhead, so it falls back below `VariantFinder.BandWidthFloor`; the brute-force sweep is kept as
-a callable path for exactly that case, and as the reference `BandPrefilterTests` compares against.
+sets confirmed against brute force in every run. ⚠ Those figures predate the 272 → 544 signature
+and the both-directions gather and have **not** been re-measured. At high thresholds
+(`VariantMaxBits` above ~90) band width collapses far enough that the prefilter degenerates to
+brute force plus indexing overhead, so it falls back below `VariantFinder.BandWidthFloor`; the
+brute-force sweep is kept as a callable path for exactly that case, and as the reference
+`BandPrefilterTests` compares against — which is why it must compute the same symmetric distance.
 The revisit-past-150k framing above no longer applies — there is no separate index to build past a
 threshold, only a fallback to the same brute-force sweep this replaces.
 
@@ -259,6 +305,16 @@ The core algorithm, and the one place a bug destroys photos.
 A group is a **clique**: every member is within threshold of every other member. This is
 complete-linkage clustering, and it makes chaining structurally impossible rather than merely
 unlikely.
+
+> ⚠ **The clique guarantee is only as good as the symmetry of the `within` predicate.** Nothing
+> below controls which way round a pair is tested — admission asks `within(member, candidate)` and
+> a merge asks `within(left, right)`, both decided by the order grouping happened to reach them.
+> While `PerceptualHash.DistanceTo` was one-sided (§4), that made every check one-directional, and
+> a real library produced a **seven-member `Variant` group holding pairs 259 bits apart under a
+> 20-bit threshold** — `oracle1.jpg`, a `samurai.jpg` wallpaper and five unrelated Photo Stream
+> shots, one of which was nominated as the keeper for the rest. This is the "one place a bug
+> destroys photos", and it was reached through the distance function rather than through the
+> algorithm below.
 
 ```
 pairs = all (a, b, distance) with distance <= threshold
@@ -302,12 +358,12 @@ Both must reset together when `catalog.db` is deleted, which is exactly the argu
 schema comment already makes for `scan_root`.
 
 ```
-dedup.variant.enabled    bool   true
-dedup.variant.maxbits    int    20      // of 272
-dedup.variant.rotations  bool   true
-dedup.burst.enabled      bool   false   // bursts are not duplicates — opt in
-dedup.burst.windowsec    int    3
-dedup.burst.maxbits      int    60      // of 272; deliberately loose
+dedup.variant.enabled         bool   true
+dedup.variant.maxbits.b544    int    40      // of 544
+dedup.variant.rotations       bool   true
+dedup.burst.enabled           bool   false   // bursts are not duplicates — opt in
+dedup.burst.windowsec         int    3
+dedup.burst.maxbits.b544      int    120     // of 544; deliberately loose
 ```
 
 Exact detection has no toggle. It is free, it is exact, and a duplicate-finder that cannot find
@@ -319,7 +375,7 @@ identical files is not one.
 
 ```sql
 -- new columns on images
-phash              BLOB,     -- 160 bytes: 4 rotations x 5 ulong words. Null = not hashed yet.
+phash              BLOB,     -- 288 bytes: 4 rotations x 9 ulong words. Null = not hashed yet.
 dupe_checked_at    INTEGER,  -- (shipped earlier) unix utc of the last completed run
 dupe_checked_kinds INTEGER   -- bitmask of DupeKind values that run actually covered
 ```
@@ -377,7 +433,7 @@ complete-linkage grouper with a union-find because it looked simpler.
 
 1. `DedupSettings` over `meta`
 2. `DupeKind` split + schema + migration
-3. `PerceptualHash` (272-bit, 4 rotations, distance)
+3. `PerceptualHash` (544-bit, 4 rotations, symmetric distance)
 4. Scanner integration — hash off the existing decode
 5. `SimilarityGrouper` + its tests ← *the risky part, lands with tests around it*
 6. `VariantFinder`, `BurstFinder`

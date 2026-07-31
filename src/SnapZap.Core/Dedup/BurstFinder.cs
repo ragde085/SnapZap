@@ -31,7 +31,7 @@ public sealed class BurstFinder(Database db)
         repo.ClearKind(DupeKind.Burst, root);
 
         var usable = images
-            .Where(i => !i.Hash.IsEmpty && i.TakenUtc is not null)
+            .Where(i => !i.Hash.IsUnusable && i.TakenUtc is not null)
             .OrderBy(i => i.Camera ?? "", StringComparer.Ordinal)
             .ThenBy(i => i.TakenUtc!.Value)
             .ThenBy(i => i.Id)

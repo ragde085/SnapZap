@@ -29,6 +29,15 @@ public sealed record GroupingResult(IReadOnlyList<IReadOnlyList<long>> Groups, b
 /// if it is within threshold of <em>every</em> member already there. Chaining becomes structurally
 /// impossible rather than merely unlikely.</para>
 ///
+/// <para><b>The <c>within</c> predicate must be symmetric, and this is not a formality.</b> Nothing
+/// here controls which way round a pair is tested — <see cref="Admit"/> asks
+/// <c>within(member, candidate)</c> and <see cref="Merge"/> asks <c>within(left, right)</c>, both
+/// determined by the order grouping happened to reach them. When
+/// <see cref="PerceptualHash.DistanceTo"/> was one-sided, that made the clique guarantee a
+/// one-directional check, and a real library produced a seven-member Variant group holding pairs
+/// 259 bits apart under a 20-bit threshold. The predicate is symmetric now; a future caller that
+/// passes an asymmetric one reopens exactly that hole.</para>
+///
 /// <para><b>Why closest-first.</b> Pairs are processed in ascending distance, so the tightest
 /// matches claim each other before looser ones get a say, and the groups come out the shape a
 /// human would draw. The tiebreak on ids is not cosmetic either: the same catalogue has to produce

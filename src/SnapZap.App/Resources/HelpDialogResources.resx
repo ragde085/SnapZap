@@ -79,7 +79,7 @@
   <data name="DupeTuningHeading" xml:space="preserve"><value>Tuning it</value></data>
   <data name="DupeTuningIntro" xml:space="preserve"><value>In &lt;b&gt;Setup → Duplicates&lt;/b&gt;:</value></data>
   <data name="DupeTuningIdentical" xml:space="preserve"><value>&lt;b&gt;Identical files&lt;/b&gt; — always on. A duplicate finder that cannot find identical files is not one.</value></data>
-  <data name="DupeTuningSameShot" xml:space="preserve"><value>&lt;b&gt;The same shot at another size&lt;/b&gt; — on by default, with a strictness slider (default 20 of 272) and an option to match rotated copies.</value></data>
+  <data name="DupeTuningSameShot" xml:space="preserve"><value>&lt;b&gt;The same shot at another size&lt;/b&gt; — on by default, with a strictness slider (default 40 of 544) and an option to match rotated copies.</value></data>
   <data name="DupeTuningBursts" xml:space="preserve"><value>&lt;b&gt;Bursts&lt;/b&gt; — on by default, with a tunable window (default 3 seconds). Turning it off does not leave bursts alone: the frames are picked up as “same shot” instead, which &lt;i&gt;is&lt;/i&gt; bulk-selectable.</value></data>
   <data name="DupeTuningHint" xml:space="preserve"><value>Changes save immediately. Press &lt;b&gt;Find again&lt;/b&gt; under the Duplicates step (Plan tab) to apply them.</value></data>
 

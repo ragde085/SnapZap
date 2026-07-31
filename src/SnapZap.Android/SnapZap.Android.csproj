@@ -45,8 +45,8 @@
       as code 3 after the UX-review work; reverting it to 2 would leave two different APKs claiming
       the same code and make the newer one uninstallable over the older.
     -->
-    <ApplicationVersion>3</ApplicationVersion>
-    <ApplicationDisplayVersion>1.3.0</ApplicationDisplayVersion>
+    <ApplicationVersion>4</ApplicationVersion>
+    <ApplicationDisplayVersion>1.3.1</ApplicationDisplayVersion>
   </PropertyGroup>
 
   <!--

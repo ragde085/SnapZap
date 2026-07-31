@@ -195,13 +195,14 @@ public sealed class SettingsActivity : Activity
                 _dedup.VariantRotations,
                 on => Set(_dedup with { VariantRotations = on })));
 
-            // 4..60 in twos, exactly the desktop's range. Above 60 the band prefilter's width
+            // 8..120 in fours, exactly the desktop's range — the same proportion of the signature
+            // 4..60 covered when it was 272 bits wide. Around 90 the band prefilter's width
             // collapses and matching falls back to the brute-force sweep (docs/DEDUP-V2.md), which
-            // is a reason not to offer it rather than a reason to warn about it.
+            // is a reason not to offer more rather than a reason to warn about it.
             _body.AddView(Design.SliderRow(this, "How different they may look",
                 "Lower is stricter. Raising it finds more, and eventually starts calling two "
                 + "different photos the same one.",
-                _dedup.VariantMaxBits, 4, 60, 2,
+                _dedup.VariantMaxBits, 8, 120, 4,
                 v => $"{v} of {PerceptualHash.Bits}",
                 v => Set(_dedup with { VariantMaxBits = v })));
 

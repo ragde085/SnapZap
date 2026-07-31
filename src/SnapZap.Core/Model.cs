@@ -54,7 +54,7 @@ public sealed record ImageRecord
     public DupeKinds DupeCheckedKinds { get; init; }
 
     /// <summary>
-    /// The 272-bit perceptual signature across all four rotations, or <c>default</c> when this row
+    /// The 544-bit perceptual signature across all four rotations, or <c>default</c> when this row
     /// has never been hashed. See <c>PerceptualHash</c>.
     /// </summary>
     public byte[]? Phash { get; init; }
