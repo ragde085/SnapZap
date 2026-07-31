@@ -149,7 +149,7 @@ else
 
     string StatusTitle(FolderNode n)
     {
-        var pending = n.PendingSteps().ToList();
+        var pending = n.PendingSteps().Select(p => L[p.Key, p.Count].Value).ToList();
         return pending.Count == 0
             ? L["StatusTitleComplete", n.TotalCount].ToString()
             : L["StatusTitlePending", n.TotalCount, string.Join(", ", pending)].ToString();

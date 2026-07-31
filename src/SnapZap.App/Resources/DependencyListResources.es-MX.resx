@@ -18,4 +18,7 @@
   <data name="SaveAsInstruction" xml:space="preserve"><value>y guárdalo como</value></data>
   <data name="PutBothFilesIn" xml:space="preserve"><value>Coloca ambos archivos en</value></data>
   <data name="PutItIn" xml:space="preserve"><value>Colócalo en</value></data>
+  <data name="DepNsfwName" xml:space="preserve"><value>Calificación de contenido explícito</value></data>
+  <data name="DepNsfwUnlocks" xml:space="preserve"><value>Califica cada foto para que puedas filtrar imágenes explícitas.</value></data>
+  <data name="DepNsfwWithoutIt" xml:space="preserve"><value>Los demás filtros — duplicados, nitidez, fecha, carpeta — no se ven afectados.</value></data>
 </root>

@@ -563,23 +563,20 @@ public sealed class AppState(
             .Where(g => g.Members.Count >= 2)
             .ToList();
 
-        var dupeOf = new Dictionary<long, DupeInfo>();
-        foreach (var g in groups)
-        {
-            // If every keeper in the group was recycled, every survivor still reads
-            // IsKeeper=false — so they all counted as reclaimable extras, and "select all
-            // extras" would arm a delete against every remaining copy of the photo. A group
-            // always keeps at least one. More than one member may be flagged is_keeper (a burst
-            // can have two frames worth keeping — see ToggleKeeper), so this is a set, not a
-            // single id.
-            var members = g.Members;
-            var keeperIds = members.Where(m => m.IsKeeper).Select(m => m.ImageId).ToHashSet();
-            if (keeperIds.Count == 0)
-                keeperIds.Add(members.OrderBy(m => m.ImageId).First().ImageId);
-
-            foreach (var m in members)
-                dupeOf[m.ImageId] = new DupeInfo(g.Id, g.Kind, keeperIds.Contains(m.ImageId));
-        }
+        // Resolved in Core, with GroupReconciler's precedence, rather than by assigning in
+        // enumeration order here. A photo can legitimately belong to several groups at once — a
+        // Variant group that is a strict superset of a Burst group survives reconciliation — and
+        // this loop used to let the last group mentioned win. When that was the Variant group, a
+        // burst frame reported Variant, passed IsBulkSelectable(), and became eligible for bulk
+        // deletion. See DupeAssignmentResolver for the measurement and the full argument.
+        //
+        // It also keeps the "a group always keeps at least one keeper" rule (without which every
+        // survivor of a fully-recycled group reads IsKeeper=false, and "select all extras" would
+        // arm a delete against every remaining copy) in one place shared by both heads.
+        var dupeOf = DupeAssignmentResolver
+            .Resolve(groups, new ImageRepository(catalog.Db).BurstAdjacentIds())
+            .ToDictionary(kv => kv.Key,
+                          kv => new DupeInfo(kv.Value.GroupId, kv.Value.Kind, kv.Value.IsKeeper, kv.Value.BurstAdjacent));
 
         var images = records
             .Select(r => new ImageView(r, dupeOf.GetValueOrDefault(r.Id), ThumbGenerationOf(r)))
@@ -596,7 +593,7 @@ public sealed class AppState(
         // Counting burst frames here would advertise space that "Select duplicate extras" is
         // deliberately never going to free, and send the user hunting for the missing gigabytes.
         var extras = images
-            .Where(i => dupeOf.TryGetValue(i.Id, out var d) && !d.IsKeeper && d.Kind.IsBulkSelectable())
+            .Where(i => dupeOf.TryGetValue(i.Id, out var d) && d.IsBulkSelectableExtra)
             .ToList();
 
         // Built against the detectors that are on right now, not against whatever was on when the
@@ -704,7 +701,7 @@ public sealed class AppState(
     /// </summary>
     bool MatchesDupeFilter(ImageView img) => _dupeFilter switch
     {
-        DupeFilter.ExtrasOnly => img.Dupe is { IsKeeper: false } d && d.Kind.IsBulkSelectable(),
+        DupeFilter.ExtrasOnly => img.Dupe is { } d && d.IsBulkSelectableExtra,
         DupeFilter.KeepersOnly => img.Dupe is { IsKeeper: true },
         DupeFilter.BurstOnly => img.Dupe is { } b && b.Kind == DupeKind.Burst,
         _ => true,
@@ -832,7 +829,7 @@ public sealed class AppState(
         SelectionScope.AllShown => true,
         SelectionScope.LikelyExplicit => BandOf(img) == NsfwBand.Likely,
         SelectionScope.NotSure => BandOf(img) == NsfwBand.Unsure,
-        SelectionScope.DuplicateExtras => img.Dupe is { IsKeeper: false } d && d.Kind.IsBulkSelectable(),
+        SelectionScope.DuplicateExtras => img.Dupe is { } d && d.IsBulkSelectableExtra,
         SelectionScope.DuplicateKeepers => img.Dupe is { IsKeeper: true },
         _ => false,
     };
@@ -1380,7 +1377,8 @@ public sealed class AppState(
 
     /// <summary>Preview items for one batch (History dialog's thumbnail strip). See
     /// <see cref="DeleteService.ItemsInBatch"/> for the row cap.</summary>
-    public IReadOnlyList<UndoItem> ItemsInBatch(string batchId) => new DeleteService(catalog.Db, trash).ItemsInBatch(batchId);
+    public IReadOnlyList<UndoItem> ItemsInBatch(string batchId, int limit = 8) =>
+        new DeleteService(catalog.Db, trash).ItemsInBatch(batchId, limit);
 
     /// <summary>Restore a batch, then reconcile the catalog so restored files reappear.</summary>
     public async Task<RestoreResult> RestoreAndReloadAsync(string batchId)
@@ -1415,6 +1413,30 @@ public sealed class AppState(
         }
         await LoadAsync();
         return restored;
+    }
+
+    /// <summary>
+    /// Permanently removes one history entry and the trashed file behind it.
+    /// </summary>
+    /// <remarks>
+    /// ⚠ Irreversible — callers must confirm first. See <c>DeleteService.ForgetItem</c> for why
+    /// the record and the file go together rather than the record alone: <c>undo_log.new_location</c>
+    /// is the only pointer SnapZap keeps to a trashed file, so dropping the row by itself would
+    /// strand it in the recycle bin, unrestorable and invisible to the app.
+    /// </remarks>
+    public async Task<bool> ForgetItemAndReloadAsync(long undoLogId)
+    {
+        var ok = await Task.Run(() => new DeleteService(catalog.Db, trash).ForgetItem(undoLogId));
+        if (ok) await LoadAsync();
+        return ok;
+    }
+
+    /// <summary><see cref="ForgetItemAndReloadAsync"/> for a whole batch. Also irreversible.</summary>
+    public async Task<int> ForgetBatchAndReloadAsync(string batchId)
+    {
+        var n = await Task.Run(() => new DeleteService(catalog.Db, trash).ForgetBatch(batchId));
+        if (n > 0) await LoadAsync();
+        return n;
     }
 }
 

@@ -29,10 +29,13 @@
   <data name="ReviewHintMoveGroups" xml:space="preserve"><value>moverte entre grupos</value></data>
   <data name="ReviewHintToggleKeeper" xml:space="preserve"><value>alternar cuál se conserva (pueden sobrevivir varias)</value></data>
   <data name="ReviewHintClose" xml:space="preserve"><value>cerrar.</value></data>
-  <data name="ReviewHintSafetyNote" xml:space="preserve"><value>Aquí no se elimina nada — esto solo decide qué copias sobreviven a una exportación.</value></data>
+  <data name="ReviewHintSafetyNote" xml:space="preserve"><value>Aquí no se elimina nada — esto solo decide qué copias sobreviven a un movimiento o a un borrado.</value></data>
   <data name="DistinguisherDifferentResolutions" xml:space="preserve"><value>resoluciones distintas</value></data>
   <data name="DistinguisherDifferentFileSizes" xml:space="preserve"><value>tamaños de archivo distintos</value></data>
   <data name="DistinguisherChooseByLocation" xml:space="preserve"><value>copias idénticas — elige según la ubicación</value></data>
   <data name="DistinguisherChooseByName" xml:space="preserve"><value>copias idénticas — elige según el nombre</value></data>
   <data name="DistinguisherIdenticalCopies" xml:space="preserve"><value>copias idénticas</value></data>
+  <data name="DeleteThisButton" xml:space="preserve"><value>Eliminar esta</value></data>
+  <data name="DeleteThisTitle" xml:space="preserve"><value>Mueve esta foto a la papelera. Sigue siendo restaurable desde el Historial.</value></data>
+  <data name="CannotDeleteKeeperHint" xml:space="preserve"><value>Esta es la copia que el grupo conserva — marca otra primero.</value></data>
 </root>

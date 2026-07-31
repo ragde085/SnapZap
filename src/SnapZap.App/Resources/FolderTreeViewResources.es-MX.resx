@@ -22,4 +22,9 @@
   <data name="RescanFolderLabel" xml:space="preserve"><value>Volver a escanear {0}</value></data>
   <data name="IncludeSubfoldersLabel" xml:space="preserve"><value>Incluir subcarpetas</value></data>
   <data name="SubfoldersOffNote" xml:space="preserve"><value>Solo los archivos directamente en esta carpeta — nada en sus subcarpetas.</value></data>
+  <data name="PendingNotAnalysed" xml:space="preserve"><value>{0} sin analizar</value></data>
+  <data name="PendingNotDeduped" xml:space="preserve"><value>{0} sin revisar duplicados</value></data>
+  <data name="PendingNotScored" xml:space="preserve"><value>{0} sin calificar contenido explícito</value></data>
+  <data name="PendingNoBlur" xml:space="preserve"><value>{0} sin puntaje de nitidez</value></data>
+  <data name="PendingNoDate" xml:space="preserve"><value>{0} sin fecha EXIF</value></data>
 </root>

@@ -79,16 +79,23 @@ public sealed class Scanner(Database db, SkiaImageService imaging, string thumbD
     const long ReportIntervalMs = 100;
     long _lastReportTicks;
 
+    /// <param name="settings">
+    /// Scan options. Defaults to whatever the catalogue has stored, so both heads pick up a change
+    /// without threading it through their own call sites; passed explicitly only by tests, which
+    /// need to reach both branches without writing to <c>meta</c> first.
+    /// </param>
     public async Task<ScanResult> ScanAsync(
         string root,
         IProgress<ScanProgress>? progress = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        ScanSettings? settings = null)
     {
         var start = Environment.TickCount64;
+        var opts = settings ?? ScanSettings.Load(db);
         // Off the calling thread (the Blazor circuit's sync context) and cancellable per file:
         // the walk over a large/wrong folder used to block Stop from even being dispatched,
         // let alone honored, until the whole tree had been enumerated.
-        var (files, unsupported) = await Task.Run(() => Enumerate(root, ct), ct);
+        var (files, unsupported) = await Task.Run(() => Enumerate(root, ct, opts.SkipHidden), ct);
         _lastReportTicks = 0;
 
         int seen = 0, analyzed = 0, cached = 0, failed = 0, undecodable = 0;
@@ -291,13 +298,17 @@ public sealed class Scanner(Database db, SkiaImageService imaging, string thumbD
     /// One walk, two buckets: files we can analyse, and a tally of recognised-but-undecodable
     /// formats by extension so the caller can say what was left behind.
     /// </summary>
-    static (List<FileInfo> Supported, Dictionary<string, int> Unsupported) Enumerate(string root, CancellationToken ct)
+    static (List<FileInfo> Supported, Dictionary<string, int> Unsupported) Enumerate(
+        string root, CancellationToken ct, bool skipHidden)
     {
         var opts = new EnumerationOptions
         {
             RecurseSubdirectories = true,
             IgnoreInaccessible = true,
-            AttributesToSkip = FileAttributes.System | FileAttributes.ReparsePoint,
+            // Hidden is added conditionally; it is deliberately absent from the base set, since the
+            // .NET default (Hidden | System) is what this overrides.
+            AttributesToSkip = FileAttributes.System | FileAttributes.ReparsePoint
+                               | (skipHidden ? FileAttributes.Hidden : 0),
         };
 
         var supported = new List<FileInfo>();
@@ -308,6 +319,14 @@ public sealed class Scanner(Database db, SkiaImageService imaging, string thumbD
         foreach (var file in new DirectoryInfo(root).EnumerateFiles("*", opts))
         {
             ct.ThrowIfCancellationRequested();
+
+            // The attribute alone is not enough, and the gap is platform-shaped. On Unix — macOS,
+            // Linux, Android — .NET synthesises Hidden from a leading dot, so AttributesToSkip
+            // already prunes `.thumbnails` and never recurses into it. On Windows it does not: a
+            // folder literally named ".git" carries no Hidden attribute, so the walk would descend
+            // into it. This second pass closes that, and costs one span scan per file.
+            if (skipHidden && HasHiddenSegmentBelowRoot(file.FullName, root)) continue;
+
             var ext = file.Extension;
             if (Extensions.Contains(ext))
                 supported.Add(file);
@@ -316,5 +335,32 @@ public sealed class Scanner(Database db, SkiaImageService imaging, string thumbD
                     unsupported.GetValueOrDefault(ext.TrimStart('.').ToUpperInvariant()) + 1;
         }
         return (supported, unsupported);
+    }
+
+    /// <summary>
+    /// Whether any path segment strictly below <paramref name="root"/> starts with a dot.
+    /// </summary>
+    /// <remarks>
+    /// <b>Below the root, never the root itself.</b> Scanning a folder the user explicitly chose has
+    /// to work even when that folder is hidden — otherwise picking <c>~/.photos</c> in the browser
+    /// yields a scan that silently finds nothing. So the comparison starts after the root prefix.
+    ///
+    /// Allocation-free on purpose: this runs once per file in the walk, and a 40k-photo library
+    /// makes 40k of them.
+    /// </remarks>
+    static bool HasHiddenSegmentBelowRoot(string fullPath, string root)
+    {
+        var rooted = root.AsSpan().TrimEnd(Path.DirectorySeparatorChar);
+        if (fullPath.Length <= rooted.Length) return false;
+
+        var rel = fullPath.AsSpan(rooted.Length);
+        // rel now begins with a separator, so every segment start is separator-prefixed and the
+        // file's own leading dot is caught by the same test.
+        for (int i = 0; i < rel.Length - 1; i++)
+            if ((rel[i] == Path.DirectorySeparatorChar || rel[i] == Path.AltDirectorySeparatorChar)
+                && rel[i + 1] == '.')
+                return true;
+
+        return false;
     }
 }

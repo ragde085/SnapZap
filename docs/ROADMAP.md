@@ -129,7 +129,7 @@ from geometry measured in `interop.js`.
    skew toward whatever mix of cache hits/misses came first in the run, so the estimator only
    keeps samples from the last 4s and recomputes the rate from that window on every report,
    which self-corrects as the actual hit/miss mix changes mid-run instead of needing to model it
-   explicitly. Shown in `Toolbar`'s progress line as "128 / 500 · ~40s left". Covered by
+   explicitly. Shown in the rail's progress line as "128 / 500 · ~40s left". Covered by
    `EtaEstimatorTests` (pure, ticks fed explicitly — no real waiting).
 
 ~~9. **Allow more than one keeper per duplicate group**~~ — ✅ **done 2026-07-26.**
@@ -151,7 +151,208 @@ from geometry measured in `interop.js`.
    `NsfwScorer.ScoreAllAsync` gained an `imageIds` scope (reusing the chunked
    `ImageRepository.ByIds` lookup, same convention as delete/export); `AppState.NsfwAsync`
    picks selection first, else the folder focused in the tree, else the whole `ScanRoot`.
-   Toolbar tooltip reflects the active scope. Covered by `NsfwScorerScopeTests`.
+   The scan-action tooltip reflects the active scope. Covered by `NsfwScorerScopeTests`.
+
+### ✅ Safety: burst frames were bulk-selectable through superset Variant groups — found and FIXED 2026-07-29
+
+**This affects the shipping desktop app, not just Android.** Found by building a real five-frame
+burst fixture (EXIF `DateTimeOriginal` one second apart, same camera, subject moving slightly) and
+walking the Android review queue. Two distinct defects, both in Core:
+
+**A. A Variant group that is a strict superset of a Burst group survives reconciliation.**
+
+Measured on the fixture:
+
+```
+group 4  burst    burst_2, burst_3, burst_4, burst_5        (4 frames)
+group 2  variant  burst_1, burst_2, burst_3, burst_4, burst_5 (5 frames)
+```
+
+`GroupReconciler` drops a group only when a stronger group contains **every** one of its members
+("only exact cover is dropped" — its own remarks, and a deliberate rule: merely-overlapping groups
+are different claims and both should survive). The Variant group is a *superset*, so it is not
+covered and survives. Because `Variant` is `IsBulkSelectable()`, every burst frame is then
+selectable in bulk — the exact failure CLAUDE.md describes as making this "a shredder". The
+burst-beats-variant precedence is doing nothing here, because it only fires on exact cover.
+
+`AppState.InScope` filters by the *group's* kind, so the desktop has this hole too.
+
+**B. Complete-linkage can split a real burst, and the split-off frames fall through to Variant.**
+
+`burst_1` is absent from the Burst group at all: complete-linkage requires a clique, and
+`burst_1`↔`burst_5` exceeded `BurstMaxBits` (subject moved furthest across the span). So no
+burst group contains it, and **no image-level "is it in a burst group" gate can protect it** — it
+is only ever described as a Variant. Verified: after fixing A, `burst_1` is still offered.
+
+**Mitigated so far:** `ReviewActivity` (Android) applies a second gate — membership of *any* burst
+group disqualifies a photo regardless of which group offers it. That fixes A on Android and took
+the queue from 10 candidates to 7. It cannot fix B.
+
+**Fixed, both in Core so desktop and Android share one rule:**
+
+- **A → `DupeAssignmentResolver`** (`Core/Dedup/DupeAssignment.cs`). Resolves the one group a photo
+  is presented as belonging to using `GroupReconciler`'s own precedence (Exact → Burst → Variant)
+  instead of letting the last group mentioned win. The desktop's `AppState` had been assigning in
+  enumeration order, so this was **order-dependent**, which is worse than first described.
+- **B → `images.burst_adjacent`**, set by `BurstFinder` for every photo in a qualifying burst
+  *relationship*, which is a strictly wider set than the burst *groups*. Grouping is untouched.
+
+  ⚠ **The originally proposed fix for B — single linkage in `BurstFinder` — was wrong, and the
+  code already said so.** `BurstFinder.Within` re-checks the time window precisely because
+  chaining through overlapping windows would "chain a continuous half-hour of shooting into one
+  burst". Widening *protection* rather than *grouping* gets the safety without that hazard, and
+  errs the right way: the worst case is a photo that must be reviewed individually rather than
+  selected in bulk.
+- Both feed one predicate, `DupeAssignment.IsBulkSelectableExtra`, now used by `InScope`,
+  `MatchesDupeFilter`, `ReclaimableBytes` and the Android review queue.
+
+**Verified end-to-end on the burst fixture:** the review queue went 10 → 7 → 5 → **4** candidates
+as each half landed, and no `burst_*` frame is offered. Covered by `DupeAssignmentTests` (8 tests).
+
+⚠ The fixture is synthetic and its subject moves a lot across five frames, so *prevalence* on real
+bursts is still unknown — the mechanism is proven and both defects are closed.
+
+---
+
+### Direct delete from the comparison — done 2026-07-29
+
+Deleting used to require leaving the decision behind: close the compare view, find the photo in
+the grid, select it, delete. But judging two copies side by side is exactly the moment the answer
+is obvious, and making the user walk away from the comparison loses the thing that produced the
+decision. Both heads now delete in place.
+
+- **Desktop** — a Delete button beside Keep in `DupeReview`'s compare pane, calling
+  `AppState.DeleteAsync`. Disabled on the group's keeper: the group would be left with nothing,
+  and "delete the one I just said to keep" is not a thing anyone means. Guarded in the handler as
+  well as by the attribute, since the keeper flag can change between render and click.
+- **Android** — swipe **down** on the photo deletes it immediately. Left still marks for the
+  batch; down is "this one, now". A sloppy diagonal resolves to whichever axis moved further, and
+  an upward flick does nothing at all.
+- **Android also now shows the original, not the thumbnail** (downsampled via `inSampleSize` —
+  a 24 MP original is ~96 MB as ARGB_8888). Reviewing duplicates is the one place the pixels
+  *are* the decision; a 256px thumbnail of two near-identical frames tells you nothing about
+  which is sharper.
+
+Neither path hard-deletes. Both go through `DeleteService.RecycleAsync`, so the file moves to the
+trash, an undo-log row is written and it is restorable — which is why the swipe needs no
+confirmation dialog: it is fast, not irreversible.
+
+---
+
+### QA round — 2026-07-29 (1.3.0)
+
+A full pass over both heads. Fixed in 1.3.0: the burst-protection scoping bug, the review "select
+extras" miscount, the API-36 Back regression, the compare-view missing folder, the collapsed
+filename, the overflowing removal confirmation, and two localisation leaks.
+
+**Found here, all since fixed** (1–3 in `9eec072`, the rest alongside it — each re-checked on the
+emulator on 2026-07-29):
+
+1. ✅ **Android: no way to change the scanned folder after the first scan.** Plan showed the path as
+   static text with only Re-scan; the input existed only on first run; Folders browses within the
+   scanned tree. *Was a dead end.* Now "Change folder…" opens `DirectoryPickerActivity`, a real
+   filesystem browser — `FoldersActivity` could never have covered this, because it derives its tree
+   from what is already catalogued and so can only walk inside what has been scanned.
+2. ✅ **Android: scanning an empty folder is a silent no-op.** Now reports through `ScanNotice`, on
+   the screen as well as in a toast — a toast that has already faded cannot answer "did that run?".
+3. ✅ **Android: unsupported formats are never surfaced.** `ScanNotice` now names them
+   ("1,204 HEIC counted but not readable"). A HEIC library used to read as "0 photos", i.e. broken.
+4. ✅ **Android: library summary and the "waiting" callout ignore the folder scope.** Both read from
+   `ScopedExtras()` now, so they cannot disagree with the header count.
+5. ✅ `"1 burst groups held back"` — grammar.
+
+**Still not executed:** QA plan tests 4 and 10 (scoped select-all) — navigation drifted mid-run.
+Test 7's breadcrumb overflow never triggered at the depth tested, so the `HorizontalScrollView` is
+confirmed present but not confirmed scrolling.
+
+---
+
+### Delete/history model + swipe review — captured 2026-07-29
+
+Four notes from a design conversation, checked against the code as they were written so each one
+says whether it is a change or already true.
+
+11. ✅ **Partly done 2026-07-29 (Android).** `ReviewActivity` in `src/SnapZap.Android` implements
+    the swipe motion — right to keep, left to mark — over `DupeRepository.Groups()`, gated to
+    `IsBulkSelectable()` kinds. Verified on an emulator: right swipe promotes a keeper via
+    `ToggleKeeper`, left swipe marks, and a sub-threshold drag correctly decides nothing. ✅ **Delete wired 2026-07-29:** the marked set now goes through
+    `DeleteService.RecycleAsync` behind an explicit confirmation, with `FolderTrashService` as the
+    `ITrashService`. Verified on-device end to end: source folder 11 → 9 files, both originals in
+    the app trash under collision-safe names, catalogue rows pruned, **thumbnails retained**
+    (item 13's invariant, now observed rather than assumed), and one-tap undo restoring 9 → 11 with
+    the trash left empty. Committing is a separate confirmed step, never the swipe itself — a
+    gesture that deleted on contact gives the user no moment to see what they are about to lose. ⚠ The burst exclusion is code-verified but
+    *not* empirically exercised: the test fixture produced 0 burst groups, so a fixture with a real
+    burst is still needed to prove the gate holds in practice.
+
+    **Swipe-based duplicate review (Android first).** Keep/remove one photo at a time by swiping —
+    right to keep, left to remove — rather than by multi-select. This is the touch replacement for
+    `DupeReview.razor`, which already models the right motion (group-at-a-time, "the core motion of
+    the app, which the flat grid can't express") but expresses it with desktop affordances. Natural
+    fit for the native Android head; not proposed for desktop, where multi-select is faster.
+
+    ✅ **Animated 2026-07-29.** `SwipeCard` gives the gesture the feedback it had none of: the card
+    tracks the finger, rotates, stamps the pending action, and springs back below the threshold, with
+    a haptic tick as it arms and an undo bar after a delete. The dating-app *physics* are copied; the
+    dating-app *mapping* deliberately is not, because these three directions are not a symmetric
+    binary — see [ANDROID-UX-REVIEW.md](ANDROID-UX-REVIEW.md) §10 before changing any of it.
+
+12. **A photo marked "keep" must never be deleted.** ⚠ Safety-critical, and the swipe UI *changes
+    the shape of this risk* rather than inheriting it: decisions become per-photo and fast, so an
+    accidental swipe is one gesture away from a deletion, with no selection state visible to
+    review before committing.
+    The existing machinery is the right foundation and must not be bypassed — `AppState.InScope`
+    filters to `DupeKindExtensions.IsBulkSelectable()` (i.e. `Exact | Variant`, never `Burst`), and
+    `DuplicateKeepers` is deliberately unfiltered. Requirements: an explicit keep mark is
+    authoritative, survives the batch operation that follows, and is covered by a test that fails
+    if a keeper ever lands in a delete set. Do not re-derive the rule at the swipe UI — read it
+    through the same predicate, exactly as CLAUDE.md requires of the existing callers.
+
+13. **Delete removes the catalog row but must NOT remove the thumbnail.** Both halves are
+    **already true today** — this item is about pinning them, not building them:
+    - `DeleteService.DeleteRow` already does `DELETE FROM images WHERE id=$id`.
+    - Nothing anywhere deletes from `CatalogService.ThumbDir`.
+    - `undo_log.content_hash` is the mechanism that makes this work: it is how history renders a
+      preview *after* the `images` row is gone.
+
+    ⚠ **The risk is that this is implicit.** Nothing states it, and no test pins it, so a
+    reasonable future change — a "prune orphaned thumbnails" cleanup, reclaiming space for
+    thumbnails with no matching `images` row — would silently break every history preview. Write
+    the invariant down (DESIGN §7) and add a test asserting a thumbnail survives the delete of its
+    image. Note the standing tension: thumbnails then grow unbounded, so any eventual cleanup must
+    be driven by `undo_log` retention, never by orphan detection.
+
+14. ✅ **Done 2026-07-29 — and the design question is settled: removal purges.**
+    `undo_log` had no `DELETE` against it anywhere, so history grew forever and could not be
+    pruned. `DeleteService.ForgetItem`/`ForgetBatch` now remove an entry, and the decision on the
+    collision flagged when this was captured is: **the record and the file go together.**
+
+    The alternative — forget the record only — would strand the file in the trash permanently,
+    since `undo_log.new_location` is the only pointer SnapZap keeps to it: still consuming
+    storage, no longer restorable, no longer visible on any screen. "Remove from trash" that
+    silently leaves the bytes behind is worse than either honest option. So removal is the app's
+    second irreversible action, and like the first (`Empty`) it is **confirmed**.
+
+    An already-restored entry is a different action behind the same word, and gets a different
+    warning: the photo is back in the user's library, so only the record is dropped and nothing is
+    deleted. Both variants verified on-device, along with the purge (trash 1 → 0 file, library
+    unchanged) and the no-op cases. Covered by four tests in `DeleteTests`, portable ones using
+    `FolderTrashService` rather than the macOS-skipped Finder trash.
+
+    **Android history now shows thumbnails**, which is the payoff of item 13's invariant: the
+    `images` row is gone by then, so `undo_log.content_hash` plus the content-addressed cache is
+    all that is left to render from. The desktop's `UndoDialog` already had this; Android has
+    caught up.
+
+    ✅ **Desktop caught up the same day.** `UndoDialog` gained a **Quitar/Remove** button per batch,
+    using the inline `.confirm` pattern `SelectionBar` already uses for delete rather than a second
+    confirmation idiom, wired through new `AppState.ForgetItemAndReloadAsync` /
+    `ForgetBatchAndReloadAsync`. Strings added in `en` and `es-MX`. Verified by driving the running
+    app: the confirmation renders in Spanish and correctly picks the already-restored wording.
+
+    Remaining desktop gap, minor: removal is per **batch** only — Android also offers per **item**.
+    The desktop already has per-item *restore* (the hover-revealed `.undo-thumb-restore`), so the
+    natural home for per-item remove is that same thumbnail affordance.
 
 ### Backlog (from DESIGN §12, deliberately deferred)
 

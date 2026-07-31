@@ -1,0 +1,119 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-android36.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+
+    <!--
+      RootNamespace is deliberately NOT SnapZap.Android.
+
+      Inside a namespace called SnapZap.Android, the compiler resolves `Android.App` relative to
+      the enclosing namespace first and looks for SnapZap.Android.App before the Android SDK's
+      global Android.App. Every using of an SDK namespace then fails with an error that points at
+      the using rather than at the real cause. SnapZap.Droid has no such collision.
+
+      The *project* keeps the SnapZap.Android name because that is what it is; only the C#
+      namespace differs.
+    -->
+    <RootNamespace>SnapZap.Droid</RootNamespace>
+
+    <!--
+      API 30 is the floor because MANAGE_EXTERNAL_STORAGE ("All files access") and the
+      Settings.ActionManageAppAllFilesAccessPermission intent that requests it are API 30+
+      (docs/ANDROID-PORT-PLAN.md §3). The whole storage model depends on it, so there is no
+      point supporting anything older.
+    -->
+    <SupportedOSPlatformVersion>30</SupportedOSPlatformVersion>
+
+    <ApplicationId>com.snapzap.android</ApplicationId>
+    <!--
+      ⚠ A second version pair, and the only one in the repo besides SnapZap.App's <Version>.
+      Android requires both: ApplicationDisplayVersion is versionName (what a person reads) and
+      ApplicationVersion is versionCode (a monotonic integer the platform compares to decide
+      whether an APK is an upgrade — it must never go backwards).
+
+      Keep DisplayVersion equal to SnapZap.App's <Version>. CLAUDE.md's "exactly one source" rule
+      predates the Android head; it is still true for the shipping desktop artifacts, which read the
+      version back out of the built .exe.
+
+      ApplicationVersion is a build counter, not a mirror of the version name, and the two move
+      independently: it must increase for any APK that lands on a device that already has an older
+      one, and it must never decrease. So it is normal for it to run ahead of what version-name
+      bumps alone would suggest — 1.3.0 shipped as code 2 and again as code 3 after the UX-review
+      work, 1.3.1 was code 4, code 5 added the content-review progress bar and the post-scoring
+      library scope fix, and code 6 fixed the Review badge and Duplicates step disagreeing with
+      the library's own scoped count. Reverting a code to reuse one would leave two different APKs
+      claiming it and make the newer uninstallable over the older.
+    -->
+    <ApplicationVersion>6</ApplicationVersion>
+    <ApplicationDisplayVersion>1.3.1</ApplicationDisplayVersion>
+  </PropertyGroup>
+
+  <!--
+    AdditionalProperties="IncludeAndroid=true" is required, not decorative. SnapZap.Core only
+    grows its net10.0-android36.0 leg under that flag (AC-2.7's opt-in, see SnapZap.Core.csproj);
+    without it this reference resolves against Core's plain net10.0 leg, which carries the macOS
+    and Win32 SkiaSharp native assets and none of the Android ones — an APK that builds and then
+    dies at the first decode.
+
+    ⚠ AdditionalProperties alone is NOT sufficient, and this build fails without help. It flows
+    the flag to Core's *build*, but NuGet's restore walks its own graph and does not honour it, so
+    Core's obj/project.assets.json comes out with no net10.0-android36.0 target and the build dies
+    with NETSDK1005 ("Assets file doesn't have a target for net10.0-android36.0"). Pass the flag
+    globally instead, which reaches restore and build alike:
+
+        dotnet build src/SnapZap.Android -p:IncludeAndroid=true
+
+    The AdditionalProperties attribute is kept because it documents the dependency at the point it
+    exists and makes the build fail loudly rather than silently resolving Core's desktop leg.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\SnapZap.Core\SnapZap.Core.csproj"
+                      AdditionalProperties="IncludeAndroid=true" />
+  </ItemGroup>
+
+  <!--
+    Deliberately NOT listed in SnapZap.slnx. Adding it makes the plain `dotnet build` at the repo
+    root require an Android SDK, which is precisely the tax the opt-in decision in
+    docs/ANDROID-PORT-ACS.md AC-2.7 exists to avoid for SnapZap.Core. Build it explicitly:
+
+        dotnet build src/SnapZap.Android
+
+    The cost is AC-2.9's, in the same shape: a project nobody builds by default can rot. That is
+    an acceptable trade while this project is a stage-1 artifact rather than a shipping head; it
+    stops being acceptable the moment real code lives here, at which point it needs CI coverage
+    alongside `-p:IncludeAndroid=true`.
+  -->
+
+  <!--
+    ⚠ There is deliberately NO ProjectReference to SnapZap.App here, and adding one does not work.
+
+    docs/ANDROID-PORT-PLAN.md §0 bets that Android can be a fifth IAppHost: run the same
+    WebApplication in-process, bound to loopback, and point a system WebView at it. That bet is
+    dead, and this project is where it was proven dead. Two errors, in order:
+
+      NETSDK1150  An Android app is a self-contained executable and cannot reference
+                  SnapZap.App, which is a non-self-contained Exe. (SnapZap.App must stay
+                  OutputType=Exe — exactly Exe — or Blazor's static web assets are silently
+                  dropped; see the comment block in SnapZap.App.csproj.) This one has a
+                  documented escape hatch, -p:ValidateExecutableReferencesMatchSelfContained=false,
+                  which gets past it and straight into the real problem:
+
+      NETSDK1082  "There was no runtime pack for Microsoft.AspNetCore.App available for the
+                  specified RuntimeIdentifier 'android-arm64'."
+
+    The second is not a configuration problem. ASP.NET Core publishes no runtime pack for any
+    mobile RID — verified against nuget.org, where microsoft.aspnetcore.app.runtime.win-x64,
+    .osx-arm64 and .linux-arm64 all resolve and .android-arm64 and .ios-arm64 both 404. There is
+    no Kestrel on Android, so there is no in-process web server for a WebView to talk to, and the
+    plan's §0 gate ("if step 2 fails outright, stop and re-scope around BlazorWebView") is met.
+
+    This project is kept as what it actually proved: the Android toolchain produces a building,
+    installable APK from this repo. That is stage 1 of the spike and it passed. Whatever replaces
+    the §0 architecture builds on this, so do not delete it — but do not re-add the reference
+    either, and see docs/ANDROID-PORT-ACS.md §1.6 before changing the approach.
+  -->
+
+</Project>

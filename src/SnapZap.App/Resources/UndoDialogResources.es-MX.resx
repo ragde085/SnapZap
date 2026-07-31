@@ -12,8 +12,8 @@
   <data name="ColumnWhatHappened" xml:space="preserve"><value>Qué pasó</value></data>
   <data name="ColumnPhotos" xml:space="preserve"><value>Fotos</value></data>
   <data name="BatchTimestamp" xml:space="preserve"><value>{0:d MMM yyyy} a las {0:h:mm tt}</value></data>
-  <data name="WhatMoved" xml:space="preserve"><value>Movido por una exportación</value></data>
-  <data name="WhatExportRecycled" xml:space="preserve"><value>Reciclado durante una exportación — las fotos que no elegiste</value></data>
+  <data name="WhatMoved" xml:space="preserve"><value>Sacado de la carpeta de origen</value></data>
+  <data name="WhatExportRecycled" xml:space="preserve"><value>Reciclado durante un movimiento — las fotos que no elegiste</value></data>
   <data name="WhatSelectionDeleted" xml:space="preserve"><value>Eliminado — reciclado desde una selección</value></data>
   <data name="SubRelocated" xml:space="preserve"><value>Reubicado, no reciclado</value></data>
   <data name="SubEmptied" xml:space="preserve"><value>Vaciado de la papelera desde entonces</value></data>
@@ -26,4 +26,18 @@
   <data name="ButtonRestoreThisPhoto" xml:space="preserve"><value>Restaurar {0}</value></data>
   <data name="RightClickHint" xml:space="preserve"><value>También puedes restaurar desde el menú del botón derecho de la papelera de reciclaje.</value></data>
   <data name="CloseButton" xml:space="preserve"><value>Cerrar</value></data>
+  <data name="ButtonRemoveBatch" xml:space="preserve"><value>Quitar</value></data>
+  <data name="ConfirmRemoveTitle" xml:space="preserve"><value>¿Quitar permanentemente?</value></data>
+  <data name="ConfirmRemoveBodyPending" xml:space="preserve"><value>{0} foto(s) se eliminarán definitivamente y no se podrán restaurar.</value></data>
+  <data name="ConfirmRemoveBodyRestored" xml:space="preserve"><value>Ya se restauraron, así que solo se quitan las entradas del historial. Las fotos se quedan donde están.</value></data>
+  <data name="ButtonRemoveConfirm" xml:space="preserve"><value>Eliminar definitivamente</value></data>
+  <data name="ButtonRemoveEntries" xml:space="preserve"><value>Quitar entradas</value></data>
+  <data name="ButtonCancel" xml:space="preserve"><value>Cancelar</value></data>
+  <data name="ThumbUnavailableTitle" xml:space="preserve"><value>Sin vista previa — esta foto se eliminó antes de que SnapZap empezara a guardar miniaturas para el historial.</value></data>
+  <data name="ShowMoreTitle" xml:space="preserve">
+    <value>Mostrar más de este lote, para poder restaurar fotos individuales</value>
+  </data>
+  <data name="ShowFewer" xml:space="preserve">
+    <value>Mostrar menos</value>
+  </data>
 </root>

@@ -164,12 +164,15 @@ public class FolderTreeTests
         var done = byPath["/lib/done"];
         Assert.Equal(new StepStat(2, 2), done.Deduped);
         Assert.True(done.DupeCheckComplete);
-        Assert.DoesNotContain(done.PendingSteps(), s => s.Contains("duplicates"));
+        // Asserts on the resource key, not an English sentence: PendingSteps yields (key, count)
+        // so the fragment can be localised by the component. Matching prose here would have made
+        // the test fail on a wording change and pass on a broken translation — the wrong way round.
+        Assert.DoesNotContain(done.PendingSteps(), s => s.Key == "PendingNotDeduped");
 
         var never = byPath["/lib/never"];
         Assert.True(never.Deduped.Untouched);
         Assert.False(never.DupeCheckComplete);
-        Assert.Contains(never.PendingSteps(), s => s.Contains("1 not checked for duplicates"));
+        Assert.Contains(never.PendingSteps(), s => s.Key == "PendingNotDeduped" && s.Count == 1);
 
         // The parent is 2 of 3 — complete for neither child's sake.
         Assert.Equal(new StepStat(2, 3), root.Deduped);

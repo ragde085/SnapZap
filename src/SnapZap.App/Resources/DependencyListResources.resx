@@ -18,4 +18,7 @@
   <data name="SaveAsInstruction" xml:space="preserve"><value>and save it as</value></data>
   <data name="PutBothFilesIn" xml:space="preserve"><value>Put both files in</value></data>
   <data name="PutItIn" xml:space="preserve"><value>Put it in</value></data>
+  <data name="DepNsfwName" xml:space="preserve"><value>Explicit-content scoring</value></data>
+  <data name="DepNsfwUnlocks" xml:space="preserve"><value>Scores every photo so you can filter explicit images.</value></data>
+  <data name="DepNsfwWithoutIt" xml:space="preserve"><value>Every other filter — duplicates, blur, date, folder — is unaffected.</value></data>
 </root>

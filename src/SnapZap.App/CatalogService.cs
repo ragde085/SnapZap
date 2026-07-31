@@ -42,9 +42,19 @@ public sealed class CatalogService : IDisposable
     /// </param>
     public CatalogService(string? appDataDir = null)
     {
-        _appData = appDataDir ?? Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "SnapZap");
+        // PC_APPDATA exists so the running app can be pointed at a throwaway catalogue — for a UI
+        // change that needs driving end to end without touching the real photo library. The ctor
+        // parameter already served unit tests, but nothing wired it to the composed host, so the
+        // only way to exercise the app itself was against the developer's own catalogue. Redirecting
+        // HOME does not work: .NET caches the special-folder lookup and the shell that launches
+        // `dotnet run` is not the process that resolves it.
+        //
+        // Production sets neither and gets the real location (DESIGN §7.5).
+        _appData = appDataDir
+            ?? Environment.GetEnvironmentVariable("PC_APPDATA")
+            ?? Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "SnapZap");
         ThumbDir = Path.Combine(_appData, "thumbs");
         Directory.CreateDirectory(ThumbDir);
         PreviewDir = Path.Combine(_appData, "previews");

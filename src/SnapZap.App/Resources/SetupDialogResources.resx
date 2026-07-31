@@ -11,7 +11,7 @@
   <data name="PaneExplicit" xml:space="preserve"><value>Explicit content</value></data>
   <data name="PaneDuplicates" xml:space="preserve"><value>Duplicates</value></data>
   <data name="PaneCatalogue" xml:space="preserve"><value>Catalogue</value></data>
-  <data name="AddOnsLede" xml:space="preserve"><value>One optional add-on. SnapZap scans, finds duplicates, exports and deletes without it.</value></data>
+  <data name="AddOnsLede" xml:space="preserve"><value>One optional add-on. SnapZap scans, finds duplicates, moves and deletes without it.</value></data>
   <data name="CheckingButton" xml:space="preserve"><value>Checking…</value></data>
   <data name="CheckAgainButton" xml:space="preserve"><value>Check again</value></data>
   <data name="AddOnsHint" xml:space="preserve"><value>Drop a file in and press Check again — no restart needed.</value></data>
@@ -49,7 +49,7 @@
   <data name="VariantBitsValue" xml:space="preserve"><value>{0} of {1}</value></data>
   <data name="VariantBitsHint" xml:space="preserve"><value>Lower is stricter. Raising it finds more, and eventually starts calling two different photos the same one.</value></data>
   <data name="BurstLabel" xml:space="preserve"><value>Bursts — the same scene, seconds apart</value></data>
-  <data name="BurstDetail" xml:space="preserve"><value>Always detected. These are different photographs, so they are grouped for review and never picked up by "Select duplicate extras".</value></data>
+  <data name="BurstDetail" xml:space="preserve"><value>Different photographs rather than copies, so they are grouped for review and held back from "Select duplicate extras".</value></data>
   <data name="BurstWindowLabel" xml:space="preserve"><value>Frames within</value></data>
   <data name="BurstWindowValue" xml:space="preserve"><value>{0} s</value></data>
   <data name="BurstWindowHint" xml:space="preserve"><value>Needs an EXIF capture time — photos without one are skipped, so a burst with no timestamps is not protected from bulk selection.</value></data>
@@ -66,4 +66,18 @@
   <data name="ForgetConfirmButton" xml:space="preserve"><value>Forget everything</value></data>
   <data name="CancelButton" xml:space="preserve"><value>Cancel</value></data>
   <data name="DoneButton" xml:space="preserve"><value>Done</value></data>
+  <data name="NsfwDepName" xml:space="preserve"><value>Explicit-content scoring</value></data>
+  <data name="NsfwDepUnlocks" xml:space="preserve"><value>Scores every photo so you can filter explicit images.</value></data>
+  <data name="BurstOffWarning" xml:space="preserve">
+    <value>Off — burst frames are treated as copies. All but one frame of every burst will be offered to a bulk delete. Turn this back on and run Find duplicates again to restore the protection; nothing needs re-scanning.</value>
+  </data>
+  <data name="SkipHiddenLabel" xml:space="preserve">
+    <value>Skip hidden folders</value>
+  </data>
+  <data name="SkipHiddenDetail" xml:space="preserve">
+    <value>Folders whose name starts with a dot, and anything marked hidden. They hold caches — .thumbnails, .trashed, .git — not photos.</value>
+  </data>
+  <data name="SkipHiddenRescanHint" xml:space="preserve">
+    <value>Saved. This one needs the folder scanned again, not just Find duplicates — anything already indexed from a hidden folder drops out on the next scan.</value>
+  </data>
 </root>

@@ -16,7 +16,9 @@ The source folder is never modified unless you explicitly ask for it.
 
 ### Non-goals
 
-- No cloud, no network calls, no paid dependencies, no subscriptions.
+- No cloud, no paid dependencies, no subscriptions. The only network call in the product is the
+  one-time download of the optional content-scoring model, pinned to an immutable revision and
+  checksum-verified (`NsfwModelDownload`); photos are never transmitted.
 - Not a photo editor, viewer, or library manager — it is a triage-and-export tool.
 - No Plex API integration. Plex watches the destination folder; that *is* the integration.
 

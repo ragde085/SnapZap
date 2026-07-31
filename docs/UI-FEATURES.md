@@ -95,11 +95,16 @@ with no text-color rule is exactly the bug that shipped.
 button next to every plain-text *folder* field: `ScanForm`'s "Folder to scan", `ExportDialog`'s
 "Destination", `ExtractDialog`'s "Output folder".
 
-**Where:** self-contained component, no Core/service changes — it walks the filesystem directly
-(`Directory.GetDirectories`, `DriveInfo.GetDrives()` on Windows) because Blazor Server already runs
-on the same machine as the files; there's no remote boundary to cross. Each host component owns a
-`bool _showPicker` and an `OnPicked(string path)` handler that just assigns its own text field (and,
-for `ExportDialog`, re-invalidates the preflight check).
+**Where:** mostly self-contained component — it walks the filesystem directly
+(`Directory.GetDirectories`) because Blazor Server already runs on the same machine as the files;
+there's no remote boundary to cross. Each host component owns a `bool _showPicker` and an
+`OnPicked(string path)` handler that just assigns its own text field (and, for `ExportDialog`,
+re-invalidates the preflight check). The one piece that *isn't* component-local: "where does the
+picker start, and which quick-jump root buttons does it offer" is
+`SnapZap.Core.Platform.DirectoryRoots` (`DefaultStart`/`Roots`, keyed off a `DirectoryPlatform`
+enum), pulled out so it's unit-testable (`DirectoryRootsTests`) and so it has an Android branch —
+see docs/ANDROID-PORT-PLAN.md §3 item 5. The component still owns everything else (`Navigate`,
+the typed-path box, subfolder listing).
 
 **Don't regress:**
 - It's a **folder** picker only (`Directory.GetDirectories`/`Directory.Exists`), not a file picker —
@@ -112,6 +117,11 @@ for `ExportDialog`, re-invalidates the preflight check).
 - `StartPath` is re-read every time the dialog opens (`OnParametersSet`, gated on `Show && !_wasShown`),
   not just once — reopening after the user hand-edited the text field has to start from the new
   value, not wherever browsing left off last time.
+- `DirectoryRoots.Roots(DirectoryPlatform.Windows, ...)` takes the drive-enumeration function as an
+  optional override *only* so `DirectoryRootsTests` can pin the Windows branch from a macOS dev
+  box — production code (this component) always calls it with no override, so behaviour on real
+  Windows hardware is unchanged (`DriveInfo.GetDrives().Where(d => d.IsReady)`, same as before the
+  extraction).
 
 ---
 

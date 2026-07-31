@@ -11,7 +11,7 @@
   <data name="PaneExplicit" xml:space="preserve"><value>Contenido explícito</value></data>
   <data name="PaneDuplicates" xml:space="preserve"><value>Duplicados</value></data>
   <data name="PaneCatalogue" xml:space="preserve"><value>Catálogo</value></data>
-  <data name="AddOnsLede" xml:space="preserve"><value>Un complemento opcional. SnapZap escanea, encuentra duplicados, exporta y elimina sin él.</value></data>
+  <data name="AddOnsLede" xml:space="preserve"><value>Un complemento opcional. SnapZap escanea, encuentra duplicados, mueve y elimina sin él.</value></data>
   <data name="CheckingButton" xml:space="preserve"><value>Comprobando…</value></data>
   <data name="CheckAgainButton" xml:space="preserve"><value>Comprobar de nuevo</value></data>
   <data name="AddOnsHint" xml:space="preserve"><value>Coloca un archivo y presiona Comprobar de nuevo — no necesitas reiniciar.</value></data>
@@ -49,7 +49,7 @@
   <data name="VariantBitsValue" xml:space="preserve"><value>{0} de {1}</value></data>
   <data name="VariantBitsHint" xml:space="preserve"><value>Un valor más bajo es más estricto. Subirlo encuentra más, y eventualmente empieza a considerar iguales dos fotos distintas.</value></data>
   <data name="BurstLabel" xml:space="preserve"><value>Ráfagas — la misma escena, segundos de diferencia</value></data>
-  <data name="BurstDetail" xml:space="preserve"><value>Siempre se detectan. Son fotografías distintas, así que se agrupan para revisión y nunca las toma "Seleccionar duplicados extra".</value></data>
+  <data name="BurstDetail" xml:space="preserve"><value>Fotografías distintas, no copias, así que se agrupan para revisión y quedan fuera de "Seleccionar duplicados extra".</value></data>
   <data name="BurstWindowLabel" xml:space="preserve"><value>Cuadros dentro de</value></data>
   <data name="BurstWindowValue" xml:space="preserve"><value>{0} s</value></data>
   <data name="BurstWindowHint" xml:space="preserve"><value>Necesita una hora de captura EXIF — las fotos que no la tienen se omiten, así que una ráfaga sin marcas de tiempo no está protegida de la selección en bloque.</value></data>
@@ -66,4 +66,18 @@
   <data name="ForgetConfirmButton" xml:space="preserve"><value>Olvidar todo</value></data>
   <data name="CancelButton" xml:space="preserve"><value>Cancelar</value></data>
   <data name="DoneButton" xml:space="preserve"><value>Listo</value></data>
+  <data name="NsfwDepName" xml:space="preserve"><value>Calificación de contenido explícito</value></data>
+  <data name="NsfwDepUnlocks" xml:space="preserve"><value>Califica cada foto para que puedas filtrar imágenes explícitas.</value></data>
+  <data name="BurstOffWarning" xml:space="preserve">
+    <value>Desactivado: los cuadros de ráfaga se tratan como copias. Todos los cuadros de cada ráfaga menos uno se ofrecerán para un borrado masivo. Vuelve a activarlo y ejecuta Buscar duplicados otra vez para restaurar la protección; no hace falta volver a escanear.</value>
+  </data>
+  <data name="SkipHiddenLabel" xml:space="preserve">
+    <value>Omitir carpetas ocultas</value>
+  </data>
+  <data name="SkipHiddenDetail" xml:space="preserve">
+    <value>Carpetas cuyo nombre empieza con punto, y cualquiera marcada como oculta. Guardan cachés — .thumbnails, .trashed, .git — no fotos.</value>
+  </data>
+  <data name="SkipHiddenRescanHint" xml:space="preserve">
+    <value>Guardado. Esto requiere volver a escanear la carpeta, no solo Buscar duplicados — lo que ya se haya indexado de una carpeta oculta desaparecerá en el siguiente escaneo.</value>
+  </data>
 </root>

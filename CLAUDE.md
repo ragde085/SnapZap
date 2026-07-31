@@ -4,13 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-SnapZap is a Windows desktop app (.NET 10, C#) that finds duplicates, NSFW images, and blurry photos in a folder, then exports the clean set to a destination (e.g., for Plex to watch). The app is:
-- Developed on macOS, shipped as a self-contained `win-x64` executable
+SnapZap (.NET 10, C#) finds duplicates, NSFW images, and blurry photos in a folder, then exports the clean set to a destination (e.g., for Plex to watch). It ships as a **Windows/macOS desktop app** (Blazor Server behind a local host) and, since 1.3.0, a **native Android app** — both over the same `SnapZap.Core`, with no cloud on either — the only network call anywhere is the one-time, checksum-verified download of the optional NSFW model. The app is:
+- Developed on macOS, shipped as a self-contained `win-x64` executable; the Android head builds from the same repo (see `docs/ANDROID-PORT-ACS.md`)
 - ~90% cross-platform; four Windows-only paths behind `IPlatformServices` interfaces (Recycle Bin, hardlinks, DirectML GPU, native window host)
 - No cloud, no subscriptions, no paid dependencies
 - Safety-critical: nothing is hard-deleted until hash-verified; source folder untouched unless explicitly requested
 
-See [DESIGN.md](docs/DESIGN.md) for full architecture and rationale, [WINDOWS-VERIFY.md](docs/WINDOWS-VERIFY.md) for the Windows validation checklist, and [UI-FEATURES.md](docs/UI-FEATURES.md) for a quick per-feature reference to recent UI work (busy/progress, dark-mode buttons, the directory picker, folder rescan, preview zoom, thumbnail size) — read it before touching any of those instead of re-deriving the "why" from the diff.
+See [DESIGN.md](docs/DESIGN.md) for full architecture and rationale, [WINDOWS-VERIFY.md](docs/WINDOWS-VERIFY.md) for the Windows validation checklist, [ANDROID-PORT-ACS.md](docs/ANDROID-PORT-ACS.md) for the Android port's status and the evidence behind it, [ANDROID-UX-REVIEW.md](docs/ANDROID-UX-REVIEW.md) for the post-1.3.0 UX findings and what each fix decided (read it before changing the swipe gestures, the scan default, the plan's step count or anything accessibility-related), and [UI-FEATURES.md](docs/UI-FEATURES.md) for a quick per-feature reference to recent UI work (busy/progress, dark-mode buttons, the directory picker, folder rescan, preview zoom, thumbnail size) — read these before touching any of those instead of re-deriving the "why" from the diff.
 
 ---
 
@@ -148,6 +148,9 @@ The sidecars are excluded from publish output (`CopyToPublishDirectory="Never"`)
 |---|---|
 | `src/SnapZap.Core/` | Portable core logic: scanning, hashing, dedup, NSFW, blur/EXIF, export, delete, platform interfaces |
 | `src/SnapZap.App/` | ASP.NET Core host + Blazor Server UI (`Components/`, `Services/`, `wwwroot/`) |
+| `src/SnapZap.Android/` | Native Android head (`net10.0-android36.0`). Views built in code against `Design.cs`, the translated mobile design system. **Not in `SnapZap.slnx`** — build explicitly with `-p:IncludeAndroid=true` so a plain `dotnet build` never needs an Android SDK |
+| `src/SnapZap.Android/SwipeCard.cs` | The review queue's animated card gesture. Read its remarks before changing a threshold or a direction — the three directions are animated *differently on purpose*, and the reasoning is not recoverable from the code alone |
+| `src/SnapZap.Android/SettingsActivity.cs` | Editable dedup settings, deliberately the same surface as the desktop's `SetupDialog` (same controls, same ranges, same steps). Saves on every change; tracks a stale flag because these decide what detection *finds*, so nothing moves until it re-runs |
 | `tests/SnapZap.Tests/` | xUnit test suite + fixtures |
 | `CHANGELOG.md` | User-facing release notes, one section per version — update it alongside every version bump |
 | `docs/DESIGN.md` | Architecture, decisions, data model, pipeline, safety invariants |
@@ -155,6 +158,7 @@ The sidecars are excluded from publish output (`CopyToPublishDirectory="Never"`)
 | `docs/BLAZOR-MIGRATION.md` | The SPA → Blazor Server migration (completed) |
 | `docs/UI-FEATURES.md` | Quick per-feature reference for recent UI work — what each does, where the code lives, the one invariant not to regress |
 | `docs/WINDOWS-VERIFY.md` | Checklist for four Windows-only code paths |
+| `docs/ANDROID-PORT-PLAN.md` | Implementation plan for an Android port (not started) — architecture bet, `IPlatformServices` Android impl, storage model, ordered tasks |
 | `installer/SnapZap.iss` | Inno Setup definition for the Windows installer (per-user, optional model component, WebView2 bootstrap) |
 | `scripts/build-installer.bat` | Publish + package in one step; the supported way to build the Windows installer |
 | `installer-mac/` | `.app` bundle template (`Info.plist.template`, `launcher.sh`, `find-dotnet.sh`) + `.pkg` postinstall scripts (`postinstall-app.sh`, `postinstall-model.sh`, `notify.sh`) |
@@ -168,17 +172,42 @@ The sidecars are excluded from publish output (`CopyToPublishDirectory="Never"`)
 
 ### Key subdirectories in `App/`
 
-- **Components/** — Razor components. `Pages/Home.razor` composes the whole app; `Toolbar`
-  (scan bar), `FilterBar` (filters + selection menus, library actions), `SelectionBar`
-  (contextual Export/Delete/Hide, only while something is selected), `FolderTreeView` (the
-  entire left pane), `PhotoGrid`, `Card`, `Toast`, and the `ExportDialog` / `HideDialog` /
-  `ExtractDialog` / `UndoDialog` / `PreviewModal` / `DependencyDialog` / `SetupDialog` /
-  `ShortcutsDialog` overlays.
+- **Components/** — Razor components. `Pages/Home.razor` composes the whole app and owns the
+  chrome around the grid (the filter chips, sort and thumbnail-size controls).
+  - `Rail` is the entire left pane, and is where a lot of chrome that used to be top-level
+    ended up: it holds three tabs (`RailTab.Plan`, `Folders`, `Filters`), embeds
+    `FolderTreeView` in the Folders tab, and carries the Select command row. **There is no
+    `Toolbar` or `FilterBar`** — those names described a layout that no longer exists, and
+    their jobs are now split between `Rail` and `Home.razor`.
+  - `ScanForm` is the folder-input-and-Scan control, deliberately shared by `FirstRun` and the
+    rail's Plan tab "Change folder…" disclosure so the two entry points cannot drift on what
+    Enter does or when Scan is disabled.
+  - `FirstRun` is the pre-first-scan screen; once a folder has been scanned it never shows
+    again and the rail's Plan tab takes over.
+  - `SelectionBar` — contextual Export/Delete/Hide, only while something is selected.
+  - `DupeReview` — group-at-a-time duplicate review, the motion the flat grid can't express.
+  - `PhotoGrid`, `Card`, `Toast`, `JumpSearch` (search *around* the active filters, not another
+    one of them), `ScanIssues` (unsupported/unreadable files from the last scan),
+    `DependencyList` (status rows shared by the launch prompt and the Setup panel).
+  - Overlays: `ExportDialog` / `HideDialog` / `ExtractDialog` / `UndoDialog` / `PreviewModal` /
+    `DirectoryPickerDialog` / `DependencyDialog` / `SetupDialog` / `HelpDialog`. **Keyboard
+    shortcuts are documented in `HelpDialog`** — there is no `ShortcutsDialog`.
+
+  Note when reading Razor: `<ThumbSize>`, `<SortKey>`, `<HomeResources>` and `<FilterChip>` in
+  `Home.razor` are enums, resource marker types and a record — not components. Only `.razor`
+  files under `Components/` are components.
 - **Services/** — `AppState` (scoped per circuit: view state + operations, replaces the old
   `app.js` state object), `ImageView` (record wrapping `ImageRecord` for display),
-  `DependencyChecker` (validates the optional sidecars, singleton).
+  `DependencyChecker` (validates the optional sidecars, singleton), `SessionStore`,
+  `FolderTree`, `EtaEstimator`, `SettingsRequestCultureProvider`, and the `IAppHost`
+  implementations (`AppHost.cs` = `AppHostFactory` + `BrowserAppHost` + `ConsoleWindow`;
+  `PhotinoAppHost.cs` split out separately so it and its package can be excluded from a
+  non-desktop TFM — see the comment block in `SnapZap.App.csproj`).
+- **App root** — `Program.cs` is now only the desktop entry point; the reusable
+  `WebApplication` composition lives in `SnapZapWebHost.cs` / `SnapZapHostOptions.cs` so a
+  second head can build the same server without the desktop-only tail.
 - **wwwroot/** — `app.css` (the "Darkroom" design system), `interop.js` (grid geometry
-  measurement, scroll windowing, arrow-key focus movement), and two icon files. `favicon.ico`
+  measurement, scroll windowing, arrow-key focus movement), `fonts/`, and two icon files. `favicon.ico`
   is also the `.exe` icon (`<ApplicationIcon>` in the csproj points here so the tab, the
   taskbar and the window cannot disagree); `snapzap.png` is the same artwork at 128px for the
   mark beside the wordmark in `Home.razor`. Both are generated from
@@ -346,10 +375,34 @@ Full rationale in [docs/DEDUP-V2.md](docs/DEDUP-V2.md). The short version:
   The gate lives on the `InScope` predicate, not on the command, so the button's count, its
   reclaimable-bytes label and what it selects cannot disagree. `DuplicateKeepers` is intentionally
   unfiltered — a burst's keeper is a survivor like any other.
-- **The hash** is a 272-bit gradient hash on a 17×17 square grid, stored for **all four rotations**
-  (160 bytes in `images.phash`). Do *not* "optimise" it to store only the smallest of the four:
+- **The hash** is a 544-bit gradient hash on a 17×17 square grid, stored for **all four rotations**
+  (288 bytes in `images.phash`). Do *not* "optimise" it to store only the smallest of the four:
   noise flips which rotation wins, so near-identical photos canonicalise to different orbit members
   and stop matching entirely.
+- ⚠ **Both axes are encoded — 272 horizontal comparisons and 272 vertical — and halving that back
+  to horizontal-only reopens a shipped defect.** With only horizontal bits, a photo's whole
+  signature was its left-to-right luminance profile, so any image that brightens toward the middle
+  of the frame and darkens after hashed the same as any other regardless of subject. Measured on a
+  real 2,218-photo library: four grey desktop wallpapers and two sunset photographs formed one
+  six-member `Variant` group, every pair 0–16 bits apart against a threshold of 20. Adding the
+  vertical half moves those pairs to 41–87 while a genuine resize/re-encode stays at a p99 of 41 of
+  544. `PerceptualHashTests.Frames_with_identical_horizontal_profiles_are_still_told_apart` pins it.
+- ⚠ **`PerceptualHash.DistanceTo` is the minimum over *both* argument orders, and that is load-bearing.**
+  Rotations are made by turning the cell grid and re-encoding, so a rotated signature is *not* a
+  bit-permutation of the unrotated one and one-sided rotation is not symmetric — 69% of sampled
+  library pairs disagreed, the worst by 247 bits. `SimilarityGrouper` tests pairs in whichever order
+  it reaches them, so that quietly reduced complete linkage to a one-directional check and produced
+  a seven-member group holding pairs 259 bits apart under a 20-bit threshold. Anything else
+  computing this distance (`VariantFinder.FlatDistance`, the band prefilter's candidate gather) must
+  stay symmetric too — the prefilter therefore gathers candidates in **both** directions and
+  de-duplicates on (lower, higher), because the index holds only each signature's rotation 0.
+- **An all-zero signature (`IsDegenerate`) matches nothing.** Ties encode as 0, so a frame of one
+  flat colour hashes to all zeros — solid black and solid white are byte-identical and 0 apart.
+  A general low-contrast gate was measured and rejected: over 179,675 unrelated real pairs a floor
+  of 2–8 grey levels changed the number of pairs under every threshold by *zero* while discarding up
+  to 8% of the library, because a featureless-but-not-flat photo's bits are noise, and noise does
+  not collide. Only the perfectly flat case is a real collision. Both perceptual finders filter on
+  `IsUnusable`, not `IsEmpty`.
 - **It rides on the scan's existing decode.** `Scanner.Analyze` calls `DecodeGray` once and feeds
   both `BlurDetector.ScoreFrom` and `PerceptualHash.FromGray`. Adding a second decode here would
   give back the main saving of the rewrite.
@@ -357,13 +410,26 @@ Full rationale in [docs/DEDUP-V2.md](docs/DEDUP-V2.md). The short version:
   not transitive — A~B and B~C does not give A~C — so union-find collapses a real library into one
   group of thousands with all but one flagged for deletion. A group is a clique; pairs are
   processed closest-first; ids break ties so runs are reproducible. `GrouperTests` locks this in.
-- **Thresholds are in bits out of 272** and are *not* comparable to czkawka's old
-  `--max-difference 10`. Defaults live in `DedupSettings`.
-- **Exact and Burst detection have no on/off switch.** Exact because a duplicate finder that
-  cannot find identical files is not one; Burst because a safety rule a checkbox can disable is not
-  one. Burst used to default to off, which did not leave bursts ungrouped — it left them grouped as
-  `Variant`, which *is* bulk-selectable, so the guard was inert as shipped. Only `VariantEnabled`
-  and the thresholds are settings.
+- **Thresholds are in bits out of 544** and are *not* comparable to czkawka's old
+  `--max-difference 10`, nor to the pre-v4 values out of 272. Defaults live in `DedupSettings`
+  (`VariantMaxBits` 40, `BurstMaxBits` 120 — the same proportions the 272-bit 20/60 were). Because
+  the *unit* changed, the two threshold keys in `meta` carry a `.b544` suffix so an upgraded
+  catalogue falls back to the new defaults instead of silently reading a 20 as twice as strict;
+  bumping `PhashRecipeVersion` clears `images.phash`, not `meta`.
+- **Exact detection has no on/off switch**, because a duplicate finder that cannot find identical
+  files is not one.
+- **`BurstEnabled` does have one, and it is a safety decision rather than a preference.** ⚠ Turning
+  it off does *not* leave bursts ungrouped: `VariantFinder` picks the frames up instead — pixel
+  distance cannot tell a burst frame from a re-encode — and `Variant` **is** bulk-selectable, so
+  "select extras" will sweep all but one frame of every burst. This setting existed before with the
+  default inverted, which made the protection inert as shipped; it is back **defaulted on**, with
+  the consequence stated at every surface that offers it (`SetupDialog`, Android `SettingsActivity`,
+  `HelpDialog`'s FAQ) and with `DedupTests.Disabling_burst_detection_makes_burst_frames_bulk_selectable`
+  asserting the dangerous direction on purpose. **Do not soften the default or the warnings, and do
+  not "fix" that test into passing** — if it fails, ask whether someone meant to change what the
+  setting does. Switching it off must also clear `images.burst_adjacent` for the root
+  (`BurstFinder.ClearProtection`), or stale protection outlives the setting; `CoveredKinds` must omit
+  `Burst` when it is off, or re-enabling looks like a no-op on every folder already checked.
 - **The kinds overlap, so `GroupReconciler` enforces one group per relationship** after the
   detectors run, dropping any group whose members are all covered by a stronger one. Precedence is
   **Exact → Burst → Variant**. Burst beating Variant is the safety-critical, non-obvious direction:
@@ -374,15 +440,17 @@ Full rationale in [docs/DEDUP-V2.md](docs/DEDUP-V2.md). The short version:
   only means anything against the settings that produced it and both must reset with `catalog.db`.
   (`settings.json` still exists for app-level prefs — `DependencyChecker.StoredSettings`.)
 - **Matching uses a pigeonhole band prefilter** (`VariantFinder.BandPrefilterPairs`), not brute
-  force. The original brute-force claim undersold its own cost — with rotations on, the five-word
-  `DistanceTo` loop runs once per rotation and rarely reaches 0 to trigger the early break, ~8×
-  worse than "one XOR and one PopCount" implied. Splitting the 272 bits into `VariantMaxBits + 1`
-  bands and indexing rotation 0 of every signature is **exact, not approximate**: two hashes within
-  threshold can differ in at most that many bands, so by pigeonhole at least one band must match
-  identically. Measured (M1, synthetic/uniform-random hashes — real libraries cluster and will skew
-  differently, see `docs/PERFORMANCE.md`): 6.5×/12×/20× at 20k/50k/100k. The brute-force sweep is
-  retained as a fallback for high thresholds (`VariantMaxBits` up to 60 collapses band width below
-  `VariantFinder.BandWidthFloor`) and as the reference path parity tests compare against.
+  force. The original brute-force claim undersold its own cost — with rotations on, the nine-word
+  `DistanceTo` loop runs once per rotation per direction and rarely reaches 0 to trigger the early
+  break, far worse than "one XOR and one PopCount" implied. Splitting the 544 bits into
+  `VariantMaxBits + 1` bands and indexing rotation 0 of every signature is **exact, not
+  approximate**: two hashes within threshold can differ in at most that many bands, so by pigeonhole
+  at least one band must match identically. Measured pre-v4 (M1, synthetic/uniform-random hashes —
+  real libraries cluster and will skew differently, see `docs/PERFORMANCE.md`): 6.5×/12×/20× at
+  20k/50k/100k; not re-measured since the signature doubled. The brute-force sweep is retained as a
+  fallback for high thresholds (`VariantMaxBits` above ~90 collapses band width below
+  `VariantFinder.BandWidthFloor`) and as the reference path parity tests compare against — which is
+  why it, too, must compute the symmetric distance.
 - **Not detected: crops and reframes.** No grid hash can find them. Documented and accepted in
   DEDUP-V2 §9, not an oversight.
 
@@ -414,7 +482,14 @@ Full rationale in [docs/DEDUP-V2.md](docs/DEDUP-V2.md). The short version:
    minimal `PATH` without `/usr/local/share/dotnet`, so `command -v dotnet` alone fails when
    launched by double-click even though it works from a terminal.
 
-10. **The app version has exactly one source: `<Version>` in `src/SnapZap.App/SnapZap.App.csproj`.**
+10. **The desktop app version has exactly one source: `<Version>` in
+    `src/SnapZap.App/SnapZap.App.csproj`.** ⚠ Since 1.3.0 the Android head is a *second* source and
+    cannot be folded into the first: Android requires both a `versionName` (what a person reads)
+    and a monotonic integer `versionCode` (which the platform compares to decide whether an APK is
+    an upgrade, and which must never go backwards). They live in
+    `src/SnapZap.Android/SnapZap.Android.csproj` as `ApplicationDisplayVersion` — keep it equal to
+    `<Version>` — and `ApplicationVersion` — increment on every release. The rule below is still
+    exactly true for the shipping desktop artifacts.
     Bump it there and nothing else — the Windows installer (`installer/SnapZap.iss`) reads it back
     out of the built `.exe` via `GetVersionNumbersString`, and `scripts/build-installer-mac.sh`
     greps it straight out of the csproj, so both installer filenames follow automatically. The
@@ -422,6 +497,35 @@ Full rationale in [docs/DEDUP-V2.md](docs/DEDUP-V2.md). The short version:
     script) — update them for freshness when you bump the version, but they're cosmetic, not a
     second source of truth. Add a matching entry to [`CHANGELOG.md`](CHANGELOG.md) in the same
     change — it has no automation behind it and goes stale the moment a version bump skips it.
+
+11. **Three Android namespaces shadow types this codebase uses constantly.** `Android.Graphics.Path`
+    over `System.IO.Path`; `Android.OS.OperationCanceledException` over the `System.` one (so any
+    `catch` for cancellation in a file that `using`s `Android.OS` must spell out `System.`); and
+    `Android.Content.Res.Orientation` over `Android.Widget.Orientation`, which every `LinearLayout`
+    here uses — so `Design.cs` does *not* import `Android.Content.Res` and qualifies
+    `ColorStateList` inline instead. One qualified name beats ten ambiguity errors.
+
+12. **`DirectoryRoots.DefaultStart` is where a scan starts, not how far a browser may walk up.**
+    They were the same value until it learned to prefer `DCIM/Camera`; `DirectoryPickerActivity` was
+    using it as its ceiling and instantly lost the ability to navigate above DCIM. That activity
+    pins itself to `AndroidPrimaryStorage` for exactly this reason — don't re-couple them.
+
+13. **Android screens read photos through `AndroidCatalog.ScopedImages`, never `Images.All()`.**
+    The catalogue keeps every folder ever scanned as cache, so an unscoped read puts a previous
+    folder's photos back in the grid *and* inside the reach of "Select all" → Delete — the exact
+    hazard `AppState.LoadAsync` documents on the desktop. Pair it with the reload in
+    `MainActivity.OnResume`: scoping alone still leaves a stale list when another activity changes
+    the catalogue.
+
+14. **A restore is not finished until the folder is re-scanned.** `RecycleAsync` drops the catalogue
+    row along with the file, so `RestoreAsync` alone returns a photo that the app cannot see. Every
+    restore path goes through `AndroidCatalog.RescanAfterRestoreAsync`, mirroring the desktop's
+    `RestoreAndReloadAsync`.
+
+15. **Android's Library grid must not be rebuilt on a selection change.** `SelectionChanged` updates
+    the count and repaints tiles; `SelectionModeChanged` swaps the header and action-bar slots. A
+    full `Render()` throws away the grid's scroll position on every tap *and* destroys the view the
+    hold-and-drag range gesture's touch stream belongs to.
 
 ---
 

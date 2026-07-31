@@ -107,13 +107,14 @@
         }
     }
 
-    static string DefaultStart() => Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+    // Where to start browsing and which quick-jump roots to offer are platform-specific
+    // (Windows drive letters vs. a Unix-ish home+root vs. Android's single shared-storage
+    // mount) and testable independently of this component via SnapZap.Core.Platform.
+    // DirectoryRoots (@using'd from _Imports.razor) — see that type for why the seam exists
+    // and why it lives in Core.
+    static string DefaultStart() => DirectoryRoots.DefaultStart(DirectoryRoots.CurrentPlatform);
 
-    /// <summary>Quick-jump buttons: every drive on Windows, home + filesystem root elsewhere —
-    /// there's no single "root" on Windows and no drive letters to enumerate everywhere else.</summary>
-    static IReadOnlyList<string> Roots() => OperatingSystem.IsWindows()
-        ? DriveInfo.GetDrives().Where(d => d.IsReady).Select(d => d.RootDirectory.FullName).ToList()
-        : [Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "/"];
+    static IReadOnlyList<string> Roots() => DirectoryRoots.Roots(DirectoryRoots.CurrentPlatform);
 
     string RootLabel(string root) => root == "/" ? L["RootDirectoryLabel"] : root.TrimEnd('\\', '/');
 

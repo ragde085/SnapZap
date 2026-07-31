@@ -1,5 +1,10 @@
 # Blazor Server Migration Plan
 
+> **Historical record.** This documents the SPA → Blazor Server migration as it was carried
+> out. Component names here are accurate *as of that migration* and several no longer exist —
+> `Toolbar.razor` and `Sidebar.razor` in particular were later absorbed into `Rail.razor` and
+> `Home.razor`. For the current component map see CLAUDE.md's "Key subdirectories in `App/`".
+
 > **Status: completed 2026-07-25.** All seven steps below were executed and verified in a
 > browser. Kept as the record of intent and rationale. Three things ended up differing from
 > the plan — read these before trusting the detail further down:

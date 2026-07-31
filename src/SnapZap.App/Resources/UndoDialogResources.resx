@@ -12,8 +12,8 @@
   <data name="ColumnWhatHappened" xml:space="preserve"><value>What happened</value></data>
   <data name="ColumnPhotos" xml:space="preserve"><value>Photos</value></data>
   <data name="BatchTimestamp" xml:space="preserve"><value>{0:MMM d, yyyy} at {0:h:mm tt}</value></data>
-  <data name="WhatMoved" xml:space="preserve"><value>Moved out by export</value></data>
-  <data name="WhatExportRecycled" xml:space="preserve"><value>Recycled during export — the photos you didn't pick</value></data>
+  <data name="WhatMoved" xml:space="preserve"><value>Moved out of the source folder</value></data>
+  <data name="WhatExportRecycled" xml:space="preserve"><value>Recycled during a move — the photos you didn't pick</value></data>
   <data name="WhatSelectionDeleted" xml:space="preserve"><value>Deleted — recycled from a selection</value></data>
   <data name="SubRelocated" xml:space="preserve"><value>Relocated, not binned</value></data>
   <data name="SubEmptied" xml:space="preserve"><value>Emptied from the bin since</value></data>
@@ -26,4 +26,18 @@
   <data name="ButtonRestoreThisPhoto" xml:space="preserve"><value>Restore {0}</value></data>
   <data name="RightClickHint" xml:space="preserve"><value>You can also restore from the Recycle Bin's own right-click menu.</value></data>
   <data name="CloseButton" xml:space="preserve"><value>Close</value></data>
+  <data name="ButtonRemoveBatch" xml:space="preserve"><value>Remove</value></data>
+  <data name="ConfirmRemoveTitle" xml:space="preserve"><value>Remove permanently?</value></data>
+  <data name="ConfirmRemoveBodyPending" xml:space="preserve"><value>{0} photo(s) will be deleted for good and cannot be restored.</value></data>
+  <data name="ConfirmRemoveBodyRestored" xml:space="preserve"><value>These were already restored, so only the history entries are removed. The photos themselves stay where they are.</value></data>
+  <data name="ButtonRemoveConfirm" xml:space="preserve"><value>Delete permanently</value></data>
+  <data name="ButtonRemoveEntries" xml:space="preserve"><value>Remove entries</value></data>
+  <data name="ButtonCancel" xml:space="preserve"><value>Cancel</value></data>
+  <data name="ThumbUnavailableTitle" xml:space="preserve"><value>No preview — this photo was deleted before SnapZap started recording thumbnails for history.</value></data>
+  <data name="ShowMoreTitle" xml:space="preserve">
+    <value>Show more of this batch, so you can restore individual photos</value>
+  </data>
+  <data name="ShowFewer" xml:space="preserve">
+    <value>Show fewer</value>
+  </data>
 </root>

@@ -264,9 +264,11 @@ public sealed class DependencyChecker
             new DependencyInfo
             {
                 Id = "nsfw-model",
-                Name = "NSFW scoring",
-                Unlocks = "Scores every photo so you can filter explicit images.",
-                WithoutIt = "Every other filter — duplicates, blur, date, folder — is unaffected.",
+                // Resource keys, not sentences: these render inside a localised component, and
+                // hardcoding English here leaked verbatim into the Spanish Setup panel.
+                Name = "DepNsfwName",
+                Unlocks = "DepNsfwUnlocks",
+                WithoutIt = "DepNsfwWithoutIt",
                 Found = modelFound,
                 FoundAt = modelFound ? modelPath : null,
                 FileName = "nsfw.onnx",

@@ -31,7 +31,7 @@ public sealed class BurstFinder(Database db)
         repo.ClearKind(DupeKind.Burst, root);
 
         var usable = images
-            .Where(i => !i.Hash.IsEmpty && i.TakenUtc is not null)
+            .Where(i => !i.Hash.IsUnusable && i.TakenUtc is not null)
             .OrderBy(i => i.Camera ?? "", StringComparer.Ordinal)
             .ThenBy(i => i.TakenUtc!.Value)
             .ThenBy(i => i.Id)
@@ -69,7 +69,87 @@ public sealed class BurstFinder(Database db)
         StoreGroups.Write(db, DupeKind.Burst, $"within {window}s",
                           result.Groups, byId, KeeperRule.Sharpest);
 
+        // Protect every photo that took part in a burst *relationship*, which is a strictly wider
+        // set than the members of the burst *groups* above.
+        //
+        // Grouping is complete linkage: a group is a clique, so a frame that is close to its
+        // neighbour but too far from the far end of the run is correctly excluded. It is still a
+        // burst frame. Having been excluded, the only detector left describing it is Variant —
+        // which IS bulk-selectable — so it became eligible for deletion. Measured on a five-frame
+        // fixture: the clique covered four frames, a superset Variant group covered all five, and
+        // the fifth frame was offered for removal.
+        //
+        // The fix deliberately does NOT widen grouping. Single linkage here would chain a
+        // continuous half-hour of shooting into one "burst" through overlapping time windows —
+        // see Within's remarks, which is the same non-transitivity the grouper exists to solve.
+        // Instead the groups stay exactly as they were and the *protection* widens, which errs the
+        // safe way: the worst case is a photo that must be reviewed individually rather than
+        // selected in bulk.
+        MarkBurstAdjacent(pairs.SelectMany(p => new[] { p.A, p.B }).ToHashSet(), root);
+
         return new DetectorResult(result.Groups.Count, result.Truncated);
+    }
+
+    /// <summary>
+    /// Drops this root's burst protection without running detection — what
+    /// <c>DedupSettings.BurstEnabled = false</c> needs.
+    /// </summary>
+    /// <remarks>
+    /// <para>Skipping <see cref="FindAndStore"/> is not enough on its own. <c>images.burst_adjacent</c>
+    /// is written by a previous run and persists in the catalogue, so a folder that once earned
+    /// protection keeps it forever — the frames would stay unselectable with the setting off and
+    /// nothing on screen explaining why, which is the mirror image of the bug the flag was added to
+    /// fix.</para>
+    ///
+    /// <para>Deliberately routed through <see cref="MarkBurstAdjacent"/> with an empty set rather
+    /// than issuing its own UPDATE, so the root-scoping rule that method documents at length lives
+    /// in exactly one place. An unscoped clear here would wipe every other folder's protection.</para>
+    /// </remarks>
+    public void ClearProtection(string? root) => MarkBurstAdjacent([], root);
+
+    /// <summary>
+    /// Records the burst-adjacent set for this root. Cleared first, for the same reason
+    /// <c>ClearKind</c> is: a rerun under different settings must not leave yesterday's protection
+    /// behind, or a photo stays unselectable forever with nothing on screen explaining why.
+    /// </summary>
+    /// <remarks>
+    /// ⚠ <b>The clear is scoped to <paramref name="root"/>, and that is not cosmetic.</b> One
+    /// catalogue outlives every folder ever scanned, and detection always runs against a single
+    /// folder, so an unscoped clear wipes the protection every *other* folder earned each time a
+    /// new one is scanned — silently re-opening the superset-Variant hole this flag exists to
+    /// close (docs/ROADMAP.md, defect B). Scan folder A, then folder B, and A's burst frames
+    /// quietly become bulk-selectable again.
+    ///
+    /// Same convention as <see cref="DupeRepository.ClearKind"/> and
+    /// <c>ImageRepository.MarkDupeChecked</c>, both of which scope their writes for this reason.
+    /// Pinned by <c>DedupTests.Detecting_in_one_folder_keeps_another_folders_burst_protection</c>.
+    /// </remarks>
+    void MarkBurstAdjacent(IReadOnlyCollection<long> imageIds, string? root)
+    {
+        lock (db.WriteLock)
+        {
+            using var tx = db.Writer.BeginTransaction();
+
+            using (var clear = db.Writer.CreateCommand())
+            {
+                clear.Transaction = tx;
+                clear.CommandText =
+                    $"UPDATE images SET burst_adjacent = 0 WHERE burst_adjacent = 1 AND {PathScope.Where(root)}";
+                PathScope.Bind(clear, root);
+                clear.ExecuteNonQuery();
+            }
+
+            if (imageIds.Count > 0)
+            {
+                using var set = db.Writer.CreateCommand();
+                set.Transaction = tx;
+                set.CommandText = "UPDATE images SET burst_adjacent = 1 WHERE id = $id";
+                var p = set.Parameters.Add("$id", Microsoft.Data.Sqlite.SqliteType.Integer);
+                foreach (var id in imageIds) { p.Value = id; set.ExecuteNonQuery(); }
+            }
+
+            tx.Commit();
+        }
     }
 
     /// <summary>

@@ -61,3 +61,9 @@ nunit-*.xml
 # silently corrupt scores with, and its committed bytes are what the installer writes.
 models/*.onnx
 /tools/
+
+# JetBrains IDE settings
+.idea/
+
+# Agent worktrees (git worktrees, not content)
+.claude/worktrees/

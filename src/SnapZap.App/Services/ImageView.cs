@@ -5,7 +5,16 @@ using SnapZap.Core.Nsfw;
 namespace SnapZap.App.Services;
 
 /// <summary>Resolved duplicate-group membership for one image (mirrors the JS `dupeOf` map entry).</summary>
-public sealed record DupeInfo(long GroupId, DupeKind Kind, bool IsKeeper);
+/// <param name="BurstAdjacent">
+/// Carried from <c>DupeAssignment</c> so the UI's selectability question is answered by Core's
+/// single predicate. Kind alone is not sufficient — see <c>DupeAssignment.IsBulkSelectableExtra</c>.
+/// </param>
+public sealed record DupeInfo(long GroupId, DupeKind Kind, bool IsKeeper, bool BurstAdjacent = false)
+{
+    /// <summary>Delegates to Core so desktop and Android cannot drift on a delete decision.</summary>
+    public bool IsBulkSelectableExtra =>
+        new SnapZap.Core.Dedup.DupeAssignment(GroupId, Kind, IsKeeper, BurstAdjacent).IsBulkSelectableExtra;
+}
 
 /// <summary>An <see cref="ImageRecord"/> plus the view-only fields components need: thumb/full
 /// URLs, resolved dupe info, and folder/year computed from the path/EXIF.</summary>

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <!-- Sampled from the source art's own outer ring, so the circular mask continues the artwork
+       rather than setting it on an unrelated plate. Regenerate with the icon, not by hand. -->
+  <color name="appicon_background">#1f587b</color>
+</resources>

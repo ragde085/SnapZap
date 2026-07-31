@@ -774,15 +774,38 @@ main { display: flex; flex: 1; min-height: 0; }
   cursor: pointer;
   aspect-ratio: 1;
   user-select: none;
-  transition: opacity var(--dur) var(--ease);
 }
-.card img { width: 100%; height: 100%; object-fit: cover; display: block; }
-
-.grid.has-selection .card:not(.selected) { opacity: 0.4; }
-.grid.has-selection .card:not(.selected):hover { opacity: 0.75; }
+.card img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform var(--dur) var(--ease); }
 
 .card:focus-visible { outline: 2px solid var(--color-accent); outline-offset: -2px; }
-.card.selected { outline: 2px solid var(--color-accent); outline-offset: -2px; }
+
+/* Selection is stated by the selected card alone — accent frame plus a checkmark, the phone
+   photo-picker convention — never by dimming the rest. Fading every unselected card to 40%
+   made picking three photos out of a folder look like the folder had been emptied, and it
+   dimmed exactly what the grid is for: judging the photos you have not decided about yet.
+   The frame is the card's own background showing through around a scaled-down thumbnail, so
+   it costs no layout and cannot clip the badges. */
+.card.selected { outline: 2px solid var(--color-accent); outline-offset: -2px; background: var(--color-accent); }
+.card.selected img { transform: scale(0.9); }
+
+.card-check {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--color-accent);
+  color: var(--color-bg);
+  box-shadow: 0 0 0 1.5px var(--color-bg);
+}
+.card-check svg { width: 11px; height: 11px; fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+
+@media (prefers-reduced-motion: reduce) {
+  .card img { transition: none; }
+}
 
 .badges { position: absolute; bottom: 6px; left: 6px; display: flex; gap: 4px; }
 .badge {
@@ -843,6 +866,11 @@ main { display: flex; flex: 1; min-height: 0; }
   flex-direction: column;
   gap: 11px;
 }
+/* Bounded like .selbar .confirm already is. Unbounded inside a table cell it widened the
+   column and pushed the dialog past its own edge, clipping the warning text and shifting Cancel
+   out of view — on one of only two irreversible actions in the app, which is the worst place to
+   make someone hunt for the way out. */
+.dlg .confirm, td .confirm { max-width: min(380px, calc(100vw - 48px)); }
 .confirm p { margin: 0; font-size: var(--t-sm); line-height: 1.45; }
 .confirm p b { color: var(--color-danger); }
 .confirm .row { display: flex; gap: 8px; }
@@ -961,7 +989,13 @@ main { display: flex; flex: 1; min-height: 0; }
 .history-sub { font-size: 11px; color: var(--color-neutral-700); margin-top: 3px; }
 .history-hint { font-size: var(--t-xs); color: var(--color-neutral-700); margin-top: 14px; }
 
-.undo-thumbs { display: flex; align-items: center; gap: 4px; margin-top: var(--space-2); }
+.undo-thumbs {
+  display: flex; align-items: center; gap: 4px; margin-top: var(--space-2);
+  /* Wraps and scrolls because the strip is no longer capped at eight: a revealed batch can be
+     hundreds of thumbnails, and a single non-wrapping row would push the table's other columns
+     off screen. */
+  flex-wrap: wrap; max-height: 172px; overflow-y: auto; overflow-anchor: none;
+}
 .undo-thumb-wrap { position: relative; width: 36px; height: 36px; flex: none; }
 .undo-thumb {
   width: 36px; height: 36px; border-radius: 4px; object-fit: cover;
@@ -969,8 +1003,14 @@ main { display: flex; flex: 1; min-height: 0; }
 }
 .undo-thumb.restored { opacity: 0.45; }
 .undo-thumb-more {
-  font-size: 11px; color: var(--color-neutral-700); flex: none; padding: 0 2px;
+  /* Now a <button>, not a <span> — it reveals the rest of the batch. Styled to still read as the
+     quiet counter it was, but with the affordances a control owes: pointer, hover, focus ring. */
+  all: unset; box-sizing: border-box;
+  font-size: 11px; color: var(--color-neutral-700); flex: none;
+  padding: 2px 6px; cursor: pointer; border: 1px solid var(--color-divider); border-radius: 4px;
 }
+.undo-thumb-more:hover { color: var(--color-text); border-color: var(--color-text); }
+.undo-thumb-more:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
 
 /* Restore a single photo, revealed on hover/focus of its thumbnail rather than always shown —
    the strip is a preview first, the primary action stays the per-batch Restore button. */
@@ -985,6 +1025,15 @@ main { display: flex; flex: 1; min-height: 0; }
 .undo-thumb-restore svg { width: 16px; height: 16px; stroke: white; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .undo-thumb-restore:disabled { cursor: default; }
 .undo-thumb-restore span { color: white; font-size: 16px; line-height: 1; }
+
+/* A history entry whose thumbnail can never be resolved: deleted before content_hash was
+   recorded, and the images row is gone, so the hash is unrecoverable. Shown rather than skipped
+   so the strip does not silently come up empty and read as a broken screen. */
+.undo-thumb-missing {
+  display: flex; align-items: center; justify-content: center;
+  background: var(--color-surface); color: var(--color-neutral-700);
+  font-size: 13px; line-height: 1; user-select: none;
+}
 
 /* ---------- duplicate review ---------- */
 
@@ -1058,8 +1107,13 @@ main { display: flex; flex: 1; min-height: 0; }
 .cmp-pane.fit img { max-width: 100%; max-height: 100%; object-fit: contain; }
 .cmp-pane img { display: block; }
 .cmp-meta { flex: none; display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-top: 2px solid var(--color-divider); background: var(--color-bg); font-size: var(--t-xs); }
+/* The name column needs an explicit basis and min-width. `overflow:hidden` resolves a flex
+   item's automatic minimum size to 0, so the filename lost the space race against the sibling
+   span and the fixed-width buttons and rendered 1-3 characters wide in a 400px bar. */
+.cmp-names { flex: 1 1 45%; min-width: 140px; display: flex; flex-direction: column; gap: 1px; overflow: hidden; }
 .cmp-meta b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cmp-meta span { flex: 1; color: var(--color-neutral-700); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cmp-folder { color: var(--color-neutral-700); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }
+.cmp-meta > span { flex: 0 1 auto; color: var(--color-neutral-700); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .cmp-hint { flex: none; margin: 0; padding: 7px 16px; font-size: var(--t-xs); color: var(--color-neutral-700); background: var(--color-bg); border-top: 1px solid var(--color-divider); }
 
 @media (max-width: 800px) {

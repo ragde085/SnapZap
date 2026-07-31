@@ -482,6 +482,27 @@ public sealed class ImageRepository(Database db)
     public IEnumerable<ImageRecord> All() => Query(null);
 
     /// <summary>
+    /// Photos that took part in a burst relationship — same camera, inside the EXIF window,
+    /// visually close — whether or not complete linkage admitted them to a burst <em>group</em>.
+    /// </summary>
+    /// <remarks>
+    /// <b>Read this alongside the group kind when deciding bulk-selectability, never instead of
+    /// it.</b> A burst frame excluded from the clique is described only as a Variant, and Variant
+    /// is bulk-selectable — so kind alone lets exactly the photos the burst guard exists to
+    /// protect through. Set by <c>BurstFinder</c>; see its remarks for why the fix widens
+    /// protection rather than widening grouping.
+    /// </remarks>
+    public HashSet<long> BurstAdjacentIds()
+    {
+        var ids = new HashSet<long>();
+        using var cmd = db.Writer.CreateCommand();
+        cmd.CommandText = "SELECT id FROM images WHERE burst_adjacent = 1";
+        using var r = cmd.ExecuteReader();
+        while (r.Read()) ids.Add(r.GetInt64(0));
+        return ids;
+    }
+
+    /// <summary>
     /// Images inside <paramref name="root"/>, or all of them when it is null or empty.
     /// </summary>
     /// <remarks>Uses <see cref="PathScope"/>, the same predicate the scoped work queries use,

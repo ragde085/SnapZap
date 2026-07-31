@@ -134,6 +134,86 @@ public sealed class DeleteService(Database db, ITrashService trash)
         return row is { } item && await RestoreRowAsync(item, ct);
     }
 
+    /// <summary>
+    /// Permanently removes one photo from the trash and drops its history entry.
+    /// </summary>
+    /// <remarks>
+    /// <para>⚠ <b>Irreversible, and one of only two places in SnapZap that is.</b> Callers must
+    /// confirm with the user first — the other is <c>FolderTrashService.Empty</c>.</para>
+    ///
+    /// <para><b>Why it purges the file rather than only forgetting the record.</b>
+    /// <c>undo_log.new_location</c> is the only pointer SnapZap keeps to a trashed file. Dropping
+    /// the row on its own would strand the file in the trash permanently: still consuming the
+    /// user's storage, no longer restorable, and no longer visible anywhere in the app. "Remove
+    /// from trash" that silently leaves the bytes behind is a worse outcome than either honest
+    /// alternative, so the record and the file go together.</para>
+    ///
+    /// <para>Already-restored rows are history, not trash — the file is back where it belongs, so
+    /// only the record is dropped and nothing is deleted.</para>
+    /// </remarks>
+    /// <returns>True when a row was removed.</returns>
+    public bool ForgetItem(long undoLogId)
+    {
+        string? loc = null; bool restored = false, found = false;
+        using (var c = db.OpenRead())
+        using (var cmd = c.CreateCommand())
+        {
+            cmd.CommandText = "SELECT new_location, restored FROM undo_log WHERE id=$id";
+            cmd.Parameters.AddWithValue("$id", undoLogId);
+            using var r = cmd.ExecuteReader();
+            if (r.Read())
+            {
+                found = true;
+                loc = r.IsDBNull(0) ? null : r.GetString(0);
+                restored = r.GetInt32(1) != 0;
+            }
+        }
+        if (!found) return false;
+
+        // Restored rows point at the user's own file, back in their library. Deleting that would
+        // turn "remove this history entry" into "delete the photo I already got back".
+        if (!restored && loc is not null)
+        {
+            try { if (File.Exists(loc)) File.Delete(loc); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // Leave the row in place if the file could not be removed, so the entry still
+                // reflects a file that is really there. Reporting success here would hide bytes.
+                return false;
+            }
+        }
+
+        lock (db.WriteLock)
+        {
+            using var del = db.Writer.CreateCommand();
+            del.CommandText = "DELETE FROM undo_log WHERE id=$id";
+            del.Parameters.AddWithValue("$id", undoLogId);
+            return del.ExecuteNonQuery() > 0;
+        }
+    }
+
+    /// <summary>
+    /// <see cref="ForgetItem"/> for every entry in a batch. Returns how many were removed.
+    /// </summary>
+    /// <remarks>Best-effort per row: one file that will not delete does not abandon the rest,
+    /// and its row survives so the trash never under-reports what it is holding.</remarks>
+    public int ForgetBatch(string batchId)
+    {
+        var ids = new List<long>();
+        using (var c = db.OpenRead())
+        using (var cmd = c.CreateCommand())
+        {
+            cmd.CommandText = "SELECT id FROM undo_log WHERE batch_id=$b";
+            cmd.Parameters.AddWithValue("$b", batchId);
+            using var r = cmd.ExecuteReader();
+            while (r.Read()) ids.Add(r.GetInt64(0));
+        }
+
+        int removed = 0;
+        foreach (var id in ids) if (ForgetItem(id)) removed++;
+        return removed;
+    }
+
     /// <summary>Shared by both <see cref="RestoreAsync"/> and <see cref="RestoreItemAsync"/>: puts
     /// one logged file back and marks it restored, or reports it missing.</summary>
     async Task<bool> RestoreRowAsync((long id, string op, string original, string? loc) row, CancellationToken ct)

@@ -46,14 +46,35 @@
                                  style="width:@(m.Width is { } w ? w * _zoom / 100 : 0)px" />
                         }
                     </div>
+                    @* The folder is here because it is often the only thing that differs. When two
+                       copies are byte-identical the distinguisher becomes "choose by location", and
+                       the compare view was showing filename, dimensions and size — everything
+                       except the one fact it was asking the user to decide on. *@
                     <div class="cmp-meta">
-                        <b>@m.FileName</b>
+                        <div class="cmp-names">
+                            <b title="@m.Path">@m.FileName</b>
+                            <span class="cmp-folder" title="@m.Path">@m.Folder</span>
+                        </div>
                         <span>@m.Dimensions · @m.SizeLabel</span>
                         <button class="btn @(isKeeper ? "btn-primary" : "btn-secondary")"
                                 disabled="@(isKeeper && KeeperCountInGroup <= 1)"
                                 title="@(isKeeper && KeeperCountInGroup <= 1 ? L["KeepAtLeastOneHint"] : null)"
                                 @onclick="() => ToggleKeeper(m.Id)">
                             @(isKeeper ? L["KeepingThisButton"] : L["KeepThisButton"])
+                        </button>
+                        @* Delete straight from the comparison. Judging two copies side by side is
+                           exactly the moment the decision is obvious, and making the user close
+                           the compare view, find the photo in the grid and select it there loses
+                           the comparison that produced the decision.
+
+                           A keeper can never be deleted from here: the group would be left with
+                           nothing, and "delete the one I just said to keep" is not a thing anyone
+                           means. Mark another copy as the keeper first. *@
+                        <button class="btn btn-danger"
+                                disabled="@isKeeper"
+                                title="@(isKeeper ? L["CannotDeleteKeeperHint"] : L["DeleteThisTitle"])"
+                                @onclick="() => DeleteOne(m.Id)">
+                            @L["DeleteThisButton"]
                         </button>
                     </div>
                 </div>
@@ -176,7 +197,20 @@
     DupeGroup? _membersOf;
     IReadOnlyList<ImageView> _members = [];
 
-    int ExtraCount => AppState.DupeOf.Count(kv => !kv.Value.IsKeeper);
+    /// <summary>
+    /// What "Select the extra copies" will actually select — read through the same predicate the
+    /// selection itself uses, never counted independently.
+    /// </summary>
+    /// <remarks>
+    /// This counted <c>!IsKeeper</c> alone, with no kind filter and no burst-adjacency check, so it
+    /// disagreed with <see cref="AppState.DupeExtraCount"/> on the same catalogue at the same
+    /// moment: the panel said 11 extras, this button offered to select 17. The selection was never
+    /// unsafe — <c>SelectBy</c> filters properly and did select 11 — but a button that overstates
+    /// what it is about to sweep up, on the one control that arms a bulk delete, is exactly the
+    /// disagreement <c>DupeAssignment</c>'s own remarks warn about: "a badge, a filter and a count
+    /// that answer the question three separate ways is precisely how they start disagreeing."
+    /// </remarks>
+    int ExtraCount => AppState.DupeOf.Count(kv => kv.Value.IsBulkSelectableExtra);
 
     /// <summary>How many members of the group currently being reviewed are keepers — more than
     /// one is allowed, but toggling the last one off is refused (see ToggleKeeper), so the button
@@ -269,6 +303,26 @@
     void Next() { if (_index < Groups.Count - 1) _index++; }
 
     Task ToggleKeeper(long imageId) => AppState.ToggleKeeperAsync(Current.Id, imageId);
+
+    /// <summary>
+    /// Recycles one photo from inside the review. Goes through <see cref="AppState.DeleteAsync"/>
+    /// like every other delete in the app, so it recycles rather than hard-deletes, writes an
+    /// undo-log entry and is restorable from History — a direct action, not an unguarded one.
+    /// </summary>
+    async Task DeleteOne(long imageId)
+    {
+        // Guarded here as well as by the disabled attribute: the button's state is computed at
+        // render time, and a keeper flag can change under it (ToggleKeeper on another pane, or
+        // another circuit) between that render and the click.
+        if (AppState.DupeOf.TryGetValue(imageId, out var d) && d.IsKeeper) return;
+
+        await AppState.DeleteAsync([imageId]);
+
+        // The group may now be down to a single surviving copy, at which point it is no longer a
+        // duplicate of anything and Members will not include it — so re-evaluate rather than
+        // leaving the user on a comparison of one.
+        if (Groups.Count == 0 || _index >= Groups.Count) await Close();
+    }
 
     async Task SelectExtrasAndClose()
     {

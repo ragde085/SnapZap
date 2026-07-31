@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using SnapZap.Core.Data;
 using SnapZap.Core.Imaging;
 
@@ -15,11 +16,17 @@ public sealed record DuplicateReport(
 /// Progress for a detection run. <see cref="Detail"/> names the detector currently working.
 /// </summary>
 /// <remarks>
-/// Phase-level rather than a photo count. The exact pass is one SQL statement and the perceptual
-/// passes are a single parallel sweep with no meaningful midpoint, so a per-photo number would be
-/// invented. A bar that moves per detector with a changing label is the honest version — and still
-/// an enormous improvement on the indeterminate spinner that used to sit there for minutes while a
-/// deadlocked subprocess said nothing.
+/// <para>Phase-level for the detectors. The exact pass is one SQL statement and the perceptual
+/// passes are a single parallel sweep with no meaningful midpoint, so a per-photo number there
+/// would be invented. A bar that moves per detector with a changing label is the honest version —
+/// and still an enormous improvement on the indeterminate spinner that used to sit there for
+/// minutes while a deadlocked subprocess said nothing.</para>
+///
+/// <para><b>The signature backfill is the exception, and it has to be.</b> That phase decodes every
+/// photo it was given, so a <c>PhashRecipeVersion</c> bump routes the entire library through it —
+/// minutes of work behind a single tick, which reads as a hung app rather than a slow one. Its
+/// count is real rather than invented, so <see cref="Done"/> advances per photo through it and
+/// <see cref="Detail"/> carries "n of N". Everything after it is seconds by comparison.</para>
 /// </remarks>
 public sealed record DedupProgress(int Done, int Total, string? Detail);
 
@@ -44,6 +51,19 @@ public sealed class DuplicateService(Database db, SkiaImageService? imaging = nu
     /// exactly the same way a fresh scan would derive it.</summary>
     const int BackfillDecodeMaxEdge = 512;
 
+    /// <summary>
+    /// Floor on the gap between backfill progress reports.
+    /// </summary>
+    /// <remarks>
+    /// Time-based rather than every-Nth-photo, because the two heads sit at opposite ends of the
+    /// speed range and a fixed count misbehaves at both. On a desktop decoding 250 photos a second,
+    /// every-16th is 15 reports a second down a Blazor Server circuit; on a phone it is slower but
+    /// still fast enough that Android's <c>NotificationManager</c> starts rate-limiting posts to
+    /// the same id, at which point the readout stutters instead of updating. Ten a second is above
+    /// the threshold where a bar reads as smooth and below where either transport starts dropping.
+    /// </remarks>
+    const int ProgressIntervalMs = 100;
+
     public async Task<DuplicateReport> DetectAsync(
         string root, IProgress<DedupProgress>? progress = null, CancellationToken ct = default)
     {
@@ -56,44 +76,88 @@ public sealed class DuplicateService(Database db, SkiaImageService? imaging = nu
         // up any file whose own signal computation failed at scan time, independent of a recipe bump.
         var needingPhash = repo.NeedingPhash(root);
 
-        // One phase per enabled detector, plus the load, plus reconciliation, plus the backfill
-        // when there is one to do.
-        int total = 1 + 1 + 1 + 1 + (settings.VariantEnabled ? 1 : 0) + (needingPhash.Count > 0 ? 1 : 0);
+        // One phase per enabled detector, plus the load, plus reconciliation — and the backfill
+        // weighted by the photos in it rather than counted as one phase.
+        //
+        // That weighting is the difference between a bar that moves and a bar that looks hung. The
+        // backfill decodes every photo it lists, so when a recipe bump puts the whole library in it
+        // there is one tick covering minutes of work while every other phase takes seconds. Counted
+        // this way the number is real, not invented: the remaining phases genuinely are a rounding
+        // error next to it. With nothing to backfill this collapses to exactly the old phase count.
+        int backfillCount = needingPhash.Count;
+        int total = backfillCount
+                    + 1 + 1 + 1 + (settings.VariantEnabled ? 1 : 0) + (settings.BurstEnabled ? 1 : 0);
         int done = 0;
         void Step(string? label) => progress?.Report(new DedupProgress(done, total, label));
 
-        if (needingPhash.Count > 0)
+        if (backfillCount > 0)
         {
-            Step("Recomputing signatures");
-            await Task.Run(() =>
-            {
-                foreach (var (id, path, contentHash) in needingPhash)
+            Step($"Recomputing signatures (0 of {backfillCount:N0})");
+            int completed = 0;
+            var clock = Stopwatch.StartNew();
+            long lastReportMs = 0;
+
+            // Parallel, at the same width Scanner uses. This is the identical decode-per-photo
+            // workload the scan runs concurrently, and running it one at a time made a full-library
+            // recipe migration take minutes of wall clock on an otherwise idle machine.
+            await Parallel.ForEachAsync(
+                needingPhash,
+                new ParallelOptions
                 {
-                    ct.ThrowIfCancellationRequested();
+                    MaxDegreeOfParallelism = Math.Max(2, Environment.ProcessorCount - 1),
+                    CancellationToken = ct,
+                },
+                (item, token) =>
+                {
+                    token.ThrowIfCancellationRequested();
+                    var (id, path, contentHash) = item;
                     try
                     {
                         using var decoded = _imaging.DecodeScaled(path, BackfillDecodeMaxEdge);
-                        if (decoded is null) continue; // best-effort: leave phash NULL, same as a failed scan signal
-                        var g = SkiaImageService.GrayFrom(decoded, BackfillDecodeMaxEdge);
-                        var sig = PerceptualHash.FromGray(g.gray, g.w, g.h);
-                        if (!sig.IsEmpty) repo.SetPhash(id, sig.ToBytes());
-
-                        // Thumbnails are keyed by content hash, which does not change when
-                        // orientation handling does, so a stale (wrongly-rotated) cached JPEG would
-                        // never self-invalidate. This decode is already in hand, so regenerating it
-                        // here is free — riding the same lazy pass Task 13 built for the signature
-                        // (Task 16), rather than a separate eager pass over the whole cache.
-                        if (thumbDir is not null)
+                        // best-effort: leave phash NULL, same as a failed scan signal
+                        if (decoded is not null)
                         {
-                            var thumbPath = Path.Combine(thumbDir, contentHash[..2], contentHash + ".jpg");
-                            try { _imaging.WriteThumbnailFrom(decoded, thumbPath); }
-                            catch { /* best-effort, same as the scan's own thumbnail write */ }
+                            var g = SkiaImageService.GrayFrom(decoded, BackfillDecodeMaxEdge);
+                            var sig = PerceptualHash.FromGray(g.gray, g.w, g.h);
+                            if (!sig.IsEmpty) repo.SetPhash(id, sig.ToBytes());
+
+                            // Thumbnails are keyed by content hash, which does not change when
+                            // orientation handling does, so a stale (wrongly-rotated) cached JPEG
+                            // would never self-invalidate. This decode is already in hand, so
+                            // regenerating it here is free — riding the same lazy pass Task 13 built
+                            // for the signature (Task 16), rather than a separate eager pass over
+                            // the whole cache.
+                            if (thumbDir is not null)
+                            {
+                                var thumbPath = Path.Combine(thumbDir, contentHash[..2], contentHash + ".jpg");
+                                try { _imaging.WriteThumbnailFrom(decoded, thumbPath); }
+                                catch { /* best-effort, same as the scan's own thumbnail write */ }
+                            }
                         }
                     }
                     catch { /* best-effort, same as the scan's own signal computation */ }
-                }
-            }, ct);
-            done++;
+
+                    // Throttled to ProgressIntervalMs: a 40k-photo backfill posting 40k updates
+                    // would spend more time marshalling to the UI thread than decoding. The
+                    // compare-and-swap is what makes one thread per interval win the right to
+                    // report — without it every worker that happens to finish inside the same
+                    // millisecond posts, which is the flood this is here to prevent. The last photo
+                    // always reports, so the phase never ends short of its own total.
+                    int n = Interlocked.Increment(ref completed);
+                    long now = clock.ElapsedMilliseconds;
+                    long prev = Volatile.Read(ref lastReportMs);
+                    if (n == backfillCount ||
+                        (now - prev >= ProgressIntervalMs &&
+                         Interlocked.CompareExchange(ref lastReportMs, now, prev) == prev))
+                    {
+                        Volatile.Write(ref done, n);
+                        progress?.Report(new DedupProgress(
+                            n, total, $"Recomputing signatures ({n:N0} of {backfillCount:N0})"));
+                    }
+                    return default;
+                });
+
+            done = backfillCount;
         }
 
         Step("Reading signatures");
@@ -119,12 +183,27 @@ public sealed class DuplicateService(Database db, SkiaImageService? imaging = nu
             new DupeRepository(db).ClearKind(DupeKind.Variant, root);
         }
 
-        // Always. Burst membership is what withholds different photographs from a bulk delete, and
-        // capture time is the only evidence that identifies them — VariantFinder above cannot,
-        // because a burst frame and a re-encode are indistinguishable by pixels. See DedupSettings.
-        Step("Grouping bursts");
-        var burst = await Task.Run(() => new BurstFinder(db).FindAndStore(images, settings, root, ct), ct);
-        done++;
+        // Burst membership is what withholds different photographs from a bulk delete, and capture
+        // time is the only evidence that identifies them — VariantFinder above cannot, because a
+        // burst frame and a re-encode are indistinguishable by pixels. See DedupSettings.BurstEnabled
+        // for why this is switchable at all and what switching it off actually does.
+        var burst = DetectorResult.None;
+        if (settings.BurstEnabled)
+        {
+            Step("Grouping bursts");
+            burst = await Task.Run(() => new BurstFinder(db).FindAndStore(images, settings, root, ct), ct);
+            done++;
+        }
+        else
+        {
+            // Two clears, and both are required. The groups, so the review queue stops offering
+            // bursts it is no longer detecting — same reason the disabled Variant branch above
+            // clears its own. And the burst_adjacent column, because it was written by an earlier
+            // run and survives in the catalogue: without this, frames stay unselectable with the
+            // setting off and nothing on screen says why.
+            new DupeRepository(db).ClearKind(DupeKind.Burst, root);
+            new BurstFinder(db).ClearProtection(root);
+        }
 
         // The detectors above answer independently over one image set, and their thresholds are
         // nested, so the same photos can be written as two or three groups. Collapse those before

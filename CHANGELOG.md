@@ -1,8 +1,276 @@
 # Changelog
 
-All notable changes to SnapZap are recorded here, newest first. The version number lives in one
+All notable changes to SnapZap are recorded here, newest first. The desktop version lives in one
 place — `<Version>` in [`src/SnapZap.App/SnapZap.App.csproj`](src/SnapZap.App/SnapZap.App.csproj) —
 see [CLAUDE.md](CLAUDE.md)'s Gotchas for why that's the only place to bump it.
+
+Since 1.3.0 the Android head carries its own pair, because the platform requires both a
+`versionName` and a monotonic integer `versionCode`: `ApplicationDisplayVersion` (keep equal to
+`<Version>`) and `ApplicationVersion` in
+[`src/SnapZap.Android/SnapZap.Android.csproj`](src/SnapZap.Android/SnapZap.Android.csproj).
+
+`versionCode` is a build counter rather than a second version number, so it advances independently
+of the sections below — any APK that has to install over an earlier one needs a higher code, and it
+can never go backwards. 1.3.0 exists as code 2 and, after the UX-review work, as code 3; 1.3.1 is
+code 4, code 5 after the content-review progress bar and library-scope fix, and code 6 after the
+Review badge/Duplicates-step scoping fix.
+
+## 1.3.1 — 2026-07-31
+
+Two defects in duplicate detection, both found from a real six-photo "duplicate" group that
+contained four desktop wallpapers and two unrelated sunset photographs.
+
+### Fixed
+
+- **Photos that merely share a left-to-right brightness pattern are no longer called duplicates.**
+  The perceptual signature encoded only horizontal comparisons between neighbouring cells, which
+  meant a photo's entire fingerprint was its left-to-right luminance profile. Any image that
+  brightens toward the middle of the frame and darkens after produced the same bits as any other,
+  whatever was actually in it — so a grey wallpaper with a centre glow and a photograph of the sun
+  over the sea were indistinguishable. Measured on a 2,218-photo library, six such images sat 0–16
+  bits apart against a threshold of 20. The signature now encodes vertical comparisons as well
+  (272 → 544 bits); those pairs move to 41–87 bits, while genuine resizes, re-encodes and rotations
+  stay together.
+
+- **Duplicate groups are once again guaranteed to be groups of mutually-similar photos.** Comparing
+  two signatures gave a different answer depending on which one was named first — 69% of sampled
+  library pairs disagreed, the worst by 247 of 272 bits. Because grouping checks pairs in whichever
+  order it happens to reach them, its "every member matches every other member" rule was only ever
+  enforced in one direction. The same library had a seven-member group whose furthest pair was 259
+  bits apart, mixing a wallpaper and five unrelated photos, with one of them nominated as the copy
+  to keep. Comparison is now symmetric by construction.
+
+- **Blank frames no longer match each other.** A frame of one flat colour produced an empty
+  signature, making a solid black image and a solid white image identical to the matcher. Such
+  signatures now match nothing.
+
+- **Same-shot matching no longer misses pairs that only matched "the other way round."** The
+  candidate index for the fast matching path was consulted in one direction only, so a minority of
+  genuine matches were never even considered.
+
+- **"Recomputing signatures" no longer looks like a hung app.** That step decodes every photo it
+  lists, so a signature change routes the whole library through it — and it reported itself as a
+  single tick on the progress bar, leaving the bar motionless for minutes with no indication
+  anything was happening. It now counts photos: the bar advances through the phase and the label
+  reads "Recomputing signatures (1,204 of 2,185)".
+
+- **"Recomputing signatures" runs on all cores.** It was the one decode-per-photo pass in the app
+  still running one photo at a time, while the scan doing identical work has always been parallel.
+  Measured on a real 1,988-photo library: **48.7s → 7.5s**, the latter covering the whole detection
+  run rather than just the backfill.
+
+### Changed
+
+- **Every photo's visual signature is recomputed once, on the first duplicate scan after
+  upgrading.** Nothing needs re-scanning and no files are touched; the catalogue is backed up
+  automatically before the change, as it is for any signature change. Expect the first "Find
+  duplicates" run after updating to take noticeably longer than usual.
+- **The same-shot strictness slider now runs 8–120 instead of 4–60**, and its default is 40 instead
+  of 20, because the signature it measures is twice as wide. This is the same strictness as before,
+  expressed against the larger number — a previously-saved value resets to the new default rather
+  than being silently reinterpreted as twice as strict.
+
+## 1.3.1 — 2026-07-30
+
+Content review works on Android, and so does moving photos to a folder — the two things the
+plan listed and the phone could not do.
+
+### Added — Android
+
+- **Content review.** The scoring model is downloaded once, from an address pinned to an exact
+  revision and rejected unless it matches a known checksum. Scoring runs on the device: this is the
+  only network call SnapZap makes, it goes one way, and nothing derived from your photos is ever
+  sent. Expect roughly three seconds per photo, so it is offered per folder — scoped to what is in
+  view, and refused above 2,000 photos rather than left to run past the point Android stops
+  background work. The Filters sheet's two content facets are live once anything in view is scored.
+- **Move to a folder**, the last step the plan listed as desktop-only. Destination picker,
+  by-date/mirror/flat structure, a free-space check that has to pass before the action arms, and the
+  same "remove the originals?" confirmation the desktop asks — with removal happening only after
+  every file is verified. Picking a destination inside the folder being cleaned is refused, since
+  the copies would return as duplicates of their own originals.
+- **Skip hidden folders**, on by default, so `.thumbnails` and friends stop being scanned as photos.
+- **Run self-test** in Settings, which reports how long scoring actually takes on your device.
+
+### Changed
+
+- Burst grouping can be switched off, on both heads. It stays on by default and both screens say
+  what turning it off means — burst frames become bulk-selectable, they do not become ungrouped.
+- **"Export" is now "Move to a folder"** everywhere, and the Copy/Move/Hardlink picker is gone: one
+  action, with the originals question asked as a confirmation at commit time.
+- Every photo in a delete batch can be restored on its own; only the first eight were reachable.
+- The scoring confirmation leads with the time it will take, which on a phone is the whole decision.
+
+### Fixed
+
+- The self-test's SQLite check failed on every run after the first — it deleted and reused one
+  filename while a pooled connection still held it open.
+- Nothing in the app is a disabled control standing in for a missing feature any more.
+- **Content review scoring now shows its own progress in the app**, not just in the persistent
+  notification. The Content review step gets a live count and progress bar while it runs, the
+  same read-out the notification already had, instead of leaving the button's text change from
+  "Score" to "Scoring…" as the only sign anything was happening.
+- **The library could show photos from a folder you had moved on from.** Finishing a scoring pass
+  reloaded the library through `Images.All()` instead of `AndroidCatalog.ScopedImages`, so every
+  photo the catalogue had ever seen — not just the current scan root's — came back into the grid
+  until something else forced a properly scoped reload.
+- **The Review tab's badge and the Duplicates step could disagree with the library's own "extras
+  waiting" banner right below them.** Both read `DupeRepository.Groups()` unscoped, across every
+  folder ever catalogued, while the banner was already scoped to the active folder — caught on
+  device scanning two folders in one session, where the badge read 9 against a banner that said 1.
+
+## 1.3.0 — 2026-07-29
+
+The Android port, and a QA round that found real defects in the desktop app too — followed by a
+senior UX review of the Android app ([docs/ANDROID-UX-REVIEW.md](docs/ANDROID-UX-REVIEW.md)) whose
+nine findings are closed here in the same release.
+
+### Added — Android
+
+SnapZap now runs on Android as a **native app over the same `SnapZap.Core`** — no WebView, no
+embedded server. Scan a folder, find duplicates, review them one-handed, delete reversibly, and
+restore from history, all on the phone.
+
+- **Eleven of the twelve screens** from the mobile design handoff: first run, scanning, library,
+  plan, the duplicate-review queue, burst review, filters, folders, selection mode, photo preview
+  and history. Export (screen 11) is deliberately out of this release.
+- **Duplicate review as a one-thumb queue** with the keeper pre-picked and its reason stated —
+  the thing a phone genuinely does better than the desktop's three-up comparison. Burst groups
+  arrive last and never pre-pick anything.
+- **Progress and background safety.** Scanning a real library is minutes of decoding and hashing;
+  Android freezes or kills a backgrounded process doing that. Scans, duplicate detection, deletes
+  and restores now run under a foreground service with a progress notification, so switching apps
+  or letting the screen sleep no longer stops the work.
+- **Trash and history** with a size read-out and an empty action. Android has no OS-level trash for
+  an app-private folder, so unlike Windows and macOS the app has to provide what Explorer and
+  Finder provide elsewhere.
+- **Launcher icon**, generated from the same source art as the desktop favicon.
+- **Swipe gestures are animated.** The review card follows your finger, rotates as it goes, and a
+  stamp names the action before you let go — keep, previous, or move to trash. Past the threshold it
+  throws; short of it, it springs back. The three directions are deliberately *not* animated alike:
+  keep behaves like a card being dealt away, going back is tethered and unrotated because it decides
+  nothing, and the trash gesture sits behind a much longer pull than the other two.
+- **An undo bar after a swipe-delete**, with Restore one tap away instead of two screens away.
+- **Stop, on the scanning screen.** The screen has always said stopping keeps what it has analysed;
+  now it can actually be stopped, and the same button ends the duplicate pass that follows.
+- **A sort control** on the library — scan order, newest, oldest, name, largest.
+- **Hold-and-drag selects a range**, as the design always said it would.
+- **A settings screen** with the same controls as the desktop's Setup panel — variant detection,
+  rotation matching, how different two photos may look, and the burst window — plus what SnapZap is
+  using in storage. Changing a threshold flags that detection has not run with it yet and offers to
+  re-run it on the spot, because these settings decide what detection *finds* rather than how
+  existing results are judged.
+- **Screen-reader labels throughout.** Every icon control, photo tile, list row and plan step now
+  announces itself; the app previously had none at all.
+- **Delete from the preview.** The full-size view could show you a photo you had clearly finished
+  with and offer nothing to do about it. Deleting steps to the next photo rather than closing, and
+  puts an undo bar within reach of the tap that caused it.
+- **Delete a group's extras from the comparison itself**, and move to the next one. Every button on
+  that screen used to only *mark* a keeper — actually reclaiming the space meant leaving for the
+  library, entering selection mode and finding the same photos again. The button names the count and
+  the bytes it will free, and excludes burst-adjacent frames through the same shared rule the
+  library's Select-all uses.
+- **Forget everything**, matching the desktop's Setup panel. Android had no way to clear the
+  catalogue at all — app-private storage cannot be reached to delete `catalog.db` by hand, so the
+  only reset was uninstalling. Photos are never touched; the confirmation says so, and warns that
+  History entries lose their previews because those *are* the thumbnail cache.
+
+The port required no change to the scanning, hashing, duplicate-detection or NSFW logic. Verified
+on-device: perceptual hashes are **bit-identical** to the desktop's, and NSFW scores match to
+4e-11 — so a library deduplicated on one behaves the same on the other.
+
+### Changed — Android
+
+- **A first scan no longer defaults to the entire phone.** It starts at `DCIM/Camera`, with one-tap
+  chips for the other places photos live and "Everything on this phone" still there as a choice.
+- **The scan folder survives a relaunch**, read back from the catalogue like the desktop has always
+  done — the Plan tab used to print a default folder above a count of photos from somewhere else.
+- **The duplicates callout can be dismissed**, and a filter that matches nothing now says so and
+  offers a way back instead of showing an empty grid.
+- **The plan counts only the steps Android can actually complete.** Export is marked desktop-only
+  rather than as a step that has not started, so the plan is no longer permanently unfinishable.
+- **Content review works on Android.** The scoring model is downloaded once, from an address pinned
+  to an exact revision and rejected unless it matches a known checksum, with progress under the
+  foreground service. Scoring itself runs on the device — this is the only network call SnapZap
+  makes, it goes one way, and nothing derived from your photos is ever sent. Expect roughly three
+  seconds per photo on a recent phone, so it is a per-folder job rather than a whole-library one.
+- **Selecting photos no longer scrolls the grid back to the top** on every tap.
+- **The library now shows the folder you scanned, and refreshes when it changes.** Two defects
+  together: every screen read the catalogue unscoped, so photos from folders scanned earlier stayed
+  in the grid — and inside the reach of "Select all" → Delete — while nothing reloaded when returning
+  from another screen, so changing the folder, clearing the catalogue or deleting a photo left the
+  previous answer on display.
+- **Restoring from History puts photos back in the library.** Deleting removes the catalogue row as
+  well as moving the file, so restoring returned the file and left it invisible in the app until the
+  next scan. All four restore paths now re-read the folder, as the desktop has always done.
+- The review screen's footer no longer says "nothing is deleted here" on a screen where swiping down
+  deletes.
+
+### Fixed — safety
+
+- **Burst frames could be selected for bulk deletion.** Two independent defects. A Variant group
+  that is a strict superset of a Burst group survives reconciliation, and the per-photo group
+  assignment let whichever group came last win — so a burst frame could report `Variant`, pass the
+  bulk-selectable gate, and be swept into a delete. Both closed: assignment now uses
+  `GroupReconciler`'s own precedence, and `images.burst_adjacent` protects frames that complete
+  linkage legitimately excluded from a burst clique.
+- **Burst protection was cleared across the whole catalogue** on every detection run, so scanning a
+  second folder silently stripped the first folder's protection. Now scoped to the folder being
+  detected, like every other write of its kind.
+- **The duplicate-review "select extras" button overstated what it would select** — 17 where the
+  panel said 11. The selection was always correct; only the label was wrong, on the control that
+  arms a bulk delete.
+
+### Fixed — Android
+
+- The self-test's SQLite check failed on every run after the first. It deleted and reused one
+  filename, but `Microsoft.Data.Sqlite` pools connections — so the delete unlinked a file that was
+  still open, SQLite carried on writing to an inode with no directory entry, and reading its size
+  threw. It now takes a fresh filename per run and asserts something reached the disk, so a schema
+  that answers queries while persisting nothing can no longer report a pass.
+- Back is routed through `OnBackInvokedDispatcher`. Overriding `OnBackPressed` silently stops
+  working at API 36, which had made choosing a folder do nothing and made Back in selection mode
+  close the app.
+- Adaptive launcher icon, so it fills its circle rather than being shrunk inside one.
+- Restoring from history left the progress notification running if the restore failed.
+
+### Changed — both heads
+
+- **"Export" is now "Move to a folder".** Same action, clearer name — nothing here was ever an
+  export in the sense of producing a different format. The Copy/Move/Hardlink mode picker is gone
+  with it: there is one action, and the only real choice left — whether the originals survive it —
+  is now a confirmation asked next to the button that performs it rather than a radio three fields
+  above. Both answers are explicit buttons, because "keep" and "remove" are two intentions, not a
+  safe default and a variant of it. Hardlink stays in the engine (it has its own Windows
+  verification) but is no longer something to pick from a list.
+- **Burst grouping can now be switched off**, in Setup on the desktop and Settings on Android. It
+  stays **on by default**, and both screens say what turning it off means, because it is not the
+  harmless-sounding toggle it looks like: burst frames do not become ungrouped, they get picked up as
+  "the same shot" instead, which *is* bulk-selectable. So all but one frame of every burst becomes
+  available to a bulk delete. Reversible without re-scanning — switch it back on and find duplicates
+  again. The Help FAQ's "will my bursts be deleted?" answer no longer says an unconditional no.
+
+### Fixed — desktop
+
+- **Every photo in a delete batch can now be restored on its own.** Per-photo Restore already
+  existed in History, but only the first eight photos of a batch were ever drawn — and the button
+  lives on a thumbnail, so anything past the eighth could only be restored by bringing the whole
+  batch back. The "+N" counter is now a control that reveals more of the batch a page at a time.
+
+### Changed — desktop
+
+- The folder picker offers Pictures and Downloads as quick-jumps beside the drive/home roots.
+- `PC_APPDATA` points the app at a different catalogue directory, so the running app can be driven
+  against a throwaway library instead of the real one.
+
+### Fixed — desktop
+
+- The full-size compare view shows each copy's folder — the one fact it was asking you to decide on
+  when two copies are byte-identical.
+- The filename in that view no longer collapses to a few characters.
+- The remove-from-history confirmation no longer overflows its dialog, which had pushed Cancel and
+  the warning text out of view on an irreversible action.
+- Two hardcoded English strings no longer leak into the Spanish UI.
+- Delete a photo directly from the duplicate comparison, and remove a batch from history.
 
 ## 1.2.0 — 2026-07-28
 

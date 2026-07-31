@@ -32,6 +32,130 @@ public class ScannerTests : IDisposable
         data.SaveTo(fs);
     }
 
+    // ══════════════════════════════════════════════════════════════════════════════════════
+    //  ScanSettings.SkipHidden
+    // ══════════════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>
+    /// Hidden folders below the root are skipped by default.
+    /// </summary>
+    /// <remarks>
+    /// <c>.thumbnails</c> is the real case, not a contrived one: on Android it is full of image
+    /// files, so a scan of internal storage used to report a cache as photos, feed those entries into
+    /// duplicate groups, and put them in the review queue. Both folder pickers already refused to
+    /// browse into dot-folders while the scanner happily indexed them.
+    /// </remarks>
+    [Fact]
+    public async Task Hidden_folders_are_skipped_by_default()
+    {
+        WritePng(Path.Combine(_photos, "keep.png"), 60, 60, SKColors.Red);
+        WritePng(Path.Combine(_photos, ".thumbnails", "cache.png"), 60, 60, SKColors.Blue);
+        WritePng(Path.Combine(_photos, ".git", "objects", "blob.png"), 60, 60, SKColors.Green);
+
+        using var db = new Database(_dbPath);
+        var result = await new Scanner(db, new SkiaImageService(), _thumbs).ScanAsync(_photos);
+
+        Assert.Equal(1, result.Total);
+        var paths = new ImageRepository(db).All().Select(i => Path.GetFileName(i.Path)).ToList();
+        Assert.Equal(["keep.png"], paths);
+    }
+
+    /// <summary>Turning it off restores the previous behaviour, so the flag is a real switch.</summary>
+    [Fact]
+    public async Task Hidden_folders_are_scanned_when_the_setting_is_off()
+    {
+        WritePng(Path.Combine(_photos, "keep.png"), 60, 60, SKColors.Red);
+        WritePng(Path.Combine(_photos, ".thumbnails", "cache.png"), 60, 60, SKColors.Blue);
+
+        using var db = new Database(_dbPath);
+        var result = await new Scanner(db, new SkiaImageService(), _thumbs)
+            .ScanAsync(_photos, settings: new ScanSettings { SkipHidden = false });
+
+        Assert.Equal(2, result.Total);
+    }
+
+    /// <summary>
+    /// A hidden folder chosen <i>as the root</i> is still scanned.
+    /// </summary>
+    /// <remarks>
+    /// Picking one explicitly is an instruction, not an accident. Skipping it would hand the user a
+    /// folder they selected in the browser and a scan that found nothing, with the setting that did
+    /// it two screens away — so the dot test starts strictly below the root.
+    /// </remarks>
+    [Fact]
+    public async Task A_hidden_folder_used_as_the_root_is_still_scanned()
+    {
+        var hiddenRoot = Path.Combine(_work, ".private");
+        WritePng(Path.Combine(hiddenRoot, "a.png"), 60, 60, SKColors.Red);
+        WritePng(Path.Combine(hiddenRoot, "sub", "b.png"), 60, 60, SKColors.Blue);
+
+        using var db = new Database(_dbPath);
+        var result = await new Scanner(db, new SkiaImageService(), _thumbs).ScanAsync(hiddenRoot);
+
+        Assert.Equal(2, result.Total);
+    }
+
+    /// <summary>
+    /// A trailing separator on the root must not shift the relative-path comparison.
+    /// </summary>
+    /// <remarks>
+    /// The dot test slices the path by the root's length, so an off-by-one from a trailing slash
+    /// would compare against the wrong offset and could either miss a hidden segment or treat a
+    /// normal one as hidden. Callers pass roots both ways (the Android picker builds them by
+    /// concatenation), so it is pinned rather than assumed.
+    /// </remarks>
+    [Fact]
+    public async Task A_trailing_separator_on_the_root_does_not_change_what_is_skipped()
+    {
+        WritePng(Path.Combine(_photos, "keep.png"), 60, 60, SKColors.Red);
+        WritePng(Path.Combine(_photos, ".cache", "x.png"), 60, 60, SKColors.Blue);
+
+        using var db = new Database(_dbPath);
+        var result = await new Scanner(db, new SkiaImageService(), _thumbs)
+            .ScanAsync(_photos + Path.DirectorySeparatorChar);
+
+        Assert.Equal(1, result.Total);
+    }
+
+    /// <summary>
+    /// Re-scanning with the setting newly on drops hidden files already in the catalogue.
+    /// </summary>
+    /// <remarks>
+    /// This is why the switch needs no migration: <c>DeleteMissing</c> prunes rows the walk no longer
+    /// returns, so the previously-indexed cache leaves the catalogue instead of lingering as rows
+    /// nothing can reach.
+    /// </remarks>
+    [Fact]
+    public async Task Enabling_the_setting_and_rescanning_prunes_hidden_files_already_indexed()
+    {
+        WritePng(Path.Combine(_photos, "keep.png"), 60, 60, SKColors.Red);
+        WritePng(Path.Combine(_photos, ".thumbnails", "cache.png"), 60, 60, SKColors.Blue);
+
+        using var db = new Database(_dbPath);
+        var scanner = new Scanner(db, new SkiaImageService(), _thumbs);
+
+        await scanner.ScanAsync(_photos, settings: new ScanSettings { SkipHidden = false });
+        Assert.Equal(2, new ImageRepository(db).All().Count());
+
+        await scanner.ScanAsync(_photos, settings: new ScanSettings { SkipHidden = true });
+        var remaining = new ImageRepository(db).All().Select(i => Path.GetFileName(i.Path)).ToList();
+        Assert.Equal(["keep.png"], remaining);
+    }
+
+    /// <summary>The setting round-trips through meta, and defaults to on for an untouched catalogue.</summary>
+    [Fact]
+    public void Skip_hidden_round_trips_through_meta_and_defaults_on()
+    {
+        using var db = new Database(_dbPath);
+        Assert.True(ScanSettings.Load(db).SkipHidden);
+
+        new ScanSettings { SkipHidden = false }.Save(db);
+        Assert.False(ScanSettings.Load(db).SkipHidden);
+
+        new ScanSettings { SkipHidden = true }.Save(db);
+        Assert.True(ScanSettings.Load(db).SkipHidden);
+    }
+
     [Fact]
     public async Task Scans_images_generates_thumbnails_and_caches_on_rescan()
     {
