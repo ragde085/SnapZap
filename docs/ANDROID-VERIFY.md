@@ -76,7 +76,7 @@ broadly than the ONNX risk the plan does call out.
 
 | AC | What to do | Pass looks like | S23 Ultra | Motorola | Notes |
 |---|---|---|---|---|---|
-| **AC-2.3** | **SkiaSharp spike.** Decode a real JPEG from `/storage/emulated/0`, produce a thumbnail, compute a Laplacian blur score, and compute a 272-bit perceptual hash — see the dedicated procedure in §3 below. | Decode/thumbnail/blur all complete without a native-load exception, **and** the phash matches the value the same file produces on the dev Mac, per `GoldenValueTests`. A platform-dependent hash is a silent dedup break, not a visible crash — the numeric comparison is the actual pass/fail signal, not "it ran." | ☐ Not yet run | ☐ Not yet run | **v1 blocker if this fails** (`ANDROID-PORT-ACS.md` §2.6) — unlike ONNX, there is no graceful-degrade path for a broken decode/hash pipeline. |
+| **AC-2.3** | **SkiaSharp spike.** Decode a real JPEG from `/storage/emulated/0`, produce a thumbnail, compute a Laplacian blur score, and compute a 544-bit perceptual hash — see the dedicated procedure in §3 below. | Decode/thumbnail/blur all complete without a native-load exception, **and** the phash matches the value the same file produces on the dev Mac, per `GoldenValueTests`. A platform-dependent hash is a silent dedup break, not a visible crash — the numeric comparison is the actual pass/fail signal, not "it ran." | ☐ Not yet run | ☐ Not yet run | **v1 blocker if this fails** (`ANDROID-PORT-ACS.md` §2.6) — unlike ONNX, there is no graceful-degrade path for a broken decode/hash pipeline. |
 | **AC-2.4** | **ONNX spike.** Construct `OnnxNsfwClassifier` against the real `nsfw.onnx` and score a known labeled fixture. | The score matches the desktop score for the same fixture within a stated tolerance (state the tolerance used in the notes column, not just "close"). | ☐ Not yet run | ☐ Not yet run | Not a v1 blocker if it fails — NSFW scoring degrades gracefully like a missing model does on desktop today (`DependencyChecker`'s existing "optional sidecar" surface). Record the failure mode anyway (native load exception vs. wrong score vs. timeout) so it's clear which. |
 | **AC-2.5** | **SQLite spike.** Open `catalog.db`, create the schema, round-trip one row, then **fully restart the app** (not just background/resume) and confirm the row is still there. | Schema creation succeeds, the row reads back with the same values written, and it survives the full process restart. | ☐ Not yet run | ☐ Not yet run | **v1 blocker if this fails** (§2.6) — SQLite is as foundational as SkiaSharp here; `SQLitePCLRaw.bundle_e_sqlite3` shipping Android runtimes is not the same claim as those runtimes loading under this TFM, which is exactly what this AC confirms. |
 
@@ -98,7 +98,7 @@ apples-to-apples:
    `PerceptualHash.FromGray` and `BlurDetector.ScoreFrom` exactly as `Scanner.Analyze` does (same
    call sequence — per CLAUDE.md, phash and blur ride the same decode on purpose; don't decode
    twice in the spike either, or a device-specific double-decode bug wouldn't be caught by the
-   desktop comparison), and log the resulting 272-bit hash (all four rotations, per
+   desktop comparison), and log the resulting 544-bit hash (all four rotations, per
    `images.phash`'s stored format) and the blur score.
 4. Compare the logged on-device hash against the pinned `GoldenValueTests` value bit-for-bit, not
    "close enough" — a phash is meaningful only as an exact match or a small Hamming distance

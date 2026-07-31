@@ -25,14 +25,14 @@ public class BandPrefilterTests
         return PerceptualHash.FromBytes(bytes);
     }
 
-    /// <summary>Bits 272-319 of each 320-bit rotation block are unused padding in the real
-    /// encoder (<c>PerceptualHash.Encode</c> only ever sets bits 0-271) — zeroed here so synthetic
+    /// <summary>Bits 544-575 of each 576-bit rotation block are unused padding in the real
+    /// encoder (<c>PerceptualHash.Encode</c> only ever sets bits 0-543) — zeroed here so synthetic
     /// hashes look like real ones rather than relying on the (also true, but non-obvious) fact
     /// that padding differences can only ever add to a distance, never hide a true match.</summary>
     static void ZeroPadding(byte[] bytes)
     {
-        const int wordsPerRotation = PerceptualHash.Words * sizeof(ulong); // 40 bytes
-        const int meaningfulBytes = PerceptualHash.Bits / 8;               // 34 bytes (272 bits)
+        const int wordsPerRotation = PerceptualHash.Words * sizeof(ulong); // 72 bytes
+        const int meaningfulBytes = PerceptualHash.Bits / 8;               // 68 bytes (544 bits)
         for (int r = 0; r < PerceptualHash.Rotations; r++)
             for (int b = meaningfulBytes; b < wordsPerRotation; b++)
                 bytes[r * wordsPerRotation + b] = 0;
@@ -56,13 +56,13 @@ public class BandPrefilterTests
         var images = new List<HashedImage>();
         long id = 0;
 
-        // Noise: unrelated hashes, expected distance ~136 of 272 — nowhere near any tested
+        // Noise: unrelated hashes, expected distance ~272 of 544 — nowhere near any tested
         // threshold, so real matches below are unambiguous.
         for (int i = 0; i < 150; i++)
             images.Add(new HashedImage(id++, $"noise{i}.jpg", RandomHash(rng), 100, 100, null, null, null));
 
         // Planted pairs at exact, known distances spanning every tested threshold.
-        plantedDistances = [2, 10, 18, 30, 40, 55];
+        plantedDistances = [2, 10, 18, 30, 40, 55, 110];
         foreach (var d in plantedDistances)
         {
             var seed = RandomHash(rng);
@@ -83,6 +83,7 @@ public class BandPrefilterTests
     [InlineData(32)]
     [InlineData(45)]
     [InlineData(60)]
+    [InlineData(120)]   // the slider maximum, which takes the brute-force fallback
     public void Prefilter_and_brute_force_produce_identical_pair_sets(int threshold)
     {
         var images = BuildCatalogue(out var plantedDistances);
@@ -107,11 +108,11 @@ public class BandPrefilterTests
     [Fact]
     public void High_threshold_falls_back_to_brute_force_and_still_returns_correct_pairs()
     {
-        // AC 4: t=60 gives 61 bands of ~5 bits (32 distinct values) — below BandWidthFloor, so
+        // AC 4: t=120 gives 121 bands of ~4 bits (16 distinct values) — below BandWidthFloor, so
         // this must report the fallback rather than silently degrading inside the prefilter path.
         var images = BuildCatalogue(out _);
-        var (pairs, path) = VariantFinder.FindPairs(images, 60, rotations: false, CancellationToken.None);
-        var reference = VariantFinder.BruteForcePairs(images, 60, rotations: false, CancellationToken.None);
+        var (pairs, path) = VariantFinder.FindPairs(images, 120, rotations: false, CancellationToken.None);
+        var reference = VariantFinder.BruteForcePairs(images, 120, rotations: false, CancellationToken.None);
 
         Assert.Equal(VariantMatchPath.BruteForce, path);
         Assert.Equal(Normalize(reference), Normalize(pairs));
@@ -119,42 +120,38 @@ public class BandPrefilterTests
 
     /// <summary>
     /// Regression test for a real exactness bug caught in tech-lead review, not a hypothetical.
-    /// The original band layout used <c>bandWidth = ceil(272 / bandCount)</c> for every band; at
-    /// <c>threshold=32</c> (<c>bandCount=33</c>), <c>ceil(272/33)=9</c> produces bands starting at
-    /// bit 279 and 288 — both past the 272-bit signature — which were silently skipped, leaving
-    /// only 31 real bands where pigeonhole requires 33. A pair differing in exactly 32 bits, with
-    /// those bits spread one-per-band across all 31 legacy bands, left no band untouched, so the
-    /// old prefilter found no candidate and missed a real match entirely — silently, with no
-    /// truncation flag. <see cref="VariantFinder.BandLayout"/>'s floor+remainder allocation
-    /// guarantees exactly <c>bandCount</c> non-empty bands regardless of divisibility, closing
-    /// this. Confirmed against the actual production code, not just the arithmetic: this test
-    /// failed before the fix (band prefilter returned zero pairs) and passes after.
+    /// The original band layout used <c>bandWidth = ceil(Bits / bandCount)</c> for every band, then
+    /// dropped or truncated whichever trailing bands ran past the end of the signature. At
+    /// <c>threshold=32</c> (<c>bandCount=33</c>) over the 544-bit signature, <c>ceil(544/33)=17</c>
+    /// lays down bands at bits 0, 17, 34 … 527 — exactly <b>32</b> bands where pigeonhole requires
+    /// 33. A pair differing in exactly 32 bits, with those bits spread one-per-band across all 32
+    /// legacy bands, left no band untouched, so the old prefilter found no candidate and missed a
+    /// real match entirely — silently, with no truncation flag.
+    /// <see cref="VariantFinder.BandLayout"/>'s floor+remainder allocation guarantees exactly
+    /// <c>bandCount</c> non-empty bands regardless of divisibility, closing this. Confirmed against
+    /// the actual production code, not just the arithmetic: this test failed before the fix (band
+    /// prefilter returned zero pairs) and passes after.
     /// </summary>
     [Fact]
     public void Threshold_32_finds_a_match_whose_differing_bits_spread_across_every_legacy_band()
     {
         const int threshold = 32;
+        const int legacyWidth = 17;   // ceil(544 / 33)
         var rng = new Random(777);
 
-        // The legacy (buggy) layout's real band boundaries: ceil(272/33) = 9, so bands are
-        // [0,9),[9,18),...,[261,270) (30 bands of width 9) then [270,272) (1 band of width 2) —
-        // 31 bands, not the 33 pigeonhole needs at this threshold.
         var legacyBandStarts = new List<int>();
-        for (int start = 0; start < PerceptualHash.Bits; start += 9) legacyBandStarts.Add(start);
-        Assert.Equal(31, legacyBandStarts.Count); // sanity-check the premise itself
+        for (int start = 0; start < PerceptualHash.Bits; start += legacyWidth) legacyBandStarts.Add(start);
+        // Sanity-check the premise itself: one band short of what pigeonhole needs at t=32, and
+        // one differing bit per band is therefore exactly the threshold's worth of difference.
+        Assert.Equal(32, legacyBandStarts.Count);
+        Assert.Equal(threshold, legacyBandStarts.Count);
 
         var seed = RandomHash(rng);
         var raw = seed.ToBytes();
-        // One differing bit per legacy band (31 bits across 31 bands)...
+        // One differing bit per legacy band — 32 bits across all 32 legacy bands, leaving none of
+        // them identical, so the legacy layout had no band that could ever surface this pair.
         foreach (var bandStart in legacyBandStarts)
-        {
-            int bandWidth = Math.Min(9, PerceptualHash.Bits - bandStart);
-            int bit = bandStart; // first bit of the band
-            raw[bit / 8] ^= (byte)(1 << (bit % 8));
-        }
-        // ...plus one more (32nd) bit, in the same band as the first flip but a different position,
-        // so every one of the 31 legacy bands still has at least one differing bit.
-        raw[0] ^= 0b0100_0000; // bit 6 — inside legacy band 0 ([0,9)), distinct from bit 0 above.
+            raw[bandStart / 8] ^= (byte)(1 << (bandStart % 8));
         var neighbor = PerceptualHash.FromBytes(raw);
 
         Assert.Equal(threshold, seed.DistanceTo(neighbor, PerceptualHash.Bits, allowRotation: false));

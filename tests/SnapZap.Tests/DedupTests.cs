@@ -32,6 +32,45 @@ public class ExactDedupTests : IDisposable
         data.SaveTo(fs);
     }
 
+    /// <summary>
+    /// A deterministic image with actual content in it — for the tests that exercise <b>perceptual</b>
+    /// matching, which a solid-colour fixture cannot.
+    /// </summary>
+    /// <remarks>
+    /// A flat frame ties every adjacent-cell comparison, ties encode as 0, so its signature is all
+    /// zeros — and <see cref="PerceptualHash.IsDegenerate"/> deliberately refuses to match those
+    /// against anything, because otherwise a solid black frame and a solid white one are "the same
+    /// photo". These two tests previously paired a solid teal 480x360 with its solid teal 160x120
+    /// downscale and passed for exactly that reason, asserting nothing about resolution invariance.
+    /// The exact finder compares bytes and is unaffected, which is why every other fixture here is
+    /// still a flat <see cref="WritePng"/>.
+    /// </remarks>
+    static void WriteScene(string path, int w, int h)
+    {
+        using var bmp = new SKBitmap(w, h);
+        using (var canvas = new SKCanvas(bmp))
+        {
+            canvas.Clear(new SKColor(28, 32, 48));
+            using var paint = new SKPaint { IsAntialias = true };
+            paint.Color = new SKColor(230, 200, 110);
+            canvas.DrawRect(new SKRect(w * 0.06f, h * 0.08f, w * 0.44f, h * 0.34f), paint);
+            paint.Color = new SKColor(80, 170, 225);
+            canvas.DrawCircle(w * 0.72f, h * 0.30f, MathF.Min(w, h) * 0.17f, paint);
+            paint.Color = new SKColor(205, 85, 85);
+            using var tri = new SKPath();
+            tri.MoveTo(w * 0.15f, h * 0.92f);
+            tri.LineTo(w * 0.55f, h * 0.56f);
+            tri.LineTo(w * 0.88f, h * 0.95f);
+            tri.Close();
+            canvas.DrawPath(tri, paint);
+        }
+        using var img = SKImage.FromBitmap(bmp);
+        using var data = img.Encode(SKEncodedImageFormat.Png, 100);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        using var fs = File.Create(path);
+        data.SaveTo(fs);
+    }
+
     /// <summary>A smaller copy of an existing image: same picture, different bytes and pixels.</summary>
     static void Downscale(string sourcePath, string destPath, int w, int h)
     {
@@ -97,7 +136,7 @@ public class ExactDedupTests : IDisposable
     public async Task Variant_detection_pairs_a_downscaled_copy_and_keeps_the_larger()
     {
         var original = Path.Combine(_photos, "big.png");
-        WritePng(original, 480, 360, SKColors.Teal);
+        WriteScene(original, 480, 360);
         Downscale(original, Path.Combine(_photos, "small.png"), 160, 120);
 
         using var db = new Database(_dbPath);
@@ -124,7 +163,7 @@ public class ExactDedupTests : IDisposable
     public async Task Disabling_a_detector_clears_the_groups_it_had_written()
     {
         var original = Path.Combine(_photos, "big.png");
-        WritePng(original, 480, 360, SKColors.Teal);
+        WriteScene(original, 480, 360);
         Downscale(original, Path.Combine(_photos, "small.png"), 160, 120);
 
         using var db = new Database(_dbPath);

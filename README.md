@@ -652,7 +652,7 @@ That's the whole thing. The script publishes `win-x64`, checks the output is com
 the Inno Setup compiler over [installer/SnapZap.iss](installer/SnapZap.iss), leaving:
 
 ```
-artifacts\installer\SnapZap-1.2.0-setup.exe          ~47 MB
+artifacts\installer\SnapZap-1.3.1-setup.exe          ~47 MB
 ```
 
 The version in the filename is read out of the built executable, not written twice — bump
@@ -753,7 +753,7 @@ That publishes `osx-arm64`, assembles `SnapZap.app`, and packages it as a produc
 `productbuild`, leaving:
 
 ```
-artifacts/installer-mac/SnapZap-1.2.0.pkg
+artifacts/installer-mac/SnapZap-1.3.1.pkg
 ```
 
 The version in the filename is read out of `SnapZap.App.csproj`, not written twice.

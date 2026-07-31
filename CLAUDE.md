@@ -375,10 +375,34 @@ Full rationale in [docs/DEDUP-V2.md](docs/DEDUP-V2.md). The short version:
   The gate lives on the `InScope` predicate, not on the command, so the button's count, its
   reclaimable-bytes label and what it selects cannot disagree. `DuplicateKeepers` is intentionally
   unfiltered — a burst's keeper is a survivor like any other.
-- **The hash** is a 272-bit gradient hash on a 17×17 square grid, stored for **all four rotations**
-  (160 bytes in `images.phash`). Do *not* "optimise" it to store only the smallest of the four:
+- **The hash** is a 544-bit gradient hash on a 17×17 square grid, stored for **all four rotations**
+  (288 bytes in `images.phash`). Do *not* "optimise" it to store only the smallest of the four:
   noise flips which rotation wins, so near-identical photos canonicalise to different orbit members
   and stop matching entirely.
+- ⚠ **Both axes are encoded — 272 horizontal comparisons and 272 vertical — and halving that back
+  to horizontal-only reopens a shipped defect.** With only horizontal bits, a photo's whole
+  signature was its left-to-right luminance profile, so any image that brightens toward the middle
+  of the frame and darkens after hashed the same as any other regardless of subject. Measured on a
+  real 2,218-photo library: four grey desktop wallpapers and two sunset photographs formed one
+  six-member `Variant` group, every pair 0–16 bits apart against a threshold of 20. Adding the
+  vertical half moves those pairs to 41–87 while a genuine resize/re-encode stays at a p99 of 41 of
+  544. `PerceptualHashTests.Frames_with_identical_horizontal_profiles_are_still_told_apart` pins it.
+- ⚠ **`PerceptualHash.DistanceTo` is the minimum over *both* argument orders, and that is load-bearing.**
+  Rotations are made by turning the cell grid and re-encoding, so a rotated signature is *not* a
+  bit-permutation of the unrotated one and one-sided rotation is not symmetric — 69% of sampled
+  library pairs disagreed, the worst by 247 bits. `SimilarityGrouper` tests pairs in whichever order
+  it reaches them, so that quietly reduced complete linkage to a one-directional check and produced
+  a seven-member group holding pairs 259 bits apart under a 20-bit threshold. Anything else
+  computing this distance (`VariantFinder.FlatDistance`, the band prefilter's candidate gather) must
+  stay symmetric too — the prefilter therefore gathers candidates in **both** directions and
+  de-duplicates on (lower, higher), because the index holds only each signature's rotation 0.
+- **An all-zero signature (`IsDegenerate`) matches nothing.** Ties encode as 0, so a frame of one
+  flat colour hashes to all zeros — solid black and solid white are byte-identical and 0 apart.
+  A general low-contrast gate was measured and rejected: over 179,675 unrelated real pairs a floor
+  of 2–8 grey levels changed the number of pairs under every threshold by *zero* while discarding up
+  to 8% of the library, because a featureless-but-not-flat photo's bits are noise, and noise does
+  not collide. Only the perfectly flat case is a real collision. Both perceptual finders filter on
+  `IsUnusable`, not `IsEmpty`.
 - **It rides on the scan's existing decode.** `Scanner.Analyze` calls `DecodeGray` once and feeds
   both `BlurDetector.ScoreFrom` and `PerceptualHash.FromGray`. Adding a second decode here would
   give back the main saving of the rewrite.
@@ -386,8 +410,12 @@ Full rationale in [docs/DEDUP-V2.md](docs/DEDUP-V2.md). The short version:
   not transitive — A~B and B~C does not give A~C — so union-find collapses a real library into one
   group of thousands with all but one flagged for deletion. A group is a clique; pairs are
   processed closest-first; ids break ties so runs are reproducible. `GrouperTests` locks this in.
-- **Thresholds are in bits out of 272** and are *not* comparable to czkawka's old
-  `--max-difference 10`. Defaults live in `DedupSettings`.
+- **Thresholds are in bits out of 544** and are *not* comparable to czkawka's old
+  `--max-difference 10`, nor to the pre-v4 values out of 272. Defaults live in `DedupSettings`
+  (`VariantMaxBits` 40, `BurstMaxBits` 120 — the same proportions the 272-bit 20/60 were). Because
+  the *unit* changed, the two threshold keys in `meta` carry a `.b544` suffix so an upgraded
+  catalogue falls back to the new defaults instead of silently reading a 20 as twice as strict;
+  bumping `PhashRecipeVersion` clears `images.phash`, not `meta`.
 - **Exact detection has no on/off switch**, because a duplicate finder that cannot find identical
   files is not one.
 - **`BurstEnabled` does have one, and it is a safety decision rather than a preference.** ⚠ Turning
@@ -412,15 +440,17 @@ Full rationale in [docs/DEDUP-V2.md](docs/DEDUP-V2.md). The short version:
   only means anything against the settings that produced it and both must reset with `catalog.db`.
   (`settings.json` still exists for app-level prefs — `DependencyChecker.StoredSettings`.)
 - **Matching uses a pigeonhole band prefilter** (`VariantFinder.BandPrefilterPairs`), not brute
-  force. The original brute-force claim undersold its own cost — with rotations on, the five-word
-  `DistanceTo` loop runs once per rotation and rarely reaches 0 to trigger the early break, ~8×
-  worse than "one XOR and one PopCount" implied. Splitting the 272 bits into `VariantMaxBits + 1`
-  bands and indexing rotation 0 of every signature is **exact, not approximate**: two hashes within
-  threshold can differ in at most that many bands, so by pigeonhole at least one band must match
-  identically. Measured (M1, synthetic/uniform-random hashes — real libraries cluster and will skew
-  differently, see `docs/PERFORMANCE.md`): 6.5×/12×/20× at 20k/50k/100k. The brute-force sweep is
-  retained as a fallback for high thresholds (`VariantMaxBits` up to 60 collapses band width below
-  `VariantFinder.BandWidthFloor`) and as the reference path parity tests compare against.
+  force. The original brute-force claim undersold its own cost — with rotations on, the nine-word
+  `DistanceTo` loop runs once per rotation per direction and rarely reaches 0 to trigger the early
+  break, far worse than "one XOR and one PopCount" implied. Splitting the 544 bits into
+  `VariantMaxBits + 1` bands and indexing rotation 0 of every signature is **exact, not
+  approximate**: two hashes within threshold can differ in at most that many bands, so by pigeonhole
+  at least one band must match identically. Measured pre-v4 (M1, synthetic/uniform-random hashes —
+  real libraries cluster and will skew differently, see `docs/PERFORMANCE.md`): 6.5×/12×/20× at
+  20k/50k/100k; not re-measured since the signature doubled. The brute-force sweep is retained as a
+  fallback for high thresholds (`VariantMaxBits` above ~90 collapses band width below
+  `VariantFinder.BandWidthFloor`) and as the reference path parity tests compare against — which is
+  why it, too, must compute the symmetric distance.
 - **Not detected: crops and reframes.** No grid hash can find them. Documented and accepted in
   DEDUP-V2 §9, not an oversight.
 

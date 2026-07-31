@@ -732,9 +732,12 @@ public sealed class MainActivity : Activity
 
             // "Duplicates run next, on their own." The scanning screen promises it, so it happens
             // here rather than behind a button the user would have to go and find.
-            // Dedup reports per-phase rather than per-photo — the exact pass is one SQL statement
-            // and the perceptual passes are a single parallel sweep with no honest midpoint, which
+            // Dedup reports per-phase for the detectors — the exact pass is one SQL statement and
+            // the perceptual passes are a single parallel sweep with no honest midpoint, which
             // DedupProgress's own remarks explain. A moving label beats an invented percentage.
+            // The signature backfill is the exception and does count photos, because a recipe bump
+            // routes the whole library through it; passing Done/Total straight through is what
+            // lets the notification track that rather than sitting on one tick for minutes.
             if (_scanCount is not null) _scanCount.Text = "…";
             var dedupProgress = new Progress<DedupProgress>(p =>
             {
