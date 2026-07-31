@@ -14,6 +14,15 @@
 
     <img src="@Img.ThumbUrl" alt="" loading="lazy" />
 
+    @* Selection is announced by aria-checked on the card; this is the visual half of the same
+       statement, so it stays out of the accessibility tree. *@
+    @if (Selected)
+    {
+        <span class="card-check" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5" /></svg>
+        </span>
+    }
+
     @if (HasBadges)
     {
         <div class="badges" aria-hidden="true">

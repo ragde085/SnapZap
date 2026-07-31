@@ -9,7 +9,7 @@
     library. Row geometry is measured in the browser (interop.js) and pushed in via
     SetViewport/SetScroll, which makes the window deterministic rather than inferred.
 *@
-<div class="grid @(AppState.Selected.Count > 0 ? "has-selection" : "")"
+<div class="grid"
      role="group"
      aria-label="Photos"
      @ref="_gridRef">
