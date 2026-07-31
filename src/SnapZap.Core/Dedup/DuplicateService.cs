@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using SnapZap.Core.Data;
 using SnapZap.Core.Imaging;
 
@@ -50,6 +51,19 @@ public sealed class DuplicateService(Database db, SkiaImageService? imaging = nu
     /// exactly the same way a fresh scan would derive it.</summary>
     const int BackfillDecodeMaxEdge = 512;
 
+    /// <summary>
+    /// Floor on the gap between backfill progress reports.
+    /// </summary>
+    /// <remarks>
+    /// Time-based rather than every-Nth-photo, because the two heads sit at opposite ends of the
+    /// speed range and a fixed count misbehaves at both. On a desktop decoding 250 photos a second,
+    /// every-16th is 15 reports a second down a Blazor Server circuit; on a phone it is slower but
+    /// still fast enough that Android's <c>NotificationManager</c> starts rate-limiting posts to
+    /// the same id, at which point the readout stutters instead of updating. Ten a second is above
+    /// the threshold where a bar reads as smooth and below where either transport starts dropping.
+    /// </remarks>
+    const int ProgressIntervalMs = 100;
+
     public async Task<DuplicateReport> DetectAsync(
         string root, IProgress<DedupProgress>? progress = null, CancellationToken ct = default)
     {
@@ -80,6 +94,8 @@ public sealed class DuplicateService(Database db, SkiaImageService? imaging = nu
         {
             Step($"Recomputing signatures (0 of {backfillCount:N0})");
             int completed = 0;
+            var clock = Stopwatch.StartNew();
+            long lastReportMs = 0;
 
             // Parallel, at the same width Scanner uses. This is the identical decode-per-photo
             // workload the scan runs concurrently, and running it one at a time made a full-library
@@ -121,12 +137,18 @@ public sealed class DuplicateService(Database db, SkiaImageService? imaging = nu
                     }
                     catch { /* best-effort, same as the scan's own signal computation */ }
 
-                    // Throttled: a 40k-photo backfill posting 40k updates would spend more time
-                    // marshalling to the UI thread than decoding. Every 16th still moves the bar
-                    // several times a second, and the last photo always reports so the phase never
-                    // ends short of its own total.
+                    // Throttled to ProgressIntervalMs: a 40k-photo backfill posting 40k updates
+                    // would spend more time marshalling to the UI thread than decoding. The
+                    // compare-and-swap is what makes one thread per interval win the right to
+                    // report — without it every worker that happens to finish inside the same
+                    // millisecond posts, which is the flood this is here to prevent. The last photo
+                    // always reports, so the phase never ends short of its own total.
                     int n = Interlocked.Increment(ref completed);
-                    if (n % 16 == 0 || n == backfillCount)
+                    long now = clock.ElapsedMilliseconds;
+                    long prev = Volatile.Read(ref lastReportMs);
+                    if (n == backfillCount ||
+                        (now - prev >= ProgressIntervalMs &&
+                         Interlocked.CompareExchange(ref lastReportMs, now, prev) == prev))
                     {
                         Volatile.Write(ref done, n);
                         progress?.Report(new DedupProgress(
