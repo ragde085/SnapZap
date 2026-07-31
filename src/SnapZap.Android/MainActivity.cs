@@ -86,6 +86,12 @@ public sealed class MainActivity : Activity
     /// <summary>Photos in the current scope carrying an NSFW score, and whether a pass is running.</summary>
     int _nsfwScored;
     bool _nsfwRunning;
+    int _nsfwDone, _nsfwTotal;
+
+    // Live scoring read-outs, held so progress can update them without rebuilding the screen —
+    // same reasoning as _scanFill/_scanCount below, set by Step() while a pass is running.
+    View? _nsfwProgressFill;
+    TextView? _nsfwProgressText;
 
     /// <summary>
     /// Above this many photos in scope, scoring is refused rather than warned about.
@@ -279,6 +285,13 @@ public sealed class MainActivity : Activity
     /// catalogue: a group whose members were already recycled is not work, and burst frames must
     /// not be counted as reviewable. Summing detector output would advertise work that the review
     /// queue will then refuse to show.
+    ///
+    /// <para>Scoped to the active folder, same as <see cref="ScopedExtras"/> — <c>DupeRepository
+    /// .Groups()</c> reads the whole catalogue, so counting its raw output put a folder you had
+    /// moved on from back into the Review tab's badge and the Duplicates step, disagreeing with
+    /// the library banner right below it, which was already scoped. That is the same
+    /// disagreement-between-counts problem this codebase keeps designing out — see
+    /// <see cref="ScopedExtras"/>'s remarks.</para>
     /// </remarks>
     void CountGroups()
     {
@@ -286,8 +299,9 @@ public sealed class MainActivity : Activity
         {
             var groups = new SnapZap.Core.Data.DupeRepository(_catalog!.Db).Groups();
             _assign = DupeAssignmentResolver.Resolve(groups, _catalog.Images.BurstAdjacentIds());
-            _reviewable = _assign.Values.Count(a => a.IsBulkSelectableExtra);
-            _burstGroups = groups.Count(g => g.Kind == DupeKind.Burst);
+            var scopedIds = ScopedPhotos().Select(p => p.Id).ToHashSet();
+            _reviewable = _assign.Count(kv => scopedIds.Contains(kv.Key) && kv.Value.IsBulkSelectableExtra);
+            _burstGroups = groups.Count(g => g.Kind == DupeKind.Burst && g.Members.Any(m => scopedIds.Contains(m.ImageId)));
             // Read, not assumed: every line of copy on this screen that claims bursts are held back
             // becomes false when the setting is off, and "0 burst groups held back" would read as
             // "the protection ran and found none" rather than "the protection is not running".
@@ -1481,11 +1495,15 @@ public sealed class MainActivity : Activity
         body.AddView(Step(3, _nsfwScored > 0, "Content review",
             modelPath is null
                 ? "Scores photos on this device. Needs a one-time model download — set it up in Settings."
-                : _nsfwScored > 0
-                    ? $"{_nsfwScored:N0} scored in this view"
-                    : $"{Photos(scope.Count)} in view · about {NsfwEta(scope.Count)} on this phone",
+                : _nsfwRunning
+                    ? "Running now — safe to switch tabs or leave the app."
+                    : _nsfwScored > 0
+                        ? $"{_nsfwScored:N0} scored in this view"
+                        : $"{Photos(scope.Count)} in view · about {NsfwEta(scope.Count)} on this phone",
             modelPath is null ? null : _nsfwRunning ? "Scoring…" : $"Score {Photos(scope.Count)}",
-            modelPath is null ? null : () => ScoreNsfw(modelPath)));
+            modelPath is null ? null : () => ScoreNsfw(modelPath),
+            actionEnabled: !_nsfwRunning,
+            liveProgress: _nsfwRunning ? (_nsfwDone, _nsfwTotal) : null));
 
         body.AddView(Step(4, _hasScanned, "Sharpness", "Scored during the scan", null, null));
 
@@ -1527,7 +1545,8 @@ public sealed class MainActivity : Activity
     /// </param>
     View Step(int n, bool done, string title, string note, string? action, Action? onAction,
               bool highlight = false, (string Label, Action OnTap)? secondary = null,
-              bool unavailable = false)
+              bool unavailable = false, bool actionEnabled = true,
+              (int Done, int Total)? liveProgress = null)
     {
         var row = new LinearLayout(this) { Orientation = Orientation.Horizontal };
         row.SetPadding(Design.Dp(this, highlight ? 12 : 16), Design.Dp(this, 11),
@@ -1556,8 +1575,34 @@ public sealed class MainActivity : Activity
             var b = Design.Button(this, action,
                 highlight ? Design.Btn.Primary : Design.Btn.Secondary, highlight ? 52f : 40f);
             b.LayoutParameters = Wide();
+            b.Enabled = actionEnabled;
             if (onAction is not null) b.Click += (_, _) => onAction();
             col.AddView(b);
+        }
+
+        // A running long job gets its own bar rather than leaving the button's text as the only
+        // sign of life — the confirmation before this starts promises it is safe to switch away,
+        // so this cannot be a blocking screen like scanning gets; it has to live inline here.
+        // References are kept on the instance so the progress callback can move the fill directly,
+        // the same way RenderScanning's _scanFill does, instead of a full Render() per photo.
+        if (liveProgress is { } lp)
+        {
+            col.AddView(Gap(8));
+            var (track, fill) = Design.ProgressBar(this, 4f);
+            if (lp.Total > 0)
+                track.Post(() =>
+                {
+                    var flp = fill.LayoutParameters!;
+                    flp.Width = (int)(track.Width * Math.Clamp(lp.Done / (double)lp.Total, 0, 1));
+                    fill.LayoutParameters = flp;
+                });
+            col.AddView(track);
+            col.AddView(Gap(4));
+            var progText = Design.Note(this, $"{lp.Done:N0} of {lp.Total:N0} scored");
+            progText.AccessibilityLiveRegion = AccessibilityLiveRegion.Polite;
+            col.AddView(progText);
+            _nsfwProgressFill = fill;
+            _nsfwProgressText = progText;
         }
 
         if (secondary is { } sec)
@@ -1642,14 +1687,28 @@ public sealed class MainActivity : Activity
             .SetPositiveButton("Start scoring", async (_, _) =>
             {
                 _nsfwRunning = true;
+                _nsfwDone = 0;
+                _nsfwTotal = scope.Count;
                 Render();
                 WorkService.Start(this, "Scoring photos");
                 try
                 {
                     var ids = scope.Select(p => p.Id).ToList();
                     var progress = new Progress<NsfwProgress>(p =>
+                    {
+                        _nsfwDone = p.Done;
+                        _nsfwTotal = p.Total;
+                        if (_nsfwProgressText is not null)
+                            _nsfwProgressText.Text = $"{p.Done:N0} of {p.Total:N0} scored";
+                        if (_nsfwProgressFill is { Parent: View parent } && p.Total > 0)
+                        {
+                            var lp = _nsfwProgressFill.LayoutParameters!;
+                            lp.Width = (int)(parent.Width * Math.Clamp(p.Done / (double)p.Total, 0, 1));
+                            _nsfwProgressFill.LayoutParameters = lp;
+                        }
                         WorkService.Report(this, "Scoring photos",
-                            $"{p.Done:N0} of {p.Total:N0}", p.Done, p.Total));
+                            $"{p.Done:N0} of {p.Total:N0}", p.Done, p.Total);
+                    });
 
                     var result = await Task.Run(() =>
                         new NsfwScorer(_catalog!.Db, modelPath)
@@ -1670,7 +1729,11 @@ public sealed class MainActivity : Activity
                 {
                     WorkService.Stop(this);
                     _nsfwRunning = false;
-                    _photos = await Task.Run(() => _catalog!.Images.All().ToList());
+                    // Scoped, not Images.All() — the catalogue keeps every folder ever scanned, and
+                    // reading it unscoped put photos from every other folder back in the grid the
+                    // moment a scoring pass finished (AndroidCatalog.ScopedImages' own remarks
+                    // explain why that is worse than merely stale).
+                    _photos = await Task.Run(() => _catalog!.ScopedImages.ToList());
                     Render();
                 }
             })!

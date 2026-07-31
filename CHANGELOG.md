@@ -11,8 +11,9 @@ Since 1.3.0 the Android head carries its own pair, because the platform requires
 
 `versionCode` is a build counter rather than a second version number, so it advances independently
 of the sections below — any APK that has to install over an earlier one needs a higher code, and it
-can never go backwards. 1.3.0 exists as code 2 and, after the UX-review work, as code 3. 1.3.1 is
-code 4.
+can never go backwards. 1.3.0 exists as code 2 and, after the UX-review work, as code 3; 1.3.1 is
+code 4, code 5 after the content-review progress bar and library-scope fix, and code 6 after the
+Review badge/Duplicates-step scoping fix.
 
 ## 1.3.1 — 2026-07-31
 
@@ -104,6 +105,18 @@ plan listed and the phone could not do.
 - The self-test's SQLite check failed on every run after the first — it deleted and reused one
   filename while a pooled connection still held it open.
 - Nothing in the app is a disabled control standing in for a missing feature any more.
+- **Content review scoring now shows its own progress in the app**, not just in the persistent
+  notification. The Content review step gets a live count and progress bar while it runs, the
+  same read-out the notification already had, instead of leaving the button's text change from
+  "Score" to "Scoring…" as the only sign anything was happening.
+- **The library could show photos from a folder you had moved on from.** Finishing a scoring pass
+  reloaded the library through `Images.All()` instead of `AndroidCatalog.ScopedImages`, so every
+  photo the catalogue had ever seen — not just the current scan root's — came back into the grid
+  until something else forced a properly scoped reload.
+- **The Review tab's badge and the Duplicates step could disagree with the library's own "extras
+  waiting" banner right below them.** Both read `DupeRepository.Groups()` unscoped, across every
+  folder ever catalogued, while the banner was already scoped to the active folder — caught on
+  device scanning two folders in one session, where the badge read 9 against a banner that said 1.
 
 ## 1.3.0 — 2026-07-29
 
